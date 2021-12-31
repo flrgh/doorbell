@@ -189,16 +189,30 @@ local function request_auth(addr)
 
   local base_url = BASE_URL or ("https://" .. var.host)
 
+  local approve_url = fmt("%s/answer?t=%s&intent=approve", base_url, token)
+  local deny_url = fmt("%s/answer?t=%s&intent=deny", base_url, token)
+
+  local message = fmt(
+    [[
+      IP address: %s
+      User-Agent: %s
+
+      * <a href="%s">click to approve</a>
+
+      * <a href="%s">click to deny</a>
+    ]],
+    addr,
+    var.http_user_agent or "<NONE>",
+    approve_url,
+    deny_url
+  )
+
+
   local ok, res
   ok, err, res = po:notify({
     title = "access requested for " .. addr,
-    message = fmt(
-      "access requested for ip: %s\nuser-agent: %s\n",
-      addr,
-      var.http_user_agent
-    ),
-    url = base_url .. "/unlock?t=" .. token,
-    url_title = "approve or deny",
+    message = message,
+    html = true,
   })
 
   if res then
@@ -337,54 +351,29 @@ function _M.authorized()
   return handler(addr)
 end
 
-function _M.unlock()
+function _M.answer()
   assert(SHM, "doorbell was not initialized")
-  local t = var.arg_t
-  if not t then
-    log(NOTICE, "/unlock accessed with no token")
+  local intent = var.arg_intent
+
+  if not (intent == "approve" or intent == "deny") then
+    log(NOTICE, "received request with invalid intent: ", intent or "<NONE>")
     return ngx.exit(ngx.HTTP_NOT_FOUND)
   end
 
-  log(NOTICE, cjson.encode(ngx.req.get_uri_args()))
+  local t = var.arg_t
+  if not t then
+    log(NOTICE, "/answer accessed with no token")
+    return ngx.exit(ngx.HTTP_NOT_FOUND)
+  end
 
   local addr = get_token_address(t)
 
   if not addr then
-    log(NOTICE, "/unlock token ", t, " not found")
+    log(NOTICE, "/answer token ", t, " not found")
     return ngx.exit(ngx.HTTP_NOT_FOUND)
   end
 
-  local method = ngx.req.get_method()
-
-  ngx.header["content-type"] = "text/html"
-
-  if method == "GET" then
-    ngx.print(fmt([[
-    <html>
-      <h1>access control</h1>
-      <body>
-        <p>IP Address: %s</p>
-        <form action="" method="post">
-          <button name="intent" value="approve">Approve</button>
-          <button name="intent" value="deny">Deny</button>
-        </form>
-      <body>
-    </html>
-    ]], addr))
-    return ngx.exit(ngx.HTTP_OK)
-  elseif method == "POST" then
-    ngx.req.read_body()
-
-    local args = ngx.req.get_post_args()
-    if not args then
-      log(ERR, "failed to retrieve form args")
-      return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
-    end
-
-    return approve_or_deny(addr, t, args.intent)
-  end
-
-  return ngx.exit(ngx.HTTP_NOT_FOUND)
+  return approve_or_deny(addr, t, intent)
 end
 
 return _M
