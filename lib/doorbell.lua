@@ -378,6 +378,12 @@ function _M.ring()
     return ngx.exit(ngx.HTTP_FORBIDDEN)
   end
 
+  --- TODO: make this configurable
+  if var.http_x_forwarded_host == "doorbell.pancakes2.com" and (var.http_x_forwarded_uri or ""):find("^/answer") then
+    return ngx.exit(ngx.HTTP_OK)
+  end
+
+
   local state = get_auth_state(addr)
   local handler = HANDLERS[state]
   return handler(addr)
