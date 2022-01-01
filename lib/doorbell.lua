@@ -199,15 +199,24 @@ local function request_auth(addr)
     return false
   end
 
-  local base_url = BASE_URL or ("https://" .. var.host)
+  local base_url = BASE_URL or ("https://" .. (var.http_x_forwarded_host or var.host))
 
   local approve_url = fmt("%s/answer?t=%s&intent=approve", base_url, token)
   local deny_url = fmt("%s/answer?t=%s&intent=deny", base_url, token)
+
+  local request = fmt(
+    "%s %s://%s%s",
+    var.http_x_forwarded_method,
+    var.http_x_forwarded_proto,
+    var.http_x_forwarded_host,
+    var.http_x_forwarded_uri
+  )
 
   local message = fmt(
     [[
       IP address: %s
       User-Agent: %s
+      Request: %s
 
       * <a href="%s">click to approve</a>
 
@@ -215,6 +224,7 @@ local function request_auth(addr)
     ]],
     addr,
     var.http_user_agent or "<NONE>",
+    request,
     approve_url,
     deny_url
   )
