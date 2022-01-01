@@ -350,7 +350,7 @@ function _M.init(opts)
   DENY = assert(ipmatcher.new(opts.deny or EMPTY))
 end
 
-function _M.authorized()
+function _M.ring()
   assert(SHM, "doorbell was not initialized")
 
   local addr = var.http_x_forwarded_for
