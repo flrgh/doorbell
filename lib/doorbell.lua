@@ -19,6 +19,12 @@ local pushover = require "resty.pushover"
 local cjson = require "cjson"
 local ipmatcher = require "resty.ipmatcher"
 
+local cache
+do
+  local lru = require "resty.lrucache"
+  cache = assert(lru.new(1000))
+end
+
 local EMPTY = {}
 
 ---@type resty.pushover.client.opts
@@ -112,6 +118,12 @@ end
 ---@return boolean ok
 local function set_auth_state(addr, state)
   assert(STATES[state], "invalid state: " .. state)
+
+  -- populate the LRU cache as well
+  if state == STATES.allow or state == STATES.deny then
+    cache:set(addr, state, TTL[state])
+  end
+
   return SHM:safe_set("auth:" .. addr, state, TTL[state])
 end
 
@@ -337,12 +349,22 @@ function _M.authorized()
     addr = var.remote_addr
   end
 
+  local res = cache:get(addr)
+  if res == STATES.allow then
+    log(DEBUG, "cache HIT for ", addr, " => allowed")
+    return ngx.exit(ngx.HTTP_OK)
+  elseif res == STATES.deny then
+    log(DEBUG, "cache HIT for ", addr, " => denied")
+    return ngx.exit(ngx.HTTP_FORBIDDEN)
+  end
 
   if ALLOW:match(addr) then
     log(DEBUG, "access for ", addr, " allowed from config")
+    cache:set(addr, STATES.allow)
     return ngx.exit(ngx.HTTP_OK)
   elseif DENY:match(addr) then
     log(DEBUG, "access for ", addr, " denied from config")
+    cache:set(addr, STATES.deny)
     return ngx.exit(ngx.HTTP_FORBIDDEN)
   end
 
