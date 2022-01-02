@@ -4,23 +4,40 @@ local _M = {
 
 local ngx = ngx
 local var = ngx.var
-local log = ngx.log
-local WARN = ngx.WARN
-local ERR = ngx.ERR
-local DEBUG = ngx.DEBUG
-local NOTICE = ngx.NOTICE
-local fmt = string.format
+
 local now = ngx.now
 local sleep = ngx.sleep
+
 local re_find = ngx.re.find
 
+local log    = ngx.log
+local WARN   = ngx.WARN
+local ERR    = ngx.ERR
+local DEBUG  = ngx.DEBUG
+local NOTICE = ngx.NOTICE
+
+local exit = ngx.exit
+local HTTP_OK                    = ngx.HTTP_OK
+local HTTP_FORBIDDEN             = ngx.HTTP_FORBIDDEN
+local HTTP_UNAUTHORIZED          = ngx.HTTP_UNAUTHORIZED
+local HTTP_INTERNAL_SERVER_ERROR = ngx.HTTP_INTERNAL_SERVER_ERROR
+local HTTP_CREATED               = ngx.HTTP_CREATED
+local HTTP_BAD_REQUEST           = ngx.HTTP_BAD_REQUEST
+local HTTP_NOT_FOUND             = ngx.HTTP_NOT_FOUND
+
+local read_body = ngx.req.read_body
+local get_post_args = ngx.req.get_post_args
+
+local fmt = string.format
+
+local intent     = require "doorbell.intent"
+
+local cjson      = require "cjson"
+local ipmatcher  = require "resty.ipmatcher"
+local pushover   = require "resty.pushover"
+local random     = require "resty.random"
 local resty_lock = require "resty.lock"
-local random = require "resty.random"
-local pushover = require "resty.pushover"
-local cjson = require "cjson"
-local ipmatcher = require "resty.ipmatcher"
-local intent = require "doorbell.intent"
-local template = require "resty.template"
+local template   = require "resty.template"
 
 local cache
 do
@@ -126,7 +143,25 @@ local function store_cache(req, value, global, ttl)
     cache_key = req.addr .. ":" .. req.host .. ":" .. req.path
   end
 
-  cache:set(cache_key, value, ttl or DEFAULT_TTL)
+  if ttl == nil then
+    ttl = DEFAULT_TTL
+  elseif ttl == 0 then
+    ttl = nil
+  end
+  cache:set(cache_key, value, ttl)
+end
+
+local function is_pending(addr)
+  return SHM:get("pending:" .. addr)
+end
+
+local function set_pending(addr, pending)
+  local key = "pending:" .. addr
+  if pending then
+    assert(SHM:delete(key))
+  else
+    assert(SHM:safe_set(key, true, TTL.pending))
+  end
 end
 
 ---@param req doorbell.request
@@ -153,6 +188,9 @@ local function get_auth_state(req)
   end
 
   if int == nil then
+    if is_pending(req.addr) then
+      return STATES.pending
+    end
     return STATES.none
   end
 
@@ -250,6 +288,10 @@ local function request_auth(req)
     log(NOTICE, "access was denied for ", addr, " before requesting it")
     lock:unlock()
     return false
+  elseif state == STATES.pending then
+    log(NOTICE, "access for ", addr, " is already waiting on a pending request")
+    lock:unlock()
+    return false
   end
 
   local po
@@ -308,7 +350,7 @@ local function request_auth(req)
     return false
   end
 
-  intent.pending(addr, TTL.pending)
+  set_pending(addr, true)
   lock:unlock()
 
   return await_allow(req)
@@ -320,7 +362,7 @@ end
 local function approve_or_deny(addr, token, intent)
   if not intent then
     log(ERR, "received request with no intent")
-    return ngx.exit(ngx.HTTP_BAD_REQUEST)
+    return exit(HTTP_BAD_REQUEST)
   end
 
   if not (intent == "approve" or intent == "deny") then
@@ -330,7 +372,7 @@ local function approve_or_deny(addr, token, intent)
   local lock, err = lock_addr(addr)
   if not lock then
     log(ERR, "failed locking ", addr, " for update: ", err)
-    return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
+    return exit(HTTP_INTERNAL_SERVER_ERROR)
   end
 
   local ok
@@ -344,12 +386,12 @@ local function approve_or_deny(addr, token, intent)
 
   if not ok then
     log(ERR, "failed updating ", addr, " auth state to ", state, ": ", err)
-    return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
+    return exit(HTTP_INTERNAL_SERVER_ERROR)
   end
 
   ngx.header["content-type"] = "text/plain"
   ngx.say("success")
-  return ngx.exit(ngx.HTTP_OK)
+  return exit(HTTP_OK)
 end
 
 ---@alias doorbell.handler fun(req:doorbell.request)
@@ -358,34 +400,34 @@ end
 local HANDLERS = {
   [STATES.allow] = function(req)
     log(DEBUG, "allowing access for ", req.addr)
-    return ngx.exit(ngx.HTTP_OK)
+    return exit(HTTP_OK)
   end,
 
   [STATES.deny] = function(req)
     log(NOTICE, "denying access for ", req.addr)
-    return ngx.exit(ngx.HTTP_FORBIDDEN)
+    return exit(HTTP_FORBIDDEN)
   end,
 
   [STATES.none] = function(req)
     log(NOTICE, "requesting access for ", req.addr)
     if request_auth(req) then
       log(NOTICE, "access approved for ", req.addr)
-      return ngx.exit(ngx.HTTP_OK)
+      return exit(HTTP_OK)
     end
-    return ngx.exit(ngx.HTTP_UNAUTHORIZED)
+    return exit(HTTP_UNAUTHORIZED)
   end,
 
   [STATES.pending] = function(req)
     log(NOTICE, "awaiting access for ", req.addr)
     if await_allow(req) then
-      return ngx.exit(ngx.HTTP_OK)
+      return exit(HTTP_OK)
     end
-    return ngx.exit(ngx.HTTP_UNAUTHORIZED)
+    return exit(HTTP_UNAUTHORIZED)
   end,
 
   [STATES.error] = function(req)
     log(ERR, "something went wrong while checking auth for ", req.addr)
-    return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
+    return exit(HTTP_INTERNAL_SERVER_ERROR)
   end,
 }
 
@@ -400,7 +442,7 @@ local function require_trusted_ip()
 
   if not trusted then
     log(WARN, "denying connection from untrusted IP: ", ip)
-    return ngx.exit(ngx.HTTP_FORBIDDEN)
+    return exit(HTTP_FORBIDDEN)
   end
 end
 
@@ -429,16 +471,20 @@ function _M.init(opts)
   PUSHOVER_OPTS = assert(opts.pushover, "missing pushover API config")
 
   BASE_URL = assert(opts.base_url, "opts.base_url required")
-  local m = ngx.re.match(BASE_URL, "^(http(s)://)?(?<host>[^/]).+")
-  assert(m, "failed to parse hostname from base_url: " .. BASE_URL)
+  local m = ngx.re.match(BASE_URL, "^(http(s)://)?(?<host>[^/]+)")
+  assert(m and m.host, "failed to parse hostname from base_url: " .. BASE_URL)
   HOST = m.host:lower()
+
+  log(DEBUG, "doorbell BASE_URL: ", BASE_URL, ", HOST: ", HOST)
 
   local ips = {}
   for _, ip in ipairs(opts.allow or EMPTY) do
+    log(DEBUG, "IP allow: ", ip)
     ips[ip] = "allow"
   end
 
   for _, ip in ipairs(opts.deny or EMPTY) do
+    log(DEBUG, "IP deny: ", ip)
     ips[ip] = "deny"
   end
 
@@ -475,8 +521,8 @@ function _M.ring()
   local addr = req.addr
 
   if req.host == HOST and req.path == "/answer" then
-    log(DEBUG, "allowing request to {{self}}/answer endpoint")
-    return ngx.exit(ngx.HTTP_OK)
+    log(DEBUG, "allowing request to ", HOST, "/answer endpoint")
+    return exit(HTTP_OK)
   end
 
   local state
@@ -501,14 +547,14 @@ function _M.ring()
   if UNDEFINED[state] then
     local ip = IP:match(addr)
     if ip == "allow" then
-      log(DEBUG, "access for ", addr, " allowed from config")
-      store_cache(req, STATES.allow, true)
       state = STATES.allow
+      log(DEBUG, "access for ", addr, " allowed from config")
+      store_cache(req, state, true, 0)
 
     elseif ip == "deny" then
-      log(DEBUG, "access for ", addr, " denied from config")
-      store_cache(req, STATES.deny, true)
       state = STATES.deny
+      log(DEBUG, "access for ", addr, " denied from config")
+      store_cache(req, state, true, 0)
     end
   end
 
@@ -592,31 +638,31 @@ function _M.answer()
   local t = var.arg_t
   if not t then
     log(NOTICE, "/answer accessed with no token")
-    return ngx.exit(ngx.HTTP_NOT_FOUND)
+    return exit(HTTP_NOT_FOUND)
   end
 
   local req = get_token_address(t)
 
   if not req then
     log(NOTICE, "/answer token ", t, " not found")
-    return ngx.exit(ngx.HTTP_NOT_FOUND)
+    return exit(HTTP_NOT_FOUND)
   end
 
   req.url = req.scheme .. "://" .. req.host .. req.uri
 
   local method = ngx.req.get_method()
   if not (method == "GET" or method == "POST") then
-    ngx.exit(ngx.HTTP_BAD_REQUEST)
+    exit(HTTP_BAD_REQUEST)
   end
 
   if method == "GET" then
     ngx.header["content-type"] = "text/html"
     ngx.print(render_form(req))
-    return ngx.exit(ngx.HTTP_OK)
+    return exit(HTTP_OK)
   end
 
-  ngx.req.read_body()
-  local args = ngx.req.get_post_args()
+  read_body()
+  local args = get_post_args()
   local action = args.action or "NONE"
   local scope = args.scope or "NONE"
   local period = args.period or "NONE"
@@ -624,8 +670,6 @@ function _M.answer()
   local err
 
   if not (action == "approve" or action == "deny") then
-    ngx.header["content-type"] = "text/html"
-    log(NOTICE, "received request with invalid action: ", action or "<NONE>")
     err = "invalid action: " .. tostring(action)
   elseif not SCOPES[scope] then
     err = "invalid scope: " .. tostring(scope)
@@ -636,7 +680,7 @@ function _M.answer()
   if err then
     ngx.header["content-type"] = "text/html"
     ngx.print(render_form(req, err))
-    return ngx.exit(ngx.HTTP_BAD_REQUEST)
+    return exit(HTTP_BAD_REQUEST)
   end
 
   local host, path = req.host, req.path
@@ -648,10 +692,12 @@ function _M.answer()
   end
 
   if action == "approve" then
-    intent.allow(req.addr, host, path, PERIODS[period])
+    assert(intent.allow(req.addr, host, path, PERIODS[period]))
   else
-    intent.deny(req.addr, host, path, PERIODS[period])
+    assert(intent.deny(req.addr, host, path, PERIODS[period]))
   end
+
+  set_pending(req.addr, false)
 
   local msg = fmt(
     "%s access for %s to %s %s",
@@ -663,7 +709,7 @@ function _M.answer()
 
   ngx.header["content-type"] = "text/plain"
   ngx.say(msg)
-  return ngx.exit(ngx.HTTP_CREATED)
+  return exit(HTTP_CREATED)
 end
 
 return _M
