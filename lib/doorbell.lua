@@ -18,6 +18,7 @@ local random = require "resty.random"
 local pushover = require "resty.pushover"
 local cjson = require "cjson"
 local ipmatcher = require "resty.ipmatcher"
+local intent = require "doorbell.intent"
 
 local cache
 do
@@ -35,8 +36,8 @@ local SHM_NAME = "doorbell"
 
 local BASE_URL
 
-local ALLOW
-local DENY
+local IP
+local TRUSTED
 
 ---@type ngx.shared.DICT
 local SHM
@@ -55,6 +56,17 @@ local STATES = {
   none       = "none",
   error      = "error",
 }
+
+---@alias doorbell.action '"allow"'|'"deny"'
+
+---@class doorbell.intent
+---@field action  doorbell.action
+---@field addr    string
+---@field host?   string
+---@field path?   string
+---@field created number
+---@field expires number
+
 
 local WAIT_TIME = 60
 local TTL
@@ -199,7 +211,7 @@ local function request_auth(addr)
     return false
   end
 
-  local base_url = BASE_URL or ("https://" .. (var.http_x_forwarded_host or var.host))
+  local base_url = BASE_URL or fmt("%s://%s", var.http_x_forwarded_proto, var.server_name)
 
   local approve_url = fmt("%s/answer?t=%s&intent=approve", base_url, token)
   local deny_url = fmt("%s/answer?t=%s&intent=deny", base_url, token)
@@ -333,6 +345,7 @@ local HANDLERS = {
 ---@field base_url string
 ---@field allow    string[]
 ---@field deny     string[]
+---@field trusted  string[]
 ---@field pushover resty.pushover.client.opts
 
 ---@param opts doorbell.init.opts
@@ -346,8 +359,18 @@ function _M.init(opts)
 
   BASE_URL = opts.base_url
 
-  ALLOW = assert(ipmatcher.new(opts.allow or EMPTY))
-  DENY = assert(ipmatcher.new(opts.deny or EMPTY))
+  local ips = {}
+  for _, ip in ipairs(opts.allow or EMPTY) do
+    ips[ip] = "allow"
+  end
+
+  for _, ip in ipairs(opts.deny or EMPTY) do
+    ips[ip] = "deny"
+  end
+
+  IP = assert(ipmatcher.new_with_value(ips))
+
+  TRUSTED = assert(ipmatcher.new(opts.trusted or EMPTY))
 end
 
 function _M.ring()
@@ -359,20 +382,32 @@ function _M.ring()
     addr = var.remote_addr
   end
 
-  local res = cache:get(addr)
+  local host = var.http_x_forwarded_host or var.host
+  local uri  = var.http_x_forwarded_uri or var.uri
+  local path = uri:gsub("?.*", "")
+
+  local cache_key = addr
+  local res = cache:get(cache_key)
+
+  if not res then
+    cache_key = addr .. ":" .. host .. ":" .. path
+    res = cache:get(cache_key)
+  end
+
   if res == STATES.allow then
-    log(DEBUG, "cache HIT for ", addr, " => allowed")
+    log(DEBUG, "cache HIT for ", cache_key, " => allowed")
     return ngx.exit(ngx.HTTP_OK)
   elseif res == STATES.deny then
-    log(DEBUG, "cache HIT for ", addr, " => denied")
+    log(DEBUG, "cache HIT for ", cache_key, " => denied")
     return ngx.exit(ngx.HTTP_FORBIDDEN)
   end
 
-  if ALLOW:match(addr) then
+  local ip = IP:match(addr)
+  if ip == "allow" then
     log(DEBUG, "access for ", addr, " allowed from config")
     cache:set(addr, STATES.allow)
     return ngx.exit(ngx.HTTP_OK)
-  elseif DENY:match(addr) then
+  elseif ip == "deny" then
     log(DEBUG, "access for ", addr, " denied from config")
     cache:set(addr, STATES.deny)
     return ngx.exit(ngx.HTTP_FORBIDDEN)
