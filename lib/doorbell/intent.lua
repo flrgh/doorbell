@@ -7,10 +7,11 @@ local assert = assert
 local cjson = require "cjson"
 local encode = cjson.encode
 local decode = cjson.decode
-local concat = table.concat
 local fmt = string.format
-
-local EMPTY = setmetatable({}, { __newindex = function() error("NO") end })
+local assert = assert
+local type = type
+local tonumber = tonumber
+local sub = string.sub
 
 ---@type ngx.shared.DICT
 local SHM
@@ -18,10 +19,28 @@ local SHM
 ---@alias doorbell.intent.action '"allow"'|'"deny"'|'"pending"'
 
 local actions = {
-  allow = true,
-  pending = true,
-  deny = true,
+  a = "allow",
+  allow = "a",
+
+  d = "deny",
+  deny = "d",
+
+  p = "pending",
+  pending = "p",
 }
+
+local function serialize(action, ttl)
+  local exp = now() + ttl
+  return actions[action] .. exp
+end
+
+local function unserialize(value)
+  local i = sub(value, 1, 1)
+  local action = assert(actions[i])
+  local exp = tonumber(sub(value, 2))
+  return action, nil, nil, exp - now()
+end
+
 
 ---@alias doorbell.intent.map table<string, doorbell.intent.action>
 
@@ -31,14 +50,19 @@ local actions = {
 ---@return doorbell.intent.action action
 ---@return string?                error
 ---@return boolean                global
+---@return number?                ttl
 local function get(addr, host, path)
-  local value, err = SHM:get("intent:" .. addr)
+  local key = "intent:" .. addr
+  local value, err = SHM:get(key)
   if value == nil then
     return nil, err
   end
 
+  local ttl
   if actions[value] then
-    return value, nil, true
+    -- for plain/global states, the ttl is the shm ttl
+    ttl = SHM:ttl(key)
+    return value, nil, true, ttl
   end
 
   ---@type doorbell.intent.action
@@ -48,19 +72,19 @@ local function get(addr, host, path)
   local intent = decode(value)
 
   -- host + path
-  local key = host .. "::" .. path
+  key = host .. "::" .. path
   result = intent[key]
-  if result then return result end
+  if result then return unserialize(result) end
 
   -- host
   key = host .. "::*"
   result = intent[key]
-  if result then return result end
+  if result then return unserialize(result) end
 
   -- path
   key = "*::" .. path
   result = intent[key]
-  if result then return result end
+  if result then return unserialize(result) end
 
   return get("*", host, path)
 end
@@ -94,9 +118,9 @@ local function upsert(addr, host, path, intent, ttl)
     current = decode(current)
   end
 
-  current[idx] = intent
+  current[idx] = serialize(intent, ttl)
 
-  return SHM:safe_set(key, encode(current), ttl)
+  return SHM:safe_set(key, encode(current), 0)
 end
 
 ---@param  addr    string
@@ -136,6 +160,7 @@ end
 ---@return doorbell.intent.action action
 ---@return string?                error
 ---@return boolean                global
+---@return number?                ttl
 function _M.get(addr, host, path)
   assert(SHM, "doorbell.intent not initialized!")
   return get(addr, host, path)
