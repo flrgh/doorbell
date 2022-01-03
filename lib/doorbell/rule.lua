@@ -2,6 +2,7 @@ local _M = {}
 
 local cjson = require "cjson"
 local ipmatcher  = require "resty.ipmatcher"
+local resty_lock = require "resty.lock"
 
 local ngx = ngx
 local encode = cjson.encode
@@ -46,7 +47,13 @@ end
 
 
 local function show(t)
-  ngx.say(require("inspect")(t))
+  ngx.log(ngx.NOTICE, require("inspect")(t))
+end
+
+local function lock_storage()
+  local obj = assert(resty_lock:new("rules"))
+  assert(obj:lock("meta:lock"))
+  return obj
 end
 
 --- generate a cache key for a request object
@@ -126,10 +133,12 @@ local CRITERIA = {
 ---@return boolean
 local function expired(rule, t)
   local exp = rule.expires
-  if not exp then return false end
+  if exp == 0 or not exp then return false end
   t = t or now()
   return exp <= t
 end
+
+local check_match
 
 local function rebuild_matcher()
   local criteria = {}
@@ -145,7 +154,10 @@ local function rebuild_matcher()
     ---@param match doorbell.rule.criteria
     ---@param value string
     local function add_criteria(rule, match, value)
-      if expired(rule, time) then return end
+      if expired(rule, time) then
+        ngx.log(ngx.DEBUG, "skipping expired rule: ", rule.hash)
+        return
+      end
 
       max_conditions = max(max_conditions, rule.conditions)
 
@@ -294,7 +306,7 @@ local function rebuild_matcher()
 
   ---@param req doorbell.request
   ---@return doorbell.rule?
-  return function(req)
+  check_match = function(req)
     local addr   = assert(req.addr, "missing request addr")
     local path   = assert(req.path, "missing request path")
     local host   = assert(req.host, "missing request host")
@@ -324,7 +336,6 @@ local function rebuild_matcher()
       update_match(match, regex_match(uas_regex, ua))
     end
 
-    show(match)
     if match.n > 1 then
       sort(match, cmp_rule)
     end
@@ -385,8 +396,7 @@ end
 
 ---@param  opts    table
 ---@return doorbell.rule? rule
----@return string? error
-function _M.add(opts)
+local function new_rule(opts)
   local rule = {
     action  = assert(opts.action),
     source  = assert(opts.source),
@@ -408,35 +418,57 @@ function _M.add(opts)
     end
   end
 
-  if opts.ttl then
+  if opts.ttl and opts.ttl > 0 then
     rule.expires = now() + opts.ttl
   end
-
-  assert(SHM:safe_add(rule.hash, encode(rule)))
   return rule
 end
 
-local match
+---@param  opts    table
+---@return doorbell.rule? rule
+---@return string? error
+function _M.add(opts, nobuild)
+  local rule = new_rule(opts)
+  local lock = lock_storage()
+  assert(SHM:safe_set(rule.hash, encode(rule)))
+  assert(SHM:incr("meta:version", 1, 0))
+  if not nobuild then rebuild_matcher() end
+  assert(lock:unlock())
+  return rule
+end
+
+---@param  opts    table
+---@return doorbell.rule? rule
+---@return string? error
+function _M.upsert(opts, nobuild)
+  local rule = new_rule(opts)
+  local lock = lock_storage()
+  assert(SHM:safe_set(rule.hash, encode(rule)))
+  assert(SHM:incr("meta:version", 1, 0))
+  if not nobuild then rebuild_matcher() end
+  assert(lock:unlock())
+  return rule
+end
+
 
 ---@param  req            doorbell.request
 ---@return doorbell.rule? rule
 ---@return string?        error
 function _M.match(req)
-  if not match then
-    match = rebuild_matcher()
-    cache:flush_all()
+  if not check_match then
+    rebuild_matcher()
   end
 
   local key = cache_key(req)
+  local cached = true
   local m = cache:get(key)
-  if m then
-    return m
+  if not m then
+    cached = false
+    m = check_match(req)
   end
 
-  m = match(req)
-
-
   if m then
+    ngx.log(ngx.DEBUG, "cache ", (cached and "HIT" or "MISS"), " for ", req.addr, " => ", m.action)
     local ttl
     if m.expires and m.expires > 0 then
       ttl = m.expires - now()
@@ -446,12 +478,66 @@ function _M.match(req)
       return
     end
 
-    cache:set(key, m, ttl)
+    if not cached then
+      cache:set(key, m, ttl)
+    end
   end
 
   return m
 end
 
-_M.list = get_all_rules
+function _M.list()
+  return get_all_rules()
+end
+
+function _M.save(fname)
+  local lock = lock_storage()
+  local version = _M.version()
+  local rules = get_all_rules()
+  local fh, err = io.open(fname, "w+")
+  if not fh then
+    lock:unlock()
+    return nil, err
+  end
+
+  local ok
+  ok, err = fh:write(encode(rules))
+  fh:close()
+  lock:unlock()
+  ngx.log(ngx.NOTICE, "saved ", #rules, " rules to disk")
+  return version
+end
+
+function _M.reload()
+  match = rebuild_matcher()
+end
+
+function _M.load(fname)
+  -- no lock: this should only run during init
+  local fh, err = io.open(fname, "r")
+  if not fh then
+    return nil, err
+  end
+
+  local data
+  data, err = fh:read("*a")
+  fh:close()
+  if not data then
+    return nil, err
+  end
+
+  local rules = decode(data)
+  for _, rule in ipairs(rules) do
+    assert(SHM:safe_set(rule.hash, encode(rule)))
+  end
+
+  ngx.log(ngx.NOTICE, "restored ", #rules, " rules from disk")
+
+  return true
+end
+
+function _M.version()
+  return SHM:get("meta:version") or 0
+end
 
 return _M

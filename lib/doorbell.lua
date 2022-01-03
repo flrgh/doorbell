@@ -8,8 +8,6 @@ local var = ngx.var
 local now = ngx.now
 local sleep = ngx.sleep
 
-local re_find = ngx.re.find
-
 local log    = ngx.log
 local WARN   = ngx.WARN
 local ERR    = ngx.ERR
@@ -31,6 +29,7 @@ local get_post_args = ngx.req.get_post_args
 local fmt = string.format
 
 local intent     = require "doorbell.intent"
+local rules      = require "doorbell.rule"
 
 local cjson      = require "cjson"
 local ipmatcher  = require "resty.ipmatcher"
@@ -47,24 +46,21 @@ end
 
 local EMPTY = {}
 
+---@type string
+local SAVE_PATH
+
 ---@type resty.pushover.client.opts
 local PUSHOVER_OPTS
 
 ---@type string
 local SHM_NAME = "doorbell"
 
-local IP
 local TRUSTED
 
 local BASE_URL, HOST
 
 ---@type ngx.shared.DICT
 local SHM
-
-local PATHS = {
-  plain = {},
-  regex = {}
-}
 
 ---@class doorbell.request : table
 ---@field addr string
@@ -123,33 +119,6 @@ do
   PERIODS.forever = 0
 end
 
-local CACHED = {
-  [STATES.allow] = true,
-  [STATES.deny] = true,
-}
-
-local UNDEFINED = {
-  [STATES.none] = true,
-  [STATES.error] = true,
-}
-
-local DEFAULT_TTL = 60
-
-local function store_cache(req, value, global, ttl)
-  local cache_key
-  if global then
-    cache_key = req.addr
-  else
-    cache_key = req.addr .. ":" .. req.host .. ":" .. req.path
-  end
-
-  if ttl == nil then
-    ttl = DEFAULT_TTL
-  elseif ttl == 0 then
-    ttl = nil
-  end
-  cache:set(cache_key, value, ttl)
-end
 
 local function is_pending(addr)
   return SHM:get("pending:" .. addr)
@@ -157,7 +126,7 @@ end
 
 local function set_pending(addr, pending)
   local key = "pending:" .. addr
-  if pending then
+  if not pending then
     assert(SHM:delete(key))
   else
     assert(SHM:safe_set(key, true, TTL.pending))
@@ -168,42 +137,16 @@ end
 ---@return doorbell.auth_state state
 ---@return string? error
 local function get_auth_state(req)
-  local cache_key = req.addr
-  local res = cache:get(cache_key)
-
-  if not res then
-    cache_key = req.addr .. ":" .. req.host .. ":" .. req.path
-    res = cache:get(cache_key)
+  local rule = rules.match(req)
+  if rule then
+    return rule.action
   end
 
-  if res then
-    log(DEBUG, "cache HIT for ", cache_key, " => ", res)
-    return res
+  if is_pending(req.addr) then
+    return STATES.pending
   end
 
-  local int, err, global, ttl = intent.get(req.addr, req.host, req.path)
-  if err then
-    log(ERR, "intent.get() returned error: ", err)
-    return STATES.error
-  end
-
-  if int == nil then
-    if is_pending(req.addr) then
-      return STATES.pending
-    end
-    return STATES.none
-  end
-
-  if ttl and ttl <= 0 then
-    log(WARN, "intent EXPIRE for ", cache_key, " => ", int)
-    return STATES.none
-  end
-
-  if CACHED[int] then
-    store_cache(req, int, global, ttl)
-  end
-
-  return int
+  return STATES.none
 end
 
 ---@param req doorbell.request
@@ -256,16 +199,22 @@ end
 local function await_allow(req)
   local start = now()
   while (now() - start) < WAIT_TIME do
-    local state = get_auth_state(req)
-    if state == STATES.allow then
-      return true
-    elseif state == STATES.deny then
-      return false
+    if not is_pending(req.addr) then
+      break
     end
     sleep(1)
   end
 
-  return false
+  if is_pending(req.addr) then
+    return false
+  end
+
+  local state = get_auth_state(req)
+  if state == STATES.allow then
+    return true
+  elseif state == STATES.deny then
+    return false
+  end
 end
 
 
@@ -278,20 +227,23 @@ local function request_auth(req)
     return nil, err
   end
 
-  local state
-  state, err = get_auth_state(req)
-  if state == STATES.allow then
-    log(DEBUG, "acccess for ", addr, " was allowed before requesting it")
-    lock:unlock()
-    return true
-  elseif state == STATES.deny then
-    log(NOTICE, "access was denied for ", addr, " before requesting it")
-    lock:unlock()
-    return false
-  elseif state == STATES.pending then
+  if is_pending(addr) then
     log(NOTICE, "access for ", addr, " is already waiting on a pending request")
     lock:unlock()
     return false
+  else
+    local rule = rules.match(req)
+    local state = (rule and rule.action)
+
+    if state == STATES.allow then
+      log(DEBUG, "acccess for ", addr, " was allowed before requesting it")
+      lock:unlock()
+      return true
+    elseif state == STATES.deny then
+      log(NOTICE, "access was denied for ", addr, " before requesting it")
+      lock:unlock()
+      return false
+    end
   end
 
   local po
@@ -330,15 +282,18 @@ local function request_auth(req)
     request
   )
 
+  local url = fmt("%s/answer?t=%s", BASE_URL, token)
 
   local ok, res
   ok, err, res = po:notify({
     title = "access requested for " .. addr,
     message = message,
     monospace = true,
-    url = fmt("%s/answer?t=%s", BASE_URL, token),
+    url = url,
     url_title = "approve or deny",
   })
+
+  log(DEBUG, "approve/deny link: ", url)
 
   if res then
     log(DEBUG, "pushover notify response: ", cjson.encode(res))
@@ -354,44 +309,6 @@ local function request_auth(req)
   lock:unlock()
 
   return await_allow(req)
-end
-
----@param addr string
----@param token string
----@param intent '"approve"'|'"deny"'
-local function approve_or_deny(addr, token, intent)
-  if not intent then
-    log(ERR, "received request with no intent")
-    return exit(HTTP_BAD_REQUEST)
-  end
-
-  if not (intent == "approve" or intent == "deny") then
-    log(ERR, "received invalid intent (", intent, ")")
-  end
-
-  local lock, err = lock_addr(addr)
-  if not lock then
-    log(ERR, "failed locking ", addr, " for update: ", err)
-    return exit(HTTP_INTERNAL_SERVER_ERROR)
-  end
-
-  local ok
-  local state = (intent == "approve" and STATES.allow) or STATES.deny
-  ok, err = set_auth_state(addr, state)
-  if ok then
-    SHM:delete("token:" .. token)
-  end
-
-  lock:unlock()
-
-  if not ok then
-    log(ERR, "failed updating ", addr, " auth state to ", state, ": ", err)
-    return exit(HTTP_INTERNAL_SERVER_ERROR)
-  end
-
-  ngx.header["content-type"] = "text/plain"
-  ngx.say("success")
-  return exit(HTTP_OK)
 end
 
 ---@alias doorbell.handler fun(req:doorbell.request)
@@ -459,6 +376,7 @@ end
 ---@field trusted  string[]
 ---@field pushover resty.pushover.client.opts
 ---@field paths    doorbell.path[]
+---@field save_path string
 
 ---@param opts doorbell.init.opts
 function _M.init(opts)
@@ -471,36 +389,29 @@ function _M.init(opts)
   PUSHOVER_OPTS = assert(opts.pushover, "missing pushover API config")
 
   BASE_URL = assert(opts.base_url, "opts.base_url required")
-  local m = ngx.re.match(BASE_URL, "^(http(s)://)?(?<host>[^/]+)")
+  local m = ngx.re.match(BASE_URL, "^(http(s)?://)?(?<host>[^/]+)")
   assert(m and m.host, "failed to parse hostname from base_url: " .. BASE_URL)
   HOST = m.host:lower()
 
   log(DEBUG, "doorbell BASE_URL: ", BASE_URL, ", HOST: ", HOST)
 
-  local ips = {}
-  for _, ip in ipairs(opts.allow or EMPTY) do
-    log(DEBUG, "IP allow: ", ip)
-    ips[ip] = "allow"
-  end
+  SAVE_PATH = opts.save_path or (ngx.config.prefix() .. "/rules.json")
 
-  for _, ip in ipairs(opts.deny or EMPTY) do
-    log(DEBUG, "IP deny: ", ip)
-    ips[ip] = "deny"
-  end
-
-  IP = assert(ipmatcher.new_with_value(ips))
+  rules.load(SAVE_PATH)
 
   TRUSTED = assert(ipmatcher.new(opts.trusted or EMPTY))
 
-  for _, p in ipairs(opts.paths or EMPTY) do
-    if p.pattern then
-      table.insert(PATHS.regex, p)
-    elseif p.path then
-      PATHS.plain[p.path] = p.action
-    else
-      error("invalid config path")
-    end
+  for _, rule in ipairs(opts.allow or {}) do
+    rule.action = "allow"
+    rule.source = "config"
+    assert(rules.upsert(rule, true))
   end
+  for _, rule in ipairs(opts.deny or {}) do
+    rule.action = "deny"
+    rule.source = "config"
+    assert(rules.upsert(rule, true))
+  end
+  rules.reload()
 end
 
 function _M.ring()
@@ -518,46 +429,14 @@ function _M.ring()
   }
 
   req.path = req.uri:gsub("?.*", "")
-  local addr = req.addr
 
   if req.host == HOST and req.path == "/answer" then
     log(DEBUG, "allowing request to ", HOST, "/answer endpoint")
     return exit(HTTP_OK)
   end
 
-  local state
-  local path = req.path
-  state = PATHS.plain[path] or STATES.none
-
-  if UNDEFINED[state] then
-    state = get_auth_state(req)
-  end
-
-  if UNDEFINED[state] then
-    local reg = PATHS.regex
-    for i = 1, #reg do
-      local p = reg[i]
-      if re_find(path, p.pattern, "oj") then
-        state = p.action
-        store_cache(req, state)
-      end
-    end
-  end
-
-  if UNDEFINED[state] then
-    local ip = IP:match(addr)
-    if ip == "allow" then
-      state = STATES.allow
-      log(DEBUG, "access for ", addr, " allowed from config")
-      store_cache(req, state, true, 0)
-
-    elseif ip == "deny" then
-      state = STATES.deny
-      log(DEBUG, "access for ", addr, " denied from config")
-      store_cache(req, state, true, 0)
-    end
-  end
-
+  local state = get_auth_state(req)
+  --error("NO")
 
   return HANDLERS[state](req)
 end
@@ -583,12 +462,21 @@ local function render_form(req, err)
               <input type="radio" id="approve" name="action" value="approve">
               <label for="approve">approve</label><br>
 
-              <input type="radio" id="deny" name="action" value="deny">
+              <input type="radio" id="deny" name="action" value="deny" checked="checked">
               <label for="deny">deny</label><br>
             </li>
 
             <li>
-              <input type="radio" id="global" name="scope" value="global">
+              <input type="radio" id="addr" name="subject" value="addr" checked="checked">
+              <label for="addr">this ip ({{req.addr}})</label><br>
+
+              <input type="radio" id="ua" name="subject" value="ua">
+              <label for="ua">this user agent ({{req.ua}})</label><br>
+            </li>
+
+
+            <li>
+              <input type="radio" id="global" name="scope" value="global" checked="checked">
               <label for="global">global (all apps)</label><br>
 
               <input type="radio" id="host" name="scope" value="host">
@@ -605,7 +493,7 @@ local function render_form(req, err)
               <input type="radio" id="hour" name="period" value="hour">
               <label for="hour">1 hour</label><br>
 
-              <input type="radio" id="day" name="period" value="day">
+              <input type="radio" id="day" name="period" value="day" checked="checked">
               <label for="day">1 day</label><br>
 
               <input type="radio" id="week" name="period" value="week">
@@ -629,6 +517,11 @@ local SCOPES = {
   global = "global",
   host = "host",
   url = "url",
+}
+
+local SUBJECTS = {
+  addr = "addr",
+  ua = "ua",
 }
 
 function _M.answer()
@@ -666,6 +559,7 @@ function _M.answer()
   local action = args.action or "NONE"
   local scope = args.scope or "NONE"
   local period = args.period or "NONE"
+  local subject = args.subject or "NONE"
 
   local err
 
@@ -675,6 +569,8 @@ function _M.answer()
     err = "invalid scope: " .. tostring(scope)
   elseif not PERIODS[period] then
     err = "invalid period: " .. tostring(period)
+  elseif not SUBJECTS[subject] then
+    err = "invalid subject: " .. tostring(subject)
   end
 
   if err then
@@ -685,24 +581,37 @@ function _M.answer()
 
   local host, path = req.host, req.path
   if scope == SCOPES.global then
-    host = "*"
-    path = "*"
+    host = nil
+    path = nil
   elseif scope == SCOPES.host then
-    path = "*"
+    path = nil
   end
 
-  if action == "approve" then
-    assert(intent.allow(req.addr, host, path, PERIODS[period]))
-  else
-    assert(intent.deny(req.addr, host, path, PERIODS[period]))
+  local addr, ua = req.addr, req.ua
+  if subject == SUBJECTS.addr then
+    ua = nil
+  elseif subject == SUBJECTS.ua then
+    addr = nil
   end
+
+  local rule = {
+    action = (action == "approve" and "allow") or "deny",
+    source = "user",
+    addr   = addr,
+    host   = host,
+    path   = path,
+    ua     = ua,
+    ttl    = PERIODS[period],
+  }
+
+  assert(rules.add(rule))
 
   set_pending(req.addr, false)
 
   local msg = fmt(
-    "%s access for %s to %s %s",
+    "%s access for %q to %s %s",
     (action == "approve" and "Approved") or "Denied",
-    req.addr,
+    (addr or ua),
     (scope == SCOPES.global and "all apps.") or (scope == SCOPES.host and req.host) or req.url,
     (PERIODS[period] == PERIODS.forever and "for all time") or ("for one " .. period)
   )
@@ -710,6 +619,31 @@ function _M.answer()
   ngx.header["content-type"] = "text/plain"
   ngx.say(msg)
   return exit(HTTP_CREATED)
+end
+
+function _M.list()
+  ngx.header["content-type"] = "application/json"
+  ngx.say(cjson.encode(rules:list()))
+end
+
+function _M.init_worker()
+  local save
+  local last = rules.version()
+  save = function(premature)
+    if premature then
+      return
+    end
+    local version = rules.version()
+    if version ~= last then
+      log(NOTICE, "saving rules...")
+      local ok, err = rules.save(SAVE_PATH)
+      if ok then
+        last = ok
+      end
+    end
+    ngx.timer.at(5, save)
+  end
+  ngx.timer.at(0, save)
 end
 
 return _M
