@@ -6,7 +6,6 @@ local resty_lock = require "resty.lock"
 local const = require "doorbell.constants"
 
 
-local assert  = assert
 local ngx     = ngx
 local re_find = ngx.re.find
 local now     = ngx.now
@@ -14,6 +13,10 @@ local log     = ngx.log
 local DEBUG   = ngx.DEBUG
 local ERR     = ngx.ERR
 local NOTICE  = ngx.NOTICE
+local INFO    = ngx.INFO
+local WARN    = ngx.WARN
+
+local assert  = assert
 local encode  = cjson.encode
 local decode  = cjson.decode
 local max     = math.max
@@ -174,7 +177,7 @@ local function rebuild_matcher()
     ---@param value string
     local function add_criteria(rule, match, value)
       if expired(rule, time) then
-        log(DEBUG, "skipping expired rule: ", rule.hash)
+        log(WARN, "skipping expired rule: ", rule.hash)
         return
       end
 
@@ -464,12 +467,12 @@ do
         ok = false
       end
 
-      if ok and not is_type(typ, value) then
+      if ok and value ~= nil and not is_type(typ, value) then
         err(e_type(name, typ, type(value)))
         ok = false
       end
 
-      if ok and req and typ == "string" then
+      if ok and req and typ == "string" and value == "" then
         err(e_empty(name))
         ok = false
       end
@@ -509,8 +512,8 @@ do
       err("at least one of `addr`|`cidr`|`ua`|`method`|`host`|`path` required")
     end
 
-    if #err > 0 then
-      return nil, concat(err, "\n")
+    if #errors > 0 then
+      return nil, concat(errors, "\n")
     end
 
     local rule = {
@@ -550,11 +553,11 @@ end
 local function reload()
   local version = get_version()
   local start = now()
-  match = rebuild_matcher()
+  rebuild_matcher()
   VERSION = version
   local duration = now() - start
   duration = ceil(duration * 1000) / 1000
-  log(DEBUG, "reloaded match rules for version ", version, " in ", duration, "s")
+  log(INFO, "reloaded match rules for version ", version, " in ", duration, "s")
 end
 
 ---@param  opts    table
@@ -608,7 +611,7 @@ function _M.match(req)
   end
 
   if m then
-    log(DEBUG, "cache ", (cached and "HIT" or "MISS"), " for ", req.addr, " => ", m.action)
+    log(INFO, "cache ", (cached and "HIT" or "MISS"), " for ", req.addr, " => ", m.action)
     local ttl
     if m.expires and m.expires > 0 then
       ttl = m.expires - now()
@@ -686,8 +689,9 @@ function _M.flush_expired()
     end
   end
 
+  inc_version()
   unlock()
-  log(DEBUG, "removed ", count, " expired rules")
+  log(INFO, "removed ", count, " expired rules")
 end
 
 
