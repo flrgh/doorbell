@@ -3,19 +3,28 @@ local _M = {}
 local cjson = require "cjson"
 local ipmatcher  = require "resty.ipmatcher"
 local resty_lock = require "resty.lock"
+local const = require "doorbell.constants"
 
-local ngx = ngx
-local encode = cjson.encode
-local decode = cjson.decode
-local insert = table.insert
-local max = math.max
-local sort = table.sort
-local now = ngx.now
-local fmt = string.format
+
+local assert  = assert
+local ngx     = ngx
 local re_find = ngx.re.find
-local assert = assert
+local now     = ngx.now
+local log     = ngx.log
+local DEBUG   = ngx.DEBUG
+local ERR     = ngx.ERR
+local NOTICE  = ngx.NOTICE
+local encode  = cjson.encode
+local decode  = cjson.decode
+local max     = math.max
+local ceil    = math.ceil
+local fmt     = string.format
+local insert  = table.insert
+local sort    = table.sort
+local concat  = table.concat
 
-local SHM = assert(ngx.shared.rules, "rules SHM missing")
+local SHM_NAME = const.shm.rules
+local SHM = assert(ngx.shared[SHM_NAME], "rules SHM missing")
 
 local cache
 do
@@ -50,10 +59,27 @@ local function show(t)
   ngx.log(ngx.NOTICE, require("inspect")(t))
 end
 
-local function lock_storage()
-  local obj = assert(resty_lock:new("rules"))
-  assert(obj:lock("meta:lock"))
-  return obj
+local function errorf(...)
+  error(fmt(...))
+end
+
+local function lock_storage(action)
+  local lock, err = resty_lock:new(SHM_NAME)
+  if not lock then
+    errorf("failed creating storage lock (action = %s): %s", action, err or "unknown")
+  end
+  local elapsed
+  elapsed, err = lock:lock("meta:lock")
+  if not elapsed then
+    errorf("failed locking storage (action = %s): %s", action, err)
+  end
+
+  return function()
+    local unlocked, uerr = lock:unlock()
+    if not unlocked then
+      log(ERR, "failed unlocking storage (action = ", action, "): ", uerr)
+    end
+  end
 end
 
 --- generate a cache key for a request object
@@ -71,15 +97,8 @@ local function cache_key(req)
 end
 
 
----@alias doorbell.rule.action
----| '"allow"'
----| '"deny"'
-
-local ALLOW = "allow"
-local DENY  = "deny"
-
-_M.ALLOW = ALLOW
-_M.DENY = DENY
+local DENY  = const.actions.deny
+local VERSION = 0
 
 ---@return doorbell.rule[]
 local function get_all_rules()
@@ -155,7 +174,7 @@ local function rebuild_matcher()
     ---@param value string
     local function add_criteria(rule, match, value)
       if expired(rule, time) then
-        ngx.log(ngx.DEBUG, "skipping expired rule: ", rule.hash)
+        log(DEBUG, "skipping expired rule: ", rule.hash)
         return
       end
 
@@ -346,13 +365,9 @@ local function rebuild_matcher()
   end
 end
 
----@alias doorbell.rule.source
----| '"config"'
----| '"user"'
-
 ---@class doorbell.rule : table
----@field action     doorbell.rule.action
----@field source     doorbell.rule.source
+---@field action     doorbell.action
+---@field source     doorbell.source
 ---@field hash       string
 ---@field created    number
 ---@field expires    number
@@ -377,7 +392,6 @@ local hash_rule
 do
   local buf = {}
   local md5 = ngx.md5
-  local concat = table.concat
 
   ---@param rule doorbell.rule
   ---@return string
@@ -394,46 +408,168 @@ do
   end
 end
 
----@param  opts    table
----@return doorbell.rule? rule
-local function new_rule(opts)
-  local rule = {
-    action  = assert(opts.action),
-    source  = assert(opts.source),
-    created = now(),
-    expires = opts.expires or 0,
-    addr    = opts.addr,
-    cidr    = opts.cidr,
-    ua      = opts.ua,
-    host    = opts.host,
-    path    = opts.path,
-    method  = opts.method,
-    hash    = nil,
-    conditions = 0,
+local new_rule
+do
+  local function tpl(s)
+    return function(...) return s:format(...) end
+  end
+
+  local e_required = tpl("`%s` is required and cannot be empty")
+  local e_type     = tpl("invalid `%s` (expected %s, got: %s)")
+  local e_empty    = tpl("`%s` cannot be empty")
+  local e_enum     = tpl("invalid `%s` (expected: %s, got: %q)")
+
+  local function is_type(t, v)
+    return type(v) == t
+  end
+  local function tkeys(t)
+    local keys = {}
+    for k in pairs(t) do
+      insert(keys, fmt("%q", k))
+    end
+    return concat(keys, "|")
+  end
+
+  local errors = {}
+  local function err(v) insert(errors, v) end
+
+  local fields = {
+    action  = {"string", true, const.actions},
+    source  = {"string", true, const.sources},
+    expires = {"number"},
+    ttl     = {"number"},
+    addr    = {"string"},
+    cidr    = {"string"},
+    path    = {"string"},
+    host    = {"string"},
+    method  = {"string"},
+    ua      = {"string"},
+    created = {"number"},
   }
-  rule.hash = hash_rule(rule)
-  for _, cond in ipairs(CONDITIONS) do
-    if rule[cond] then
-      rule.conditions = rule.conditions + 1
+
+  ---@param opts table
+  local function validate(opts)
+    errors = {}
+    for name, spec in pairs(fields) do
+      local typ = spec[1]
+      local req = spec[2]
+      local lookup = spec[3]
+
+      local value = opts[name]
+
+      local ok = true
+
+      if req and value == nil then
+        err(e_required(name))
+        ok = false
+      end
+
+      if ok and not is_type(typ, value) then
+        err(e_type(name, typ, type(value)))
+        ok = false
+      end
+
+      if ok and req and typ == "string" then
+        err(e_empty(name))
+        ok = false
+      end
+
+      if ok and lookup then
+        if not lookup[value] then
+          err(e_enum(name, tkeys(lookup), value))
+        end
+      end
     end
   end
 
-  if opts.ttl and opts.ttl > 0 then
-    rule.expires = now() + opts.ttl
+
+  ---@param  opts    table
+  ---@return doorbell.rule? rule
+  ---@return string? error
+  function new_rule(opts)
+    validate(opts)
+
+    local expires = opts.expires or 0
+
+    if opts.ttl then
+      if opts.expires then
+        err("only one of `ttl` and `expires` allowed")
+      elseif opts.ttl < 0 then
+        err("`ttl` must be > 0")
+      elseif opts.ttl > 0 then
+        expires = now() + opts.ttl
+      end
+    end
+
+    if opts.expires and opts.expires < 0 then
+      err("`expires` must be >= 0")
+    end
+
+    if #errors == 0 and not (opts.addr or opts.cidr or opts.ua or opts.method or opts.host or opts.path) then
+      err("at least one of `addr`|`cidr`|`ua`|`method`|`host`|`path` required")
+    end
+
+    if #err > 0 then
+      return nil, concat(err, "\n")
+    end
+
+    local rule = {
+      action  = opts.action,
+      source  = opts.source,
+      created = opts.created or now(),
+      expires = expires or 0,
+      addr    = opts.addr,
+      cidr    = opts.cidr,
+      ua      = opts.ua,
+      host    = opts.host,
+      path    = opts.path,
+      method  = opts.method,
+      hash    = "",
+      conditions = 0,
+    }
+    rule.hash = hash_rule(rule)
+    for _, cond in ipairs(CONDITIONS) do
+      if rule[cond] then
+        rule.conditions = rule.conditions + 1
+      end
+    end
+
+    return rule
   end
-  return rule
+end
+
+---@return number
+local function get_version()
+  return SHM:get("meta:version") or 0
+end
+
+local function inc_version()
+  assert(SHM:incr("meta:version", 1, 0))
+end
+
+local function reload()
+  local version = get_version()
+  local start = now()
+  match = rebuild_matcher()
+  VERSION = version
+  local duration = now() - start
+  duration = ceil(duration * 1000) / 1000
+  log(DEBUG, "reloaded match rules for version ", version, " in ", duration, "s")
 end
 
 ---@param  opts    table
 ---@return doorbell.rule? rule
 ---@return string? error
 function _M.add(opts, nobuild)
-  local rule = new_rule(opts)
-  local lock = lock_storage()
+  local rule, err = new_rule(opts)
+  if not rule then
+    return nil, err
+  end
+  local unlock = lock_storage("add-rule")
   assert(SHM:safe_set(rule.hash, encode(rule)))
-  assert(SHM:incr("meta:version", 1, 0))
-  if not nobuild then rebuild_matcher() end
-  assert(lock:unlock())
+  inc_version()
+  if not nobuild then reload() end
+  unlock()
   return rule
 end
 
@@ -441,22 +577,26 @@ end
 ---@return doorbell.rule? rule
 ---@return string? error
 function _M.upsert(opts, nobuild)
-  local rule = new_rule(opts)
-  local lock = lock_storage()
+  local rule, err = new_rule(opts)
+  if not rule then
+    return nil, err
+  end
+
+  local unlock = lock_storage("update-rule")
   assert(SHM:safe_set(rule.hash, encode(rule)))
-  assert(SHM:incr("meta:version", 1, 0))
-  if not nobuild then rebuild_matcher() end
-  assert(lock:unlock())
+  inc_version()
+  if not nobuild then reload() end
+  unlock()
   return rule
 end
-
 
 ---@param  req            doorbell.request
 ---@return doorbell.rule? rule
 ---@return string?        error
 function _M.match(req)
-  if not check_match then
-    rebuild_matcher()
+  local version = get_version()
+  if not check_match or version ~= VERSION then
+    reload()
   end
 
   local key = cache_key(req)
@@ -468,7 +608,7 @@ function _M.match(req)
   end
 
   if m then
-    ngx.log(ngx.DEBUG, "cache ", (cached and "HIT" or "MISS"), " for ", req.addr, " => ", m.action)
+    log(DEBUG, "cache ", (cached and "HIT" or "MISS"), " for ", req.addr, " => ", m.action)
     local ttl
     if m.expires and m.expires > 0 then
       ttl = m.expires - now()
@@ -491,26 +631,65 @@ function _M.list()
 end
 
 function _M.save(fname)
-  local lock = lock_storage()
-  local version = _M.version()
+  local unlock = lock_storage("save")
+  local version = get_version()
   local rules = get_all_rules()
   local fh, err = io.open(fname, "w+")
   if not fh then
-    lock:unlock()
+    unlock()
     return nil, err
   end
 
   local ok
   ok, err = fh:write(encode(rules))
-  fh:close()
-  lock:unlock()
-  ngx.log(ngx.NOTICE, "saved ", #rules, " rules to disk")
+  if not ok then
+    log(ERR, "failed writing rules to disk: ", err)
+  end
+  ok, err = fh:close()
+  if not ok then
+    log(ERR, "failed closing file handle: ", err)
+  end
+  log(NOTICE, "saved ", #rules, " rules to disk")
+
+  unlock()
   return version
 end
 
 function _M.reload()
-  match = rebuild_matcher()
+  return reload()
 end
+
+function _M.flush_expired()
+  local unlock = lock_storage("flush-expired")
+  ---@type doorbell.rule[]
+  local delete = {}
+  local t = now()
+  for _, rule in ipairs(get_all_rules()) do
+    if expired(rule, t) then
+      insert(delete, rule)
+    end
+  end
+
+  if #delete == 0 then
+    log(DEBUG, "no expired rules to delete")
+    unlock()
+    return
+  end
+
+  local count = #delete
+
+  for _, rule in ipairs(delete) do
+    local ok, err = SHM:delete(rule.hash)
+    if not ok then
+      count = count - 1
+      log(ERR, "failed deleting rule ", rule.hash, ": ", err)
+    end
+  end
+
+  unlock()
+  log(DEBUG, "removed ", count, " expired rules")
+end
+
 
 function _M.load(fname)
   -- no lock: this should only run during init
@@ -530,14 +709,15 @@ function _M.load(fname)
   for _, rule in ipairs(rules) do
     assert(SHM:safe_set(rule.hash, encode(rule)))
   end
+  inc_version()
 
-  ngx.log(ngx.NOTICE, "restored ", #rules, " rules from disk")
+  log(NOTICE, "restored ", #rules, " rules from disk")
 
   return true
 end
 
 function _M.version()
-  return SHM:get("meta:version") or 0
+  return get_version()
 end
 
 return _M

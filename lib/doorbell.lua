@@ -4,7 +4,7 @@ local _M = {
 
 local ngx = ngx
 local var = ngx.var
-
+local header = ngx.header
 local now = ngx.now
 local sleep = ngx.sleep
 
@@ -28,8 +28,8 @@ local get_post_args = ngx.req.get_post_args
 
 local fmt = string.format
 
-local intent     = require "doorbell.intent"
-local rules      = require "doorbell.rule"
+local rules = require "doorbell.rules"
+local const = require "doorbell.constants"
 
 local cjson      = require "cjson"
 local ipmatcher  = require "resty.ipmatcher"
@@ -53,8 +53,9 @@ local SAVE_PATH
 local PUSHOVER_OPTS
 
 ---@type string
-local SHM_NAME = "doorbell"
+local SHM_NAME = const.shm.doorbell
 
+---@type resty.ipmatcher
 local TRUSTED
 
 local BASE_URL, HOST
@@ -71,65 +72,27 @@ local SHM
 ---@field method string
 ---@field ua string
 
----@alias doorbell.auth_state
----| '"allow"'   # allowed
----| '"deny"'    # explicitly denied
----| '"pending"' # awaiting approval
----| '"none"'    # never seen this IP before
----| '"error"'   # something's wrong
+local STATES      = const.states
+local SCOPES      = const.scopes
+local SUBJECTS    = const.subjects
+local WAIT_TIME   = const.wait_time
+local TTL_PENDING = const.ttl.pending
+local PERIODS     = const.periods
 
-local STATES = {
-  allow      = "allow",
-  deny       = "deny",
-  pending    = "pending",
-  none       = "none",
-  error      = "error",
-}
-
----@alias doorbell.action '"allow"'|'"deny"'
-
----@class doorbell.intent
----@field action  doorbell.action
----@field addr    string
----@field host?   string
----@field path?   string
----@field created number
----@field expires number
-
-
-local WAIT_TIME = 60
-local TTL
-local PERIODS = {}
-do
-  local minute = 60
-  local hour = 60 * minute
-  local day = hour * 24
-  local week = day * 7
-
-  TTL = {
-    [STATES.allow]   = day,
-    [STATES.deny]    = week,
-    [STATES.pending] = minute * 5,
-  }
-
-  PERIODS.minute = minute
-  PERIODS.hour = hour
-  PERIODS.day  = day
-  PERIODS.week = week
-  PERIODS.forever = 0
-end
-
-
+---@param addr string
+---@return boolean
 local function is_pending(addr)
   return SHM:get("pending:" .. addr)
 end
 
+---@param addr string
+---@param pending boolean
 local function set_pending(addr, pending)
   local key = "pending:" .. addr
   if not pending then
     assert(SHM:delete(key))
   else
-    assert(SHM:safe_set(key, true, TTL.pending))
+    assert(SHM:safe_set(key, true, TTL_PENDING))
   end
 end
 
@@ -157,7 +120,7 @@ local function generate_request_token(req)
   local token = ngx.escape_uri(ngx.encode_base64(bytes))
   local key = "token:" .. token
   local value = cjson.encode(req)
-  local ok, err = SHM:safe_set(key, value, TTL.pending)
+  local ok, err = SHM:safe_add(key, value, TTL_PENDING)
   if not ok then
     return nil, err
   end
@@ -224,7 +187,8 @@ local function request_auth(req)
   local addr = req.addr
   local lock, err = lock_addr(addr)
   if not lock then
-    return nil, err
+    log(ERR, "failed acquiring addr lock for ", addr, ": ", err)
+    return false
   end
 
   if is_pending(addr) then
@@ -239,6 +203,7 @@ local function request_auth(req)
       log(DEBUG, "acccess for ", addr, " was allowed before requesting it")
       lock:unlock()
       return true
+
     elseif state == STATES.deny then
       log(NOTICE, "access was denied for ", addr, " before requesting it")
       lock:unlock()
@@ -262,7 +227,6 @@ local function request_auth(req)
     return false
   end
 
-
   local request = fmt(
     "%s %s://%s%s",
     req.method,
@@ -283,17 +247,16 @@ local function request_auth(req)
   )
 
   local url = fmt("%s/answer?t=%s", BASE_URL, token)
+  log(DEBUG, "approve/deny link: ", url)
 
   local ok, res
   ok, err, res = po:notify({
-    title = "access requested for " .. addr,
-    message = message,
+    title     = "access requested for " .. addr,
+    message   = message,
     monospace = true,
-    url = url,
+    url       = url,
     url_title = "approve or deny",
   })
-
-  log(DEBUG, "approve/deny link: ", url)
 
   if res then
     log(DEBUG, "pushover notify response: ", cjson.encode(res))
@@ -363,19 +326,13 @@ local function require_trusted_ip()
   end
 end
 
----@class doorbell.path
----@field path? string
----@field pattern? string
----@field action '"allow"'|'"deny"'
-
 ---@class doorbell.init.opts : table
 ---@field shm      string
 ---@field base_url string
----@field allow    string[]
----@field deny     string[]
+---@field allow    doorbell.rule[]
+---@field deny     doorbell.rule[]
 ---@field trusted  string[]
 ---@field pushover resty.pushover.client.opts
----@field paths    doorbell.path[]
 ---@field save_path string
 
 ---@param opts doorbell.init.opts
@@ -384,7 +341,6 @@ function _M.init(opts)
   SHM_NAME = opts.shm or SHM_NAME
 
   SHM = assert(ngx.shared[SHM_NAME], "missing shm " .. SHM_NAME)
-  intent.init(SHM_NAME)
 
   PUSHOVER_OPTS = assert(opts.pushover, "missing pushover API config")
 
@@ -397,20 +353,33 @@ function _M.init(opts)
 
   SAVE_PATH = opts.save_path or (ngx.config.prefix() .. "/rules.json")
 
-  rules.load(SAVE_PATH)
 
   TRUSTED = assert(ipmatcher.new(opts.trusted or EMPTY))
 
-  for _, rule in ipairs(opts.allow or {}) do
-    rule.action = "allow"
-    rule.source = "config"
-    assert(rules.upsert(rule, true))
+  local proc = require "ngx.process"
+  assert(proc.enable_privileged_agent(10))
+
+  local ok, err = rules.load(SAVE_PATH)
+  if not ok then
+    log(ERR, "failed loading rules from disk: ", err)
   end
-  for _, rule in ipairs(opts.deny or {}) do
-    rule.action = "deny"
-    rule.source = "config"
-    assert(rules.upsert(rule, true))
+
+  if opts.allow then
+    for _, rule in ipairs(opts.allow) do
+      rule.action = "allow"
+      rule.source = "config"
+      assert(rules.upsert(rule, true))
+    end
   end
+
+  if opts.deny then
+    for _, rule in ipairs(opts.deny) do
+      rule.action = "deny"
+      rule.source = "config"
+      assert(rules.upsert(rule, true))
+    end
+  end
+
   rules.reload()
 end
 
@@ -513,17 +482,6 @@ local function render_form(req, err)
   return template.render(tpl, {req = req, err = err })
 end
 
-local SCOPES = {
-  global = "global",
-  host = "host",
-  url = "url",
-}
-
-local SUBJECTS = {
-  addr = "addr",
-  ua = "ua",
-}
-
 function _M.answer()
   assert(SHM, "doorbell was not initialized")
   require_trusted_ip()
@@ -549,7 +507,7 @@ function _M.answer()
   end
 
   if method == "GET" then
-    ngx.header["content-type"] = "text/html"
+    header["content-type"] = "text/html"
     ngx.print(render_form(req))
     return exit(HTTP_OK)
   end
@@ -574,7 +532,7 @@ function _M.answer()
   end
 
   if err then
-    ngx.header["content-type"] = "text/html"
+    header["content-type"] = "text/html"
     ngx.print(render_form(req, err))
     return exit(HTTP_BAD_REQUEST)
   end
@@ -616,34 +574,42 @@ function _M.answer()
     (PERIODS[period] == PERIODS.forever and "for all time") or ("for one " .. period)
   )
 
-  ngx.header["content-type"] = "text/plain"
+  header["content-type"] = "text/plain"
   ngx.say(msg)
   return exit(HTTP_CREATED)
 end
 
 function _M.list()
-  ngx.header["content-type"] = "application/json"
+  header["content-type"] = "application/json"
   ngx.say(cjson.encode(rules:list()))
 end
 
 function _M.init_worker()
+  local proc = require "ngx.process"
+  if proc.type() ~= "privileged agent" then
+    return
+  end
+
   local save
   local last = rules.version()
+  local timer_at = ngx.timer.at
+  local interval = 15
+
   save = function(premature)
     if premature then
       return
     end
+    rules.flush_expired()
+
     local version = rules.version()
     if version ~= last then
       log(NOTICE, "saving rules...")
-      local ok, err = rules.save(SAVE_PATH)
-      if ok then
-        last = ok
-      end
+      local v = rules.save(SAVE_PATH)
+      last = v or last
     end
-    ngx.timer.at(5, save)
+    assert(timer_at(interval, save))
   end
-  ngx.timer.at(0, save)
+  assert(timer_at(0, save))
 end
 
 return _M
