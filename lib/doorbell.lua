@@ -8,12 +8,6 @@ local header = ngx.header
 local now = ngx.now
 local sleep = ngx.sleep
 
-local log    = ngx.log
-local WARN   = ngx.WARN
-local ERR    = ngx.ERR
-local DEBUG  = ngx.DEBUG
-local NOTICE = ngx.NOTICE
-
 local exit = ngx.exit
 local HTTP_OK                    = ngx.HTTP_OK
 local HTTP_FORBIDDEN             = ngx.HTTP_FORBIDDEN
@@ -30,6 +24,7 @@ local fmt = string.format
 
 local rules = require "doorbell.rules"
 local const = require "doorbell.constants"
+local log   = require "doorbell.log"
 
 local cjson      = require "cjson"
 local ipmatcher  = require "resty.ipmatcher"
@@ -144,14 +139,14 @@ end
 local function lock_addr(addr)
   local lock, err = resty_lock:new(SHM_NAME)
   if not lock then
-    log(ERR, "failed to create lock: ", err)
+    log.err("failed to create lock: ", err)
     return nil, err
   end
 
   local elapsed
   elapsed, err = lock:lock("lock:" .. addr)
   if not elapsed then
-    log(ERR, "failed to lock auth state for ", addr)
+    log.err("failed to lock auth state for ", addr)
     return nil, err
   end
 
@@ -187,12 +182,12 @@ local function request_auth(req)
   local addr = req.addr
   local lock, err = lock_addr(addr)
   if not lock then
-    log(ERR, "failed acquiring addr lock for ", addr, ": ", err)
+    log.errf("failed acquiring addr lock for %s: %s", addr, err)
     return false
   end
 
   if is_pending(addr) then
-    log(NOTICE, "access for ", addr, " is already waiting on a pending request")
+    log.notice("access for ", addr, " is already waiting on a pending request")
     lock:unlock()
     return false
   else
@@ -200,12 +195,12 @@ local function request_auth(req)
     local state = (rule and rule.action)
 
     if state == STATES.allow then
-      log(DEBUG, "acccess for ", addr, " was allowed before requesting it")
+      log.debug("acccess for ", addr, " was allowed before requesting it")
       lock:unlock()
       return true
 
     elseif state == STATES.deny then
-      log(NOTICE, "access was denied for ", addr, " before requesting it")
+      log.notice("access was denied for ", addr, " before requesting it")
       lock:unlock()
       return false
     end
@@ -214,7 +209,7 @@ local function request_auth(req)
   local po
   po, err = pushover.new(PUSHOVER_OPTS)
   if not po then
-    log(ERR, "failed creating pushover client: ", err)
+    log.err("failed creating pushover client: ", err)
     lock:unlock()
     return false
   end
@@ -222,7 +217,7 @@ local function request_auth(req)
   local token
   token, err = generate_request_token(req)
   if not token then
-    log(ERR, "failed creating auth request token for ", addr, ": ", err)
+    log.errf("failed creating auth request token for %s: %s", addr, err)
     lock:unlock()
     return false
   end
@@ -247,7 +242,7 @@ local function request_auth(req)
   )
 
   local url = fmt("%s/answer?t=%s", BASE_URL, token)
-  log(DEBUG, "approve/deny link: ", url)
+  log.debug("approve/deny link: ", url)
 
   local ok, res
   ok, err, res = po:notify({
@@ -259,11 +254,11 @@ local function request_auth(req)
   })
 
   if res then
-    log(DEBUG, "pushover notify response: ", cjson.encode(res))
+    log.debug("pushover notify response: ", cjson.encode(res))
   end
 
   if not ok then
-    log(ERR, "failed sending auth request: ", err)
+    log.err("failed sending auth request: ", err)
     lock:unlock()
     return false
   end
@@ -279,26 +274,26 @@ end
 ---@type table<doorbell.auth_state, doorbell.handler>
 local HANDLERS = {
   [STATES.allow] = function(req)
-    log(DEBUG, "allowing access for ", req.addr)
+    log.debug("allowing access for ", req.addr)
     return exit(HTTP_OK)
   end,
 
   [STATES.deny] = function(req)
-    log(NOTICE, "denying access for ", req.addr)
+    log.notice("denying access for ", req.addr)
     return exit(HTTP_FORBIDDEN)
   end,
 
   [STATES.none] = function(req)
-    log(NOTICE, "requesting access for ", req.addr)
+    log.notice("requesting access for ", req.addr)
     if request_auth(req) then
-      log(NOTICE, "access approved for ", req.addr)
+      log.notice("access approved for ", req.addr)
       return exit(HTTP_OK)
     end
     return exit(HTTP_UNAUTHORIZED)
   end,
 
   [STATES.pending] = function(req)
-    log(NOTICE, "awaiting access for ", req.addr)
+    log.notice("awaiting access for ", req.addr)
     if await_allow(req) then
       return exit(HTTP_OK)
     end
@@ -306,7 +301,7 @@ local HANDLERS = {
   end,
 
   [STATES.error] = function(req)
-    log(ERR, "something went wrong while checking auth for ", req.addr)
+    log.err("something went wrong while checking auth for ", req.addr)
     return exit(HTTP_INTERNAL_SERVER_ERROR)
   end,
 }
@@ -321,7 +316,7 @@ local function require_trusted_ip()
   end
 
   if not trusted then
-    log(WARN, "denying connection from untrusted IP: ", ip)
+    log.warn("denying connection from untrusted IP: ", ip)
     return exit(HTTP_FORBIDDEN)
   end
 end
@@ -349,7 +344,7 @@ function _M.init(opts)
   assert(m and m.host, "failed to parse hostname from base_url: " .. BASE_URL)
   HOST = m.host:lower()
 
-  log(DEBUG, "doorbell BASE_URL: ", BASE_URL, ", HOST: ", HOST)
+  log.debug("doorbell BASE_URL: ", BASE_URL, ", HOST: ", HOST)
 
   SAVE_PATH = opts.save_path or (ngx.config.prefix() .. "/rules.json")
 
@@ -361,7 +356,7 @@ function _M.init(opts)
 
   local ok, err = rules.load(SAVE_PATH)
   if not ok then
-    log(ERR, "failed loading rules from disk: ", err)
+    log.err("failed loading rules from disk: ", err)
   end
 
   if opts.allow then
@@ -400,7 +395,7 @@ function _M.ring()
   req.path = req.uri:gsub("?.*", "")
 
   if req.host == HOST and req.path == "/answer" then
-    log(DEBUG, "allowing request to ", HOST, "/answer endpoint")
+    log.debug("allowing request to %s/answer endpoint", HOST)
     return exit(HTTP_OK)
   end
 
@@ -488,14 +483,14 @@ function _M.answer()
 
   local t = var.arg_t
   if not t then
-    log(NOTICE, "/answer accessed with no token")
+    log.notice("/answer accessed with no token")
     return exit(HTTP_NOT_FOUND)
   end
 
   local req = get_token_address(t)
 
   if not req then
-    log(NOTICE, "/answer token ", t, " not found")
+    log.notice("/answer token %s not found", t)
     return exit(HTTP_NOT_FOUND)
   end
 
@@ -603,7 +598,7 @@ function _M.init_worker()
 
     local version = rules.version()
     if version ~= last then
-      log(NOTICE, "saving rules...")
+      log.notice("saving rules...")
       local v = rules.save(SAVE_PATH)
       last = v or last
     end

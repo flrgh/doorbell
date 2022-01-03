@@ -4,27 +4,25 @@ local cjson = require "cjson"
 local ipmatcher  = require "resty.ipmatcher"
 local resty_lock = require "resty.lock"
 local const = require "doorbell.constants"
+local log = require "doorbell.log"
 
 
 local ngx     = ngx
 local re_find = ngx.re.find
 local now     = ngx.now
-local log     = ngx.log
-local DEBUG   = ngx.DEBUG
-local ERR     = ngx.ERR
-local NOTICE  = ngx.NOTICE
-local INFO    = ngx.INFO
-local WARN    = ngx.WARN
 
 local assert  = assert
-local encode  = cjson.encode
-local decode  = cjson.decode
-local max     = math.max
-local ceil    = math.ceil
-local fmt     = string.format
-local insert  = table.insert
-local sort    = table.sort
-local concat  = table.concat
+local encode = cjson.encode
+local decode = cjson.decode
+local max    = math.max
+local ceil   = math.ceil
+local fmt    = string.format
+local insert = table.insert
+local sort   = table.sort
+local concat = table.concat
+local pairs  = pairs
+local ipairs = ipairs
+local type   = type
 
 local SHM_NAME = const.shm.rules
 local SHM = assert(ngx.shared[SHM_NAME], "rules SHM missing")
@@ -59,7 +57,7 @@ end
 
 
 local function show(t)
-  ngx.log(ngx.NOTICE, require("inspect")(t))
+  log.notice(require("inspect")(t))
 end
 
 local function errorf(...)
@@ -80,7 +78,7 @@ local function lock_storage(action)
   return function()
     local unlocked, uerr = lock:unlock()
     if not unlocked then
-      log(ERR, "failed unlocking storage (action = ", action, "): ", uerr)
+      log.errf("failed unlocking storage (action = %s): %s", action, uerr)
     end
   end
 end
@@ -177,7 +175,7 @@ local function rebuild_matcher()
     ---@param value string
     local function add_criteria(rule, match, value)
       if expired(rule, time) then
-        log(WARN, "skipping expired rule: ", rule.hash)
+        log.warn("skipping expired rule: ", rule.hash)
         return
       end
 
@@ -557,7 +555,7 @@ local function reload()
   VERSION = version
   local duration = now() - start
   duration = ceil(duration * 1000) / 1000
-  log(INFO, "reloaded match rules for version ", version, " in ", duration, "s")
+  log.debug("reloaded match rules for version %s in %ss", version, duration)
 end
 
 ---@param  opts    table
@@ -611,7 +609,12 @@ function _M.match(req)
   end
 
   if m then
-    log(INFO, "cache ", (cached and "HIT" or "MISS"), " for ", req.addr, " => ", m.action)
+    log.debugf(
+      "cache %s for %s => %s",
+      (cached and "HIT" or "MISS"),
+      req.addr,
+      m.action
+    )
     local ttl
     if m.expires and m.expires > 0 then
       ttl = m.expires - now()
@@ -646,13 +649,13 @@ function _M.save(fname)
   local ok
   ok, err = fh:write(encode(rules))
   if not ok then
-    log(ERR, "failed writing rules to disk: ", err)
+    log.err("failed writing rules to disk: ", err)
   end
   ok, err = fh:close()
   if not ok then
-    log(ERR, "failed closing file handle: ", err)
+    log.err("failed closing file handle: ", err)
   end
-  log(NOTICE, "saved ", #rules, " rules to disk")
+  log.notice("saved %s rules to disk", #rules)
 
   unlock()
   return version
@@ -674,7 +677,7 @@ function _M.flush_expired()
   end
 
   if #delete == 0 then
-    log(DEBUG, "no expired rules to delete")
+    log.debug("no expired rules to delete")
     unlock()
     return
   end
@@ -685,13 +688,13 @@ function _M.flush_expired()
     local ok, err = SHM:delete(rule.hash)
     if not ok then
       count = count - 1
-      log(ERR, "failed deleting rule ", rule.hash, ": ", err)
+      log.err("failed deleting rule %s: %s", rule.hash, err)
     end
   end
 
   inc_version()
   unlock()
-  log(INFO, "removed ", count, " expired rules")
+  log.debug("removed %s expired rules", count)
 end
 
 
@@ -710,12 +713,16 @@ function _M.load(fname)
   end
 
   local rules = decode(data)
+  local count = 0
   for _, rule in ipairs(rules) do
-    assert(SHM:safe_set(rule.hash, encode(rule)))
+    if not expired(rule) then
+      count = count + 1
+      assert(SHM:safe_set(rule.hash, encode(rule)))
+    end
   end
   inc_version()
 
-  log(NOTICE, "restored ", #rules, " rules from disk")
+  log.notice("restored %s rules from disk", count)
 
   return true
 end
