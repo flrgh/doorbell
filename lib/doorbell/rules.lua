@@ -555,7 +555,7 @@ local function reload()
   VERSION = version
   local duration = now() - start
   duration = ceil(duration * 1000) / 1000
-  log.debug("reloaded match rules for version %s in %ss", version, duration)
+  log.debugf("reloaded match rules for version %s in %ss", version, duration)
 end
 
 ---@param  opts    table
@@ -655,7 +655,7 @@ function _M.save(fname)
   if not ok then
     log.err("failed closing file handle: ", err)
   end
-  log.notice("saved %s rules to disk", #rules)
+  log.noticef("saved %s rules to disk", #rules)
 
   unlock()
   return version
@@ -688,13 +688,13 @@ function _M.flush_expired()
     local ok, err = SHM:delete(rule.hash)
     if not ok then
       count = count - 1
-      log.err("failed deleting rule %s: %s", rule.hash, err)
+      log.errf("failed deleting rule %s: %s", rule.hash, err)
     end
   end
 
   inc_version()
   unlock()
-  log.debug("removed %s expired rules", count)
+  log.debugf("removed %s expired rules", count)
 end
 
 
@@ -722,7 +722,7 @@ function _M.load(fname)
   end
   inc_version()
 
-  log.notice("restored %s rules from disk", count)
+  log.noticef("restored %s rules from disk", count)
 
   return true
 end

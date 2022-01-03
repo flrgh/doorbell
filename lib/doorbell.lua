@@ -395,7 +395,7 @@ function _M.ring()
   req.path = req.uri:gsub("?.*", "")
 
   if req.host == HOST and req.path == "/answer" then
-    log.debug("allowing request to %s/answer endpoint", HOST)
+    log.debugf("allowing request to %s/answer endpoint", HOST)
     return exit(HTTP_OK)
   end
 
@@ -490,7 +490,7 @@ function _M.answer()
   local req = get_token_address(t)
 
   if not req then
-    log.notice("/answer token %s not found", t)
+    log.noticef("/answer token %s not found", t)
     return exit(HTTP_NOT_FOUND)
   end
 
