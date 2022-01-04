@@ -39,6 +39,7 @@ local pushover   = require "resty.pushover"
 local random     = require "resty.random"
 local resty_lock = require "resty.lock"
 local template   = require "resty.template"
+local str        = require "resty.string"
 
 local cache
 do
@@ -67,6 +68,8 @@ local BASE_URL, HOST
 
 ---@type ngx.shared.DICT
 local SHM
+
+local metrics = {}
 
 ---@class doorbell.request : table
 ---@field addr string
@@ -104,9 +107,10 @@ end
 ---@param req doorbell.request
 ---@return doorbell.auth_state state
 ---@return string? error
-local function get_auth_state(req)
+local function get_auth_state(req, ctx)
   local rule = rules.match(req)
   if rule then
+    (ctx or ngx.ctx).rule = rule
     return rule.action
   end
 
@@ -122,7 +126,7 @@ end
 ---@return string? error
 local function generate_request_token(req)
   local bytes = random.bytes(32, true)
-  local token = ngx.escape_uri(ngx.encode_base64(bytes))
+  local token = str.to_hex(bytes)
   local key = "token:" .. token
   local value = cjson.encode(req)
   local ok, err = SHM:safe_add(key, value, TTL_PENDING)
@@ -595,14 +599,19 @@ function _M.list()
   ngx.say(cjson.encode(rules.list()))
 end
 
-function _M.init_worker()
-  assert(SHM, "doorbell was not initialized")
+local function init_worker()
+  local prometheus = require("prometheus").init(
+    const.shm.metrics,
+    {
+      prefix = "doorbell",
+    }
+  )
 
-  local proc = require "ngx.process"
-  if proc.type() ~= "privileged agent" then
-    return
-  end
+  metrics.match_count = prometheus:gauge {
+  }
+end
 
+local function init_agent()
   local save
   local last = rules.version()
   local timer_at = ngx.timer.at
@@ -623,6 +632,17 @@ function _M.init_worker()
     assert(timer_at(interval, save))
   end
   assert(timer_at(0, save))
+end
+
+function _M.init_worker()
+  assert(SHM, "doorbell was not initialized")
+
+  local proc = require "ngx.process"
+  if proc.type() == "privileged agent" then
+    return init_agent()
+  end
+
+  return init_worker()
 end
 
 function _M.reload()

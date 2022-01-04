@@ -74,12 +74,14 @@ const.ttl = {
   pending = const.periods.hour,
 }
 
---- ngx.shared shm names
+-- ngx.shared shm names
 const.shm = {
-  --- primary storage
+  -- primary storage
   doorbell = "doorbell",
-  --- storage for doorbell rules
+  -- storage for doorbell rules
   rules    = "doorbell_rules",
+  -- storage for prometheus metrics
+  metrics  = "doorbell_metrics",
 }
 
 return const
