@@ -16,6 +16,7 @@ local HTTP_INTERNAL_SERVER_ERROR = ngx.HTTP_INTERNAL_SERVER_ERROR
 local HTTP_CREATED               = ngx.HTTP_CREATED
 local HTTP_BAD_REQUEST           = ngx.HTTP_BAD_REQUEST
 local HTTP_NOT_FOUND             = ngx.HTTP_NOT_FOUND
+local HTTP_NOT_ALLOWED           = ngx.HTTP_NOT_ALLOWED
 
 local read_body = ngx.req.read_body
 local get_post_args = ngx.req.get_post_args
@@ -274,7 +275,7 @@ end
 ---@type table<doorbell.auth_state, doorbell.handler>
 local HANDLERS = {
   [STATES.allow] = function(req)
-    log.debug("allowing access for ", req.addr)
+    log.debugf("ALLOW %s => %s %s://%s%s", req.addr, req.method, req.scheme, req.host, req.uri)
     return exit(HTTP_OK)
   end,
 
@@ -532,10 +533,12 @@ function _M.answer()
     return exit(HTTP_BAD_REQUEST)
   end
 
+  local terminate = false
   local host, path = req.host, req.path
   if scope == SCOPES.global then
     host = nil
     path = nil
+    terminate = true
   elseif scope == SCOPES.host then
     path = nil
   end
@@ -548,13 +551,14 @@ function _M.answer()
   end
 
   local rule = {
-    action = (action == "approve" and "allow") or "deny",
-    source = "user",
-    addr   = addr,
-    host   = host,
-    path   = path,
-    ua     = ua,
-    ttl    = PERIODS[period],
+    action    = (action == "approve" and "allow") or "deny",
+    source    = "user",
+    addr      = addr,
+    host      = host,
+    path      = path,
+    ua        = ua,
+    ttl       = PERIODS[period],
+    terminate = terminate,
   }
 
   assert(rules.add(rule))
@@ -575,11 +579,14 @@ function _M.answer()
 end
 
 function _M.list()
+  assert(SHM, "doorbell was not initialized")
   header["content-type"] = "application/json"
-  ngx.say(cjson.encode(rules:list()))
+  ngx.say(cjson.encode(rules.list()))
 end
 
 function _M.init_worker()
+  assert(SHM, "doorbell was not initialized")
+
   local proc = require "ngx.process"
   if proc.type() ~= "privileged agent" then
     return
@@ -605,6 +612,25 @@ function _M.init_worker()
     assert(timer_at(interval, save))
   end
   assert(timer_at(0, save))
+end
+
+function _M.reload()
+  assert(SHM, "doorbell was not initialized")
+  if ngx.req.get_method() ~= "POST" then
+    return exit(HTTP_NOT_ALLOWED)
+  end
+  header["content-type"] = "text/plain"
+  local ok, err = rules.load()
+  if ok then
+    ngx.say("success")
+    return exit(HTTP_CREATED)
+  end
+  log.err("failed reloading rules from disk: ", err)
+  ngx.say("failure")
+  exit(HTTP_INTERNAL_SERVER_ERROR)
+end
+
+function _M.metrics()
 end
 
 return _M

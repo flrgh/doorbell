@@ -23,9 +23,12 @@ local concat = table.concat
 local pairs  = pairs
 local ipairs = ipairs
 local type   = type
+local tostring = tostring
 
 local SHM_NAME = const.shm.rules
 local SHM = assert(ngx.shared[SHM_NAME], "rules SHM missing")
+local META_NAME = const.shm.doorbell
+local META = assert(ngx.shared[META_NAME], "main SHM missing")
 
 local cache
 do
@@ -41,12 +44,13 @@ do
   local pool = "doorbell.rule.match"
 
   local size = 5
-  local narr, nrec = size, size + 2
+  local narr, nrec = size, size + 3
 
   function new_match()
     local m = fetch(pool, narr, nrec)
     m.conditions = 0
     m.n = 0
+    m.terminate = false
     return m
   end
 
@@ -65,12 +69,12 @@ local function errorf(...)
 end
 
 local function lock_storage(action)
-  local lock, err = resty_lock:new(SHM_NAME)
+  local lock, err = resty_lock:new(META_NAME)
   if not lock then
     errorf("failed creating storage lock (action = %s): %s", action, err or "unknown")
   end
   local elapsed
-  elapsed, err = lock:lock("meta:lock")
+  elapsed, err = lock:lock("lock:rules")
   if not elapsed then
     errorf("failed locking storage (action = %s): %s", action, err)
   end
@@ -97,6 +101,13 @@ local function cache_key(req)
   )
 end
 
+---@param term string
+---@param req doorbell.request
+local function term_key(term, req)
+  local val = req[term]
+  if not val then return end
+  return "term||" .. tostring(req[term])
+end
 
 local DENY  = const.actions.deny
 local VERSION = 0
@@ -109,12 +120,10 @@ local function get_all_rules()
   local keys = SHM:get_keys(0)
   for i = 1, #keys do
     local key = keys[i]
-    if not key:find("^meta:") then
-      local value = SHM:get(key)
-      if value then
-        n = n + 1
-        rules[n] = decode(value)
-      end
+    local value = SHM:get(key)
+    if value then
+      n = n + 1
+      rules[n] = decode(value)
     end
   end
 
@@ -160,10 +169,16 @@ end
 
 local check_match
 
+---@type string[]
+local cache_terms = {}
+local cache_terms_n = 0
+
 local function rebuild_matcher()
   local criteria = {}
 
   local max_conditions = 0
+
+  local term_fields = {}
 
   do
     local rules = get_all_rules()
@@ -191,6 +206,10 @@ local function rebuild_matcher()
     for i = 1, #rules do
       ---@type doorbell.rule
       local r = rules[i]
+
+      if r.terminate and r.key then
+        term_fields[r.key] = true
+      end
 
       if r.addr then
         add_criteria(r, CRITERIA.addr, r.addr)
@@ -224,8 +243,6 @@ local function rebuild_matcher()
         end
       end
     end
-
-
   end
 
   local empty = {}
@@ -272,13 +289,17 @@ local function rebuild_matcher()
   ---@param match doorbell.rule[]
   ---@param matched doorbell.rule[]
   local function update_match(match, matched)
+    if match.terminate then return end
     if not matched then return end
 
     for i = 1, matched.n do
+      if match.terminate then return end
+
       local rule = matched[i]
       local conditions = rule.conditions
+      local terminate = rule.terminate
 
-      if conditions >= match.conditions then
+      if terminate or conditions >= match.conditions then
         local hash = rule.hash
         local count = (match[hash] or 0) + 1
         match[hash] = count
@@ -288,9 +309,13 @@ local function rebuild_matcher()
         if count == conditions then
           local n = match.n
 
+          if terminate then
+            match.terminate = true
+          end
+
           -- if our rule has met more conditions than any other, so can clear out
           -- prior matches
-          if count > match.conditions then
+          if terminate or count > match.conditions then
             match.conditions = count
             match[1] = rule
             for j = 2, n do
@@ -313,9 +338,19 @@ local function rebuild_matcher()
   ---@param b doorbell.rule
   ---@return boolean
   local function cmp_rule(a, b)
+    -- termintation rules have the highest priority
+    if a.terminate ~= b.terminate then
+      return a.terminate == true
+    end
+
     -- deny actions have priority over allow
     if a.action ~= b.action then
       return a.action == DENY
+    end
+
+    -- this probably shouldn't happen
+    if a.conditions ~= b.conditions then
+      return a.conditions > b.conditions
     end
 
     -- else, the newest rule wins
@@ -323,6 +358,17 @@ local function rebuild_matcher()
   end
 
   cache:flush_all()
+
+  do
+    local terms = {}
+    local n = 0
+    for field in pairs(term_fields) do
+      n = n + 1
+      terms[n] = field
+    end
+    cache_terms = terms
+    cache_terms_n = n
+  end
 
   ---@param req doorbell.request
   ---@return doorbell.rule?
@@ -335,8 +381,6 @@ local function rebuild_matcher()
 
     ---@type doorbell.rule[]
     local match = new_match()
-    match.n = 0
-    match.conditions = 0
 
     update_match(match, addrs[addr])
     update_match(match, paths_plain[path])
@@ -344,16 +388,22 @@ local function rebuild_matcher()
     update_match(match, hosts[host])
     update_match(match, uas_plain[ua])
 
-    -- plain/exact matches trump regex or cidr lookups
-    --
-    -- loop through each match whose conditions are met and check to see if
-    -- we've matched the path, ua, or addr already
-    --
-    -- first, see if we have a match with the maximal number of conditions met
-    if match.conditions < max_conditions then
-      update_match(match, cidrs:match(addr))
-      update_match(match, regex_match(paths_regex, path))
-      update_match(match, regex_match(uas_regex, ua))
+    if not match.terminate then
+      -- plain/exact matches trump regex or cidr lookups
+      --
+      -- loop through each match whose conditions are met and check to see if
+      -- we've matched the path, ua, or addr already
+      --
+      -- first, see if we have a match with the maximal number of conditions met
+      if match.conditions < max_conditions then
+        update_match(match, cidrs:match(addr))
+        if not match.terminate then
+          update_match(match, regex_match(paths_regex, path))
+        end
+        if not match.terminate then
+          update_match(match, regex_match(uas_regex, ua))
+        end
+      end
     end
 
     if match.n > 1 then
@@ -379,6 +429,8 @@ end
 ---@field path       string
 ---@field method     string
 ---@field conditions number
+---@field terminate  boolean
+---@field key        string
 
 local CONDITIONS = {
   "addr",
@@ -435,17 +487,18 @@ do
   local function err(v) insert(errors, v) end
 
   local fields = {
-    action  = {"string", true, const.actions},
-    source  = {"string", true, const.sources},
-    expires = {"number"},
-    ttl     = {"number"},
-    addr    = {"string"},
-    cidr    = {"string"},
-    path    = {"string"},
-    host    = {"string"},
-    method  = {"string"},
-    ua      = {"string"},
-    created = {"number"},
+    action    = {"string", true, const.actions},
+    source    = {"string", true, const.sources},
+    expires   = {"number"},
+    ttl       = {"number"},
+    addr      = {"string"},
+    cidr      = {"string"},
+    path      = {"string"},
+    host      = {"string"},
+    method    = {"string"},
+    ua        = {"string"},
+    created   = {"number"},
+    terminate = {"boolean"},
   }
 
   ---@param opts table
@@ -483,7 +536,6 @@ do
     end
   end
 
-
   ---@param  opts    table
   ---@return doorbell.rule? rule
   ---@return string? error
@@ -491,6 +543,7 @@ do
     validate(opts)
 
     local expires = opts.expires or 0
+    local ttl = opts.ttl
 
     if opts.ttl then
       if opts.expires then
@@ -499,6 +552,11 @@ do
         err("`ttl` must be > 0")
       elseif opts.ttl > 0 then
         expires = now() + opts.ttl
+      end
+    elseif expires > 0 then
+      ttl = expires - now()
+      if ttl <= 0 then
+        err("rule is already expired")
       end
     end
 
@@ -510,6 +568,23 @@ do
       err("at least one of `addr`|`cidr`|`ua`|`method`|`host`|`path` required")
     end
 
+    local conditions = 0
+    local key
+    for _, cond in ipairs(CONDITIONS) do
+      if opts[cond] then
+        conditions = conditions + 1
+        if cond == "cidr" then
+          key = "addr"
+        else
+          key = cond
+        end
+      end
+    end
+
+    if opts.terminate and conditions > 1 then
+      err("can only have one match condition with `terminate`")
+    end
+
     if #errors > 0 then
       return nil, concat(errors, "\n")
     end
@@ -518,7 +593,7 @@ do
       action  = opts.action,
       source  = opts.source,
       created = opts.created or now(),
-      expires = expires or 0,
+      expires = expires,
       addr    = opts.addr,
       cidr    = opts.cidr,
       ua      = opts.ua,
@@ -526,26 +601,23 @@ do
       path    = opts.path,
       method  = opts.method,
       hash    = "",
-      conditions = 0,
+      conditions = conditions,
+      terminate = opts.terminate,
+      key = key,
     }
     rule.hash = hash_rule(rule)
-    for _, cond in ipairs(CONDITIONS) do
-      if rule[cond] then
-        rule.conditions = rule.conditions + 1
-      end
-    end
 
-    return rule
+    return rule, nil, ttl
   end
 end
 
 ---@return number
 local function get_version()
-  return SHM:get("meta:version") or 0
+  return META:get("rules:version") or 0
 end
 
 local function inc_version()
-  assert(SHM:incr("meta:version", 1, 0))
+  assert(META:incr("rules:version", 1, 0))
 end
 
 local function reload()
@@ -558,39 +630,42 @@ local function reload()
   log.debugf("reloaded match rules for version %s in %ss", version, duration)
 end
 
+--- add a rule
 ---@param  opts    table
 ---@return doorbell.rule? rule
 ---@return string? error
 function _M.add(opts, nobuild)
-  local rule, err = new_rule(opts)
+  local rule, err, ttl = new_rule(opts)
   if not rule then
     return nil, err
   end
   local unlock = lock_storage("add-rule")
-  assert(SHM:safe_set(rule.hash, encode(rule)))
+  assert(SHM:safe_set(rule.hash, encode(rule), ttl))
   inc_version()
   if not nobuild then reload() end
   unlock()
   return rule
 end
 
+--- create or update a rule
 ---@param  opts    table
 ---@return doorbell.rule? rule
 ---@return string? error
 function _M.upsert(opts, nobuild)
-  local rule, err = new_rule(opts)
+  local rule, err, ttl = new_rule(opts)
   if not rule then
     return nil, err
   end
 
   local unlock = lock_storage("update-rule")
-  assert(SHM:safe_set(rule.hash, encode(rule)))
+  assert(SHM:safe_set(rule.hash, encode(rule), ttl))
   inc_version()
   if not nobuild then reload() end
   unlock()
   return rule
 end
 
+--- get a matching rule for a request
 ---@param  req            doorbell.request
 ---@return doorbell.rule? rule
 ---@return string?        error
@@ -600,24 +675,41 @@ function _M.match(req)
     reload()
   end
 
-  local key = cache_key(req)
   local cached = true
-  local m = cache:get(key)
-  if not m then
-    cached = false
-    m = check_match(req)
+  local key
+  ---@type doorbell.rule
+  local rule
+  if cache_terms_n > 0 then
+    for i = 1, cache_terms_n do
+      local tk = term_key(cache_terms[i], req)
+      rule = cache:get(tk)
+      if rule then
+        key = tk
+        break
+      end
+    end
   end
 
-  if m then
+  if not rule then
+    key = cache_key(req)
+    rule = cache:get(key)
+  end
+
+  if not rule then
+    cached = false
+    rule = check_match(req)
+  end
+
+  if rule then
     log.debugf(
-      "cache %s for %s => %s",
+      "cache %s for %q => %s",
       (cached and "HIT" or "MISS"),
-      req.addr,
-      m.action
+      key,
+      rule.action
     )
     local ttl
-    if m.expires and m.expires > 0 then
-      ttl = m.expires - now()
+    if rule.expires and rule.expires > 0 then
+      ttl = rule.expires - now()
     end
 
     if ttl and ttl < 0 then
@@ -625,17 +717,25 @@ function _M.match(req)
     end
 
     if not cached then
-      cache:set(key, m, ttl)
+      if rule.terminate then
+        cache:set(term_key(rule.key, req), rule, ttl)
+      else
+        cache:set(key, rule, ttl)
+      end
     end
   end
 
-  return m
+  return rule
 end
 
+--- retrieve a list of all current rules
 function _M.list()
   return get_all_rules()
 end
 
+--- save rules from shared memory to disk
+---@param fname string
+---@return integer? version
 function _M.save(fname)
   local unlock = lock_storage("save")
   local version = get_version()
@@ -643,7 +743,8 @@ function _M.save(fname)
   local fh, err = io.open(fname, "w+")
   if not fh then
     unlock()
-    return nil, err
+    log.errf("failed opening save path (%s) for writing: %s", fname, err)
+    return version
   end
 
   local ok
@@ -661,12 +762,18 @@ function _M.save(fname)
   return version
 end
 
+--- reload the rule matching function from shared memory
 function _M.reload()
+  SHM:flush_expired()
   return reload()
 end
 
+--- flush any expired rules from shared memory
 function _M.flush_expired()
   local unlock = lock_storage("flush-expired")
+
+  SHM:flush_expired()
+
   ---@type doorbell.rule[]
   local delete = {}
   local t = now()
@@ -697,7 +804,10 @@ function _M.flush_expired()
   log.debugf("removed %s expired rules", count)
 end
 
-
+--- reload rules from disk
+---@param fname string
+---@return boolean ok
+---@return string? error
 function _M.load(fname)
   -- no lock: this should only run during init
   local fh, err = io.open(fname, "r")
@@ -714,10 +824,33 @@ function _M.load(fname)
 
   local rules = decode(data)
   local count = 0
+
+  local ok
+  ok, err = SHM:flush_all()
+  if not ok then
+    log.alert("failed calling shm:flush_all(), zombie rules may exist: ", err)
+  end
+  ok, err = SHM:flush_expired()
+  if not ok then
+    log.alert("failed calling shm:flush_expired(), zombie rules may exist: ", err)
+  end
+
+  local time = now()
+
   for _, rule in ipairs(rules) do
-    if not expired(rule) then
+    local ttl = 0
+    if rule.expires > 0 then
+      ttl = rule.expires - time
+      if ttl <= 0.1 then
+        ttl = -1
+      end
+    end
+    if ttl >= 0 then
       count = count + 1
-      assert(SHM:safe_set(rule.hash, encode(rule)))
+      ok, err = SHM:safe_set(rule.hash, encode(rule), ttl)
+      if not ok then
+        log.alertf("failed restoring rule %s to shm: %s", rule.hash, err)
+      end
     end
   end
   inc_version()
@@ -727,6 +860,8 @@ function _M.load(fname)
   return true
 end
 
+--- get the current data store version
+---@return integer
 function _M.version()
   return get_version()
 end
