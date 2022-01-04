@@ -88,22 +88,24 @@ local PERIODS     = const.periods
 
 ---@type doorbell.notify_period[]
 local NOTIFY_PERIODS = {
-  { from = 07, to = 23 },
+  -- UTC
+  { from = 15, to = 24 },
+  { from = 00, to = 07 },
 }
 
 ---@return boolean
 local function in_notify_period()
   --    1234567890123456789
-  local yyyy_mm_dd_hh_mm_ss = ngx.localtime()
+  local yyyy_mm_dd_hh_mm_ss = ngx.utctime()
   local hours = tonumber(yyyy_mm_dd_hh_mm_ss:sub(12, 13))
-
-  print(hours)
 
   for _, p in ipairs(NOTIFY_PERIODS) do
     if hours >= p.from and hours < p.to then
-      return p
+      return true
     end
   end
+
+  return false
 end
 
 ---@class doorbell.notify_period : table
