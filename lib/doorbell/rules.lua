@@ -25,6 +25,7 @@ local pairs  = pairs
 local ipairs = ipairs
 local type   = type
 local tostring = tostring
+local open = io.open
 
 local SHM_NAME = const.shm.rules
 local SHM = assert(ngx.shared[SHM_NAME], "rules SHM missing")
@@ -671,7 +672,7 @@ end
 --- get a matching rule for a request
 ---@param  req            doorbell.request
 ---@return doorbell.rule? rule
----@return string?        error
+---@return boolean        cache_hit
 function _M.match(req)
   local version = get_version()
   if not check_match or version ~= VERSION then
@@ -743,7 +744,7 @@ function _M.save(fname)
   local unlock = lock_storage("save")
   local version = get_version()
   local rules = get_all_rules()
-  local fh, err = io.open(fname, "w+")
+  local fh, err = open(fname, "w+")
   if not fh then
     unlock()
     log.errf("failed opening save path (%s) for writing: %s", fname, err)
@@ -813,7 +814,7 @@ end
 ---@return string? error
 function _M.load(fname)
   -- no lock: this should only run during init
-  local fh, err = io.open(fname, "r")
+  local fh, err = open(fname, "r")
   if not fh then
     return nil, err
   end
@@ -896,7 +897,7 @@ function _M.init_worker()
     end
 
     -- cache size
-
+    metrics.cache_items:set(cache:count())
   end)
 end
 

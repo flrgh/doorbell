@@ -28,6 +28,7 @@ local get_method = ngx.req.get_method
 local get_uri_args = ngx.req.get_uri_args
 
 local fmt = string.format
+local open = io.open
 
 local rules = require "doorbell.rules"
 local const = require "doorbell.constants"
@@ -641,6 +642,57 @@ function _M.list()
   ngx.say(cjson.encode(rules.list()))
 end
 
+function _M.list_html()
+  assert(SHM, "doorbell was not initialized")
+  local list = rules.list()
+  local keys = {"addr", "cidr", "host", "ua", "method", "path"}
+  for _, rule in ipairs(list) do
+    local matches = {}
+    for _, key in ipairs(keys) do
+      if rule[key] then
+        table.insert(matches, key)
+      end
+    end
+    rule.match = table.concat(matches, ",")
+  end
+  local tpl = [[
+  <!DOCTYPE html>
+  <html>
+    <body>
+      <h1>Rules</h1>
+      <table>
+        <tr>
+          <td>hash</td>
+          <td>action</td>
+          <td>source</td>
+          <td>match</td>
+          <td>created</td>
+          <td>expires</td>
+          <td>terminate</td>
+        </tr>
+
+      {% for _, rule in ipairs(rules) do %}
+        <tr>
+          <td>{{rule.hash}}</td>
+          <td>{{rule.action}}</td>
+          <td>{{rule.source}}</td>
+          <td>{{rule.created}}</td>
+          <td>{{rule.expires}}</td>
+          <td>{{rule.terminate and "yes" or "no" }}</td>
+          <td>{{rule.match}}</td>
+        </tr>
+      {% end %}
+
+      </table>
+    </body>
+  </html>
+  ]]
+  header["content-type"] = "application/json"
+  ngx.say(
+    template.render(tpl, { rules = list })
+  )
+end
+
 local function init_worker()
   metrics.init_worker()
   rules.init_worker()
@@ -722,7 +774,7 @@ function _M.log()
     return
   end
 
-  local fh, err = io.open(LOG_PATH, "a+")
+  local fh, err = open(LOG_PATH, "a+")
   if not fh then
     log.errf("failed opening log file (%s): %s", LOG_PATH, err)
     return

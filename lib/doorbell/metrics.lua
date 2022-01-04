@@ -1,6 +1,7 @@
 local _M = {}
 
 local const = require "doorbell.constants"
+local log   = require "doorbell.log"
 
 local insert = table.insert
 
@@ -52,6 +53,9 @@ function _M.init_worker()
     "notifications for authorization requests (status = sent/failed/snoozed/answered)",
     { "status" }
   )
+
+  ---@type prometheus.counter
+  _M.metric_errors = assert(prometheus.registry[prometheus.error_metric_name])
 end
 
 ---@return boolean
@@ -65,12 +69,17 @@ function _M.collect()
   end
 
   for _, hook in ipairs(HOOKS) do
-    pcall(hook)
+    local ok, err = pcall(hook)
+    if not ok then
+      log.err("metric hook threw an error: ", err)
+      _M.metric_errors:inc(1)
+    end
   end
 
   prometheus:collect()
 end
 
+---@param fn function
 function _M.add_hook(fn)
   insert(HOOKS, fn)
 end
