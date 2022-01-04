@@ -8,7 +8,8 @@ function _M.init_worker()
   prometheus = require("prometheus").init(
     const.shm.metrics,
     {
-      prefix = "doorbell_",
+      prefix            = "doorbell_",
+      error_metric_name = "doorbell_metric_errors_total",
     }
   )
 
@@ -34,6 +35,12 @@ function _M.init_worker()
     "rule_actions",
     "actions taken by rules",
     { "action" }
+  )
+
+  _M.notify = prometheus:counter(
+    "notifications_total",
+    "notifications for authorization requests (status = sent/failed/snoozed)",
+    { "status" }
   )
 end
 

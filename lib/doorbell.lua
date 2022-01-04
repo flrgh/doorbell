@@ -86,6 +86,31 @@ local WAIT_TIME   = const.wait_time
 local TTL_PENDING = const.ttl.pending
 local PERIODS     = const.periods
 
+---@type doorbell.notify_period[]
+local NOTIFY_PERIODS = {
+  { from = 07, to = 23 },
+}
+
+---@return boolean
+local function in_notify_period()
+  --    1234567890123456789
+  local yyyy_mm_dd_hh_mm_ss = ngx.localtime()
+  local hours = tonumber(yyyy_mm_dd_hh_mm_ss:sub(12, 13))
+
+  print(hours)
+
+  for _, p in ipairs(NOTIFY_PERIODS) do
+    if hours >= p.from and hours < p.to then
+      return p
+    end
+  end
+end
+
+---@class doorbell.notify_period : table
+---@field from integer
+---@field to integer
+
+
 ---@param addr string
 ---@return boolean
 local function is_pending(addr)
@@ -276,9 +301,11 @@ local function request_auth(req)
   if not ok then
     log.err("failed sending auth request: ", err)
     lock:unlock()
+    metrics.notify:inc(1, {"failed"})
     return false
   end
 
+  metrics.notify:inc(1, {"sent"})
   set_pending(addr, true)
   lock:unlock()
 
@@ -300,10 +327,15 @@ local HANDLERS = {
   end,
 
   [STATES.none] = function(req)
-    log.notice("requesting access for ", req.addr)
-    if request_auth(req) then
-      log.notice("access approved for ", req.addr)
-      return exit(HTTP_OK)
+    if in_notify_period() then
+      log.notice("requesting access for ", req.addr)
+      if request_auth(req) then
+        log.notice("access approved for ", req.addr)
+        return exit(HTTP_OK)
+      end
+    else
+      log.notice("not sending request outside of notify hours for ", req.addr)
+      metrics.notify:inc(1, {"snoozed"})
     end
     return exit(HTTP_UNAUTHORIZED)
   end,
@@ -346,6 +378,7 @@ end
 ---@field pushover resty.pushover.client.opts
 ---@field save_path string
 ---@field log_path  string
+---@field notify_periods doorbell.notify_period[]
 
 ---@param opts doorbell.init.opts
 function _M.init(opts)
@@ -366,6 +399,10 @@ function _M.init(opts)
   SAVE_PATH = opts.save_path or (ngx.config.prefix() .. "/rules.json")
 
   LOG_PATH = opts.log_path or (ngx.config.prefix() .. "/request.json.log")
+
+  if opts.notify_periods then
+    NOTIFY_PERIODS = opts.notify_periods
+  end
 
   TRUSTED = assert(ipmatcher.new(opts.trusted or EMPTY))
 
