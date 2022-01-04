@@ -18,8 +18,14 @@ local HTTP_BAD_REQUEST           = ngx.HTTP_BAD_REQUEST
 local HTTP_NOT_FOUND             = ngx.HTTP_NOT_FOUND
 local HTTP_NOT_ALLOWED           = ngx.HTTP_NOT_ALLOWED
 
-local read_body = ngx.req.read_body
+local read_body     = ngx.req.read_body
 local get_post_args = ngx.req.get_post_args
+local get_headers   = ngx.req.get_headers
+local http_version  = ngx.req.http_version
+local start_time    = ngx.req.start_time
+local get_resp_headers = ngx.resp.get_headers
+local get_method = ngx.req.get_method
+local get_uri_args = ngx.req.get_uri_args
 
 local fmt = string.format
 
@@ -44,6 +50,9 @@ local EMPTY = {}
 
 ---@type string
 local SAVE_PATH
+
+---@type string
+local LOG_PATH
 
 ---@type resty.pushover.client.opts
 local PUSHOVER_OPTS
@@ -330,6 +339,7 @@ end
 ---@field trusted  string[]
 ---@field pushover resty.pushover.client.opts
 ---@field save_path string
+---@field log_path  string
 
 ---@param opts doorbell.init.opts
 function _M.init(opts)
@@ -349,6 +359,7 @@ function _M.init(opts)
 
   SAVE_PATH = opts.save_path or (ngx.config.prefix() .. "/rules.json")
 
+  LOG_PATH = opts.log_path or (ngx.config.prefix() .. "/request.json.log")
 
   TRUSTED = assert(ipmatcher.new(opts.trusted or EMPTY))
 
@@ -631,6 +642,45 @@ function _M.reload()
 end
 
 function _M.metrics()
+end
+
+function _M.log()
+  local fh, err = io.open(LOG_PATH, "a+")
+  if not fh then
+    log.errf("failed opening log file (%s): %s", LOG_PATH, err)
+    return
+  end
+
+  local ctx = ngx.ctx
+  local entry = {
+    addr                = var.remote_addr,
+    client_addr         = var.realip_remote_addr,
+    connection          = var.connection,
+    connection_requests = var.connection_requests,
+    connection_time     = var.connection_time,
+    host                = var.host,
+    http_version        = http_version(),
+    log_time            = now(),
+    method              = get_method(),
+    path                = var.uri:gsub("?.*", ""),
+    query               = get_uri_args(1000),
+    remote_port         = var.remote_port,
+    request_headers     = get_headers(1000),
+    request_uri         = var.request_uri,
+    response_headers    = get_resp_headers(1000),
+    rule                = ctx.rule,
+    scheme              = var.scheme,
+    start_time          = start_time(),
+    status              = ngx.status,
+    uri                 = var.uri,
+    worker = {
+      id = ngx.worker.id(),
+      pid = ngx.worker.pid(),
+    },
+  }
+
+  fh:write(cjson.encode(entry) .. "\n")
+  fh:close()
 end
 
 return _M
