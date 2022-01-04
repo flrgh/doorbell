@@ -643,6 +643,7 @@ end
 
 local function init_worker()
   metrics.init_worker()
+  rules.init_worker()
 end
 
 local function init_agent()
@@ -680,12 +681,15 @@ function _M.init_worker()
 end
 
 function _M.reload()
+  ngx.ctx.no_log = true
+  ngx.ctx.no_metrics = true
+
   assert(SHM, "doorbell was not initialized")
   if ngx.req.get_method() ~= "POST" then
     return exit(HTTP_NOT_ALLOWED)
   end
   header["content-type"] = "text/plain"
-  local ok, err = rules.load()
+  local ok, err = rules.load(SAVE_PATH)
   if ok then
     ngx.say("success")
     return exit(HTTP_CREATED)
@@ -696,27 +700,8 @@ function _M.reload()
 end
 
 function _M.metrics()
-  -- rule counts
-  do
-    local counts = {
-      allow = {
-        config = 0,
-        user   = 0,
-      },
-      deny = {
-        config = 0,
-        user =  0,
-      }
-    }
-    for _, rule in ipairs(rules.list()) do
-      counts[rule.action][rule.source] = counts[rule.action][rule.source] + 1
-    end
-    for action, sources in pairs(counts) do
-      for source, num in pairs(sources) do
-        metrics.rules:set(num, {action, source})
-      end
-    end
-  end
+  ngx.ctx.no_log = true
+  ngx.ctx.no_metrics = true
 
   metrics.collect()
 end
@@ -724,11 +709,17 @@ end
 function _M.log()
   local ctx = ngx.ctx
 
-  metrics.requests:inc(1, {ngx.status})
+  if not ctx.no_metrics then
+    metrics.requests:inc(1, {ngx.status})
 
-  if ctx.rule then
-    metrics.actions:inc(1, {ctx.rule.action})
-    metrics.cache_results:inc(1, {ctx.cached and "HIT" or "MISS" })
+    if ctx.rule then
+      metrics.actions:inc(1, {ctx.rule.action})
+      metrics.cache_results:inc(1, {ctx.cached and "HIT" or "MISS" })
+    end
+  end
+
+  if ctx.no_log then
+    return
   end
 
   local fh, err = io.open(LOG_PATH, "a+")

@@ -2,7 +2,12 @@ local _M = {}
 
 local const = require "doorbell.constants"
 
+local insert = table.insert
+
 local prometheus
+
+---@type function[]
+local HOOKS = {}
 
 function _M.init_worker()
   prometheus = require("prometheus").init(
@@ -23,6 +28,11 @@ function _M.init_worker()
     "rules_cache_results",
     "rules cache hit/miss counts",
     { "status" }
+  )
+
+  _M.cache_items = prometheus:gauge(
+    "rules_cache_items_total",
+    "number of items in the rules LRU cache"
   )
 
   _M.rules = prometheus:gauge(
@@ -50,9 +60,19 @@ function _M.enabled()
 end
 
 function _M.collect()
-  if prometheus then
-    prometheus:collect()
+  if not prometheus then
+    return
   end
+
+  for _, hook in ipairs(HOOKS) do
+    pcall(hook)
+  end
+
+  prometheus:collect()
+end
+
+function _M.add_hook(fn)
+  insert(HOOKS, fn)
 end
 
 return _M

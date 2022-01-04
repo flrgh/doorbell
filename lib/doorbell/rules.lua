@@ -869,4 +869,35 @@ function _M.version()
   return get_version()
 end
 
+function _M.init_worker()
+  metrics.add_hook(function()
+    -- rule counts
+    do
+      local counts = {
+        allow = {
+          config = 0,
+          user   = 0,
+        },
+        deny = {
+          config = 0,
+          user =  0,
+        }
+      }
+
+      for _, rule in ipairs(get_all_rules()) do
+        counts[rule.action][rule.source] = counts[rule.action][rule.source] + 1
+      end
+
+      for action, sources in pairs(counts) do
+        for source, num in pairs(sources) do
+          metrics.rules:set(num, {action, source})
+        end
+      end
+    end
+
+    -- cache size
+
+  end)
+end
+
 return _M
