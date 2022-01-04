@@ -5,6 +5,7 @@ local ipmatcher  = require "resty.ipmatcher"
 local resty_lock = require "resty.lock"
 local const = require "doorbell.constants"
 local log = require "doorbell.log"
+local metrics = require "doorbell.metrics"
 
 
 local ngx     = ngx
@@ -68,6 +69,7 @@ local function errorf(...)
   error(fmt(...))
 end
 
+---@nodiscard
 local function lock_storage(action)
   local lock, err = resty_lock:new(META_NAME)
   if not lock then
@@ -179,6 +181,7 @@ local function rebuild_matcher()
   local max_conditions = 0
 
   local term_fields = {}
+
 
   do
     local rules = get_all_rules()
@@ -725,7 +728,7 @@ function _M.match(req)
     end
   end
 
-  return rule
+  return rule, cached
 end
 
 --- retrieve a list of all current rules

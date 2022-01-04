@@ -32,6 +32,7 @@ local fmt = string.format
 local rules = require "doorbell.rules"
 local const = require "doorbell.constants"
 local log   = require "doorbell.log"
+local metrics = require "doorbell.metrics"
 
 local cjson      = require "cjson"
 local ipmatcher  = require "resty.ipmatcher"
@@ -68,8 +69,6 @@ local BASE_URL, HOST
 
 ---@type ngx.shared.DICT
 local SHM
-
-local metrics = {}
 
 ---@class doorbell.request : table
 ---@field addr string
@@ -108,9 +107,12 @@ end
 ---@return doorbell.auth_state state
 ---@return string? error
 local function get_auth_state(req, ctx)
-  local rule = rules.match(req)
+  local rule, cached = rules.match(req)
   if rule then
-    (ctx or ngx.ctx).rule = rule
+    if ctx then
+      ctx.rule = rule
+      ctx.cached = cached
+    end
     return rule.action
   end
 
@@ -415,8 +417,7 @@ function _M.ring()
     return exit(HTTP_OK)
   end
 
-  local state = get_auth_state(req)
-  --error("NO")
+  local state = get_auth_state(req, ngx.ctx)
 
   return HANDLERS[state](req)
 end
@@ -600,15 +601,7 @@ function _M.list()
 end
 
 local function init_worker()
-  local prometheus = require("prometheus").init(
-    const.shm.metrics,
-    {
-      prefix = "doorbell",
-    }
-  )
-
-  metrics.match_count = prometheus:gauge {
-  }
+  metrics.init_worker()
 end
 
 local function init_agent()
@@ -662,16 +655,47 @@ function _M.reload()
 end
 
 function _M.metrics()
+  -- rule counts
+  do
+    local counts = {
+      allow = {
+        config = 0,
+        user   = 0,
+      },
+      deny = {
+        config = 0,
+        user =  0,
+      }
+    }
+    for _, rule in ipairs(rules.list()) do
+      counts[rule.action][rule.source] = counts[rule.action][rule.source] + 1
+    end
+    for action, sources in pairs(counts) do
+      for source, num in pairs(sources) do
+        metrics.rules:set(num, {action, source})
+      end
+    end
+  end
+
+  metrics.collect()
 end
 
 function _M.log()
+  local ctx = ngx.ctx
+
+  metrics.requests:inc(1, {ngx.status})
+
+  if ctx.rule then
+    metrics.actions:inc(1, {ctx.rule.action})
+    metrics.cache_results:inc(1, {ctx.cached and "HIT" or "MISS" })
+  end
+
   local fh, err = io.open(LOG_PATH, "a+")
   if not fh then
     log.errf("failed opening log file (%s): %s", LOG_PATH, err)
     return
   end
 
-  local ctx = ngx.ctx
   local entry = {
     addr                = var.remote_addr,
     client_addr         = var.realip_remote_addr,
