@@ -618,6 +618,8 @@ function _M.answer()
 
   assert(rules.add(rule))
 
+  metrics.notify:inc(1, {"answered"})
+
   set_pending(req.addr, false)
 
   local msg = fmt(
