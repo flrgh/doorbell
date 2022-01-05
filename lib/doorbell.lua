@@ -12,7 +12,6 @@ local ipmatcher  = require "resty.ipmatcher"
 local pushover   = require "resty.pushover"
 local random     = require "resty.random"
 local resty_lock = require "resty.lock"
-local template   = require "resty.template"
 local str        = require "resty.string"
 local proc       = require "ngx.process"
 
@@ -86,6 +85,18 @@ local BASE_URL, HOST
 local SHM
 
 local GEOIP
+
+local template = {}
+local ASSET_PATH = "/opt/doorbell/assets"
+do
+  local tpl = assert(
+    require("resty.template").new({
+      root = ASSET_PATH,
+    })
+  )
+  template.rules_list = assert(tpl.compile("rule_list.template.html"))
+  template.answer     = assert(tpl.compile("answer.template.html"))
+end
 
 ---@param addr string
 ---@return string?
@@ -469,6 +480,7 @@ function _M.init(opts)
     end
   end
 
+
   rules.reload()
 end
 
@@ -543,78 +555,7 @@ function _M.ring()
 end
 
 local function render_form(req, err, current)
-  local tpl = [[
-    <!DOCTYPE html>
-    <html>
-      <h1>Access Request</h1>
-      <body>
-        {% if err then %}
-        <h2>ERROR: {{err}}</h2>
-        {% end %}
-        <ul>
-          <li>IP: {{req.addr}}</li>
-          <li>User-Agent: {{req.ua}}</li>
-          <li>Request: {{req.method}} {{req.url}}</li>
-        </ul>
-        <br>
-        {% if current_ip then %}
-        <h3>this is your current IP address</h3>
-        {% end %}
-        <form action="" method="post">
-          <ul>
-            <li>
-              <input type="radio" id="approve" name="action" value="approve">
-              <label for="approve">approve</label><br>
-
-              <input type="radio" id="deny" name="action" value="deny" checked="checked">
-              <label for="deny">deny</label><br>
-            </li>
-
-            <li>
-              <input type="radio" id="addr" name="subject" value="addr" checked="checked">
-              <label for="addr">this ip ({{req.addr}})</label><br>
-
-              <input type="radio" id="ua" name="subject" value="ua">
-              <label for="ua">this user agent ({{req.ua}})</label><br>
-            </li>
-
-
-            <li>
-              <input type="radio" id="global" name="scope" value="global" checked="checked">
-              <label for="global">global (all apps)</label><br>
-
-              <input type="radio" id="host" name="scope" value="host">
-              <label for="host">this app ({{req.host}})</label><br>
-
-              <input type="radio" id="url" name="scope" value="url">
-              <label for="url">this URL ({{req.url}})</label><br>
-            </li>
-
-            <li>
-              <input type="radio" id="minute" name="period" value="minute">
-              <label for="minute">1 minute</label><br>
-
-              <input type="radio" id="hour" name="period" value="hour">
-              <label for="hour">1 hour</label><br>
-
-              <input type="radio" id="day" name="period" value="day" checked="checked">
-              <label for="day">1 day</label><br>
-
-              <input type="radio" id="week" name="period" value="week">
-              <label for="week">1 week</label><br>
-
-              <input type="radio" id="forever" name="period" value="forever">
-              <label for="forever">forever</label><br>
-            </li>
-
-          </ul>
-          <button type="submit">submit</button>
-        </form>
-      </body>
-    </html>
-  ]]
-
-  return template.render(tpl, {req = req, err = err, current_ip = current})
+  return template.answer({req = req, err = err, current_ip = current})
 end
 
 function _M.answer()
@@ -758,97 +699,8 @@ function _M.list_html()
       rule.expires = tfmt(rule.expires)
     end
   end
-  local tpl = [[
-  <!DOCTYPE html>
-  <html>
-    <head>
-      <meta charset="utf-8">
-
-      <style>
-        html {
-          font-family: sans-serif;
-        }
-
-        table {
-          border-collapse: collapse;
-          border: 2px solid rgb(200,200,200);
-          letter-spacing: 1px;
-          font-size: 0.8rem;
-        }
-
-        td, th {
-          border: 1px solid rgb(190,190,190);
-          padding: 10px 20px;
-        }
-
-        th {
-          background-color: rgb(235,235,235);
-        }
-
-        td {
-          text-align: center;
-        }
-
-        tr:nth-child(even) td {
-          background-color: rgb(250,250,250);
-        }
-
-        tr:nth-child(odd) td {
-          background-color: rgb(245,245,245);
-        }
-
-        caption {
-          padding: 10px;
-        }
-      </style>
-
-    </head>
-    <body>
-      <h1>Rules</h1>
-      <table>
-        <tr>
-          <td>hash</td>
-          <td>action</td>
-          <td>source</td>
-          <td>created</td>
-          <td>expires</td>
-          <td>terminate</td>
-
-          <td>addr</td>
-          <td>cidr</td>
-          <td>host</td>
-          <td>path</td>
-          <td>ua</td>
-          <td>method</td>
-        </tr>
-
-      {% for _, rule in ipairs(rules) do %}
-        <tr>
-          <td>{{rule.hash}}</td>
-          <td>{{rule.action}}</td>
-          <td>{{rule.source}}</td>
-          <td>{{rule.created}}</td>
-          <td>{{rule.expires}}</td>
-          <td>{{rule.terminate and "yes" or "no" }}</td>
-
-          <td>{{rule.addr}}</td>
-          <td>{{rule.cidr}}</td>
-          <td>{{rule.host}}</td>
-          <td>{{rule.path}}</td>
-          <td>{{rule.ua}}</td>
-          <td>{{rule.method}}</td>
-
-        </tr>
-      {% end %}
-
-      </table>
-    </body>
-  </html>
-  ]]
   header["content-type"] = "text/html"
-  say(
-    template.render(tpl, { rules = list })
-  )
+  say(template.rules_list({ rules = list }))
 end
 
 local LOG_BUF = { n = 0 }

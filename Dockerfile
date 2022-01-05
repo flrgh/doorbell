@@ -9,3 +9,4 @@ RUN luarocks install lua-resty-http && \
 COPY ./lua-resty-pushover/lib/resty/* /usr/local/openresty/lualib/resty/
 COPY ./lib/ /usr/local/openresty/lualib/
 COPY ./nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
+COPY ./assets/*.html /opt/doorbell/assets/
