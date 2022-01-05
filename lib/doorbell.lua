@@ -854,32 +854,46 @@ end
 local LOG_BUF = { n = 0 }
 
 local function write_logs()
-  if LOG_BUF.n == 0 then
-    return
+  if LOG_BUF.n > 0 then
+    local entries = LOG_BUF
+    local n = entries.n
+
+    LOG_BUF = { n = 0 }
+
+    local ok, log_err, written
+
+    if run_worker_thread then
+      local thread_ok
+      thread_ok, ok, log_err, written = run_worker_thread(
+        "doorbell.log.writer",
+        "doorbell.log.request",
+        "write",
+        LOG_PATH,
+        entries
+      )
+
+      if not thread_ok then
+        log.alert("log writer thread failed: ", ok)
+        written = 0
+      end
+    else
+      -- ngx.run_worker_thread is new
+
+      ok, log_err, written = require("doorbell.log.request").write(
+        LOG_PATH,
+        entries
+      )
+    end
+
+    if not ok then
+      local failed = n - written
+      log.alertf("failed writing %s/%s to the log: %s", failed, n, log_err)
+    end
+
+    log.debugf("wrote %s entries to the log file", written)
   end
 
-  local entries = LOG_BUF
-  local n = entries.n
-
-  LOG_BUF = { n = 0 }
-  local thread_ok, thread_err_or_ok, err = run_worker_thread(
-    "doorbell.log.writer",
-    "doorbell.log.request",
-    "write",
-    LOG_PATH,
-    entries
-  )
-
-  if not thread_ok then
-    log.alert("log writer thread failed: ", thread_err_or_ok)
-  elseif not thread_err_or_ok then
-    log.alert("log writer thread returned error: ", err)
-  else
-    log.debugf("log writer wrote %s entries", n)
-  end
-
-  local ok
-  ok, err = timer_at(1, write_logs)
+  local ok, err = timer_at(1, write_logs)
   if not ok then
     log.alert("failed to reschedule log writer: ", err)
   end

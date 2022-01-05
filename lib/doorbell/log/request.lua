@@ -9,10 +9,23 @@ local concat = table.concat
 
 local buf = {}
 
+---@class doorbell.log_entries doorbell.log_entries table[]
+---@field n number
+
+---@param  path    string
+---@param  entries doorbell.log_entries
+---@return boolean ok
+---@return string? error
+---@return number  written
 function _M.write(path, entries)
+  local len = entries.n or #entries
+  if len == 0 then
+    return true, nil, 0
+  end
+
   local fh, err = open(path, "a+")
   if not fh then
-    return nil, err
+    return nil, err, 0
   end
 
   local n = 0
@@ -52,7 +65,7 @@ function _M.write(path, entries)
     return nil, err
   end
 
-  return true
+  return true, err, n
 end
 
 return _M
