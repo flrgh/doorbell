@@ -555,7 +555,7 @@ function _M.ring()
 end
 
 ---@param req doorbell.request
-local function render_form(req, err, current)
+local function render_form(req, errors, current)
   return template.answer({
     req = {
       { "IP Address",   req.addr    },
@@ -565,7 +565,7 @@ local function render_form(req, err, current)
       { "Method",       req.method },
       { "URI",          req.uri    },
     },
-    err = err,
+    errors = errors or {},
     current_ip = current,
   })
 end
@@ -578,6 +578,31 @@ function _M.answer()
   if not t then
     log.notice("/answer accessed with no token")
     return exit(HTTP_NOT_FOUND)
+  end
+
+  if t == "TEST" then
+    ---@type doorbell.request
+    local req = {
+      addr = "178.45.6.125",
+      ua = "Mozilla/5.0 (X11; Ubuntu; Linux i686) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2830.76 Safari/537.36",
+      host = "prometheus.pancakes2.com",
+      uri = "/wikindex.php?f=/NmRtJOUjAdutReQj/scRjKUhleBpzmTyO.txt",
+      scheme = "https",
+      country = "US",
+      method = "GET",
+      path = "/wikindex.php",
+    }
+
+    local errors
+    if var.arg_errors then
+      errors = { "error: invalid action 'nope'" }
+    end
+
+    local current_ip = (var.arg_current and true) or false
+
+    header["content-type"] = "text/html"
+    print(render_form(req, errors, current_ip))
+    return exit(HTTP_OK)
   end
 
   local req = get_token_address(t)
@@ -623,7 +648,7 @@ function _M.answer()
 
   if err then
     header["content-type"] = "text/html"
-    print(render_form(req, err, current_ip))
+    print(render_form(req, { err }, current_ip))
     return exit(HTTP_BAD_REQUEST)
   end
 

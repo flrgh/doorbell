@@ -53,15 +53,17 @@
 		<div class="page">
 			<h1 class="heading">Access Request</h1>
 
-			{% if err then %}
+			{% if #errors > 0 then %}
 			<div class="error">
-				<h2>ERROR: {{err}}</h2>
+				{% for _, err in ipairs(errors) do %}
+					<p>{{err}}</p>
+				{% end %}
 			</div>
 			{% end %}
 
 			<ul class="list">
 				{% for _, attr in ipairs(req) do %}
-					{% if attr[2] %}
+					{% if attr[2] then %}
 				<li>{{ attr[1] }}: <span class="mono">{{ attr[2] }}</span></li>
 					{% end %}
 				{% end %}
