@@ -326,6 +326,7 @@ local HANDLERS = {
 
   [STATES.deny] = function(req)
     log.notice("denying access for ", req.addr)
+    ngx.sleep(300)
     return exit(HTTP_FORBIDDEN)
   end,
 
@@ -462,7 +463,7 @@ function _M.ring()
   return HANDLERS[state](req)
 end
 
-local function render_form(req, err)
+local function render_form(req, err, current)
   local tpl = [[
     <!DOCTYPE html>
     <html>
@@ -477,6 +478,9 @@ local function render_form(req, err)
           <li>Request: {{req.method}} {{req.url}}</li>
         </ul>
         <br>
+        {% if current_ip then %}
+        <h3>this is your current IP address</h3>
+        {% end %}
         <form action="" method="post">
           <ul>
             <li>
@@ -531,7 +535,7 @@ local function render_form(req, err)
     </html>
   ]]
 
-  return template.render(tpl, {req = req, err = err })
+  return template.render(tpl, {req = req, err = err, current_ip = current})
 end
 
 function _M.answer()
@@ -558,9 +562,11 @@ function _M.answer()
     exit(HTTP_BAD_REQUEST)
   end
 
+  local current_ip = req.addr == ngx.var.http_x_forwarded_for
+
   if method == "GET" then
     header["content-type"] = "text/html"
-    ngx.print(render_form(req))
+    ngx.print(render_form(req, nil, current_ip))
     return exit(HTTP_OK)
   end
 
@@ -585,7 +591,7 @@ function _M.answer()
 
   if err then
     header["content-type"] = "text/html"
-    ngx.print(render_form(req, err))
+    ngx.print(render_form(req, err, current_ip))
     return exit(HTTP_BAD_REQUEST)
   end
 
@@ -642,10 +648,20 @@ function _M.list()
   ngx.say(cjson.encode(rules.list()))
 end
 
+local date = os.date
+
+local function tfmt(stamp)
+  return date("%Y-%m-%d %H:%M:%S", stamp)
+end
+
 function _M.list_html()
   assert(SHM, "doorbell was not initialized")
   local list = rules.list()
   local keys = {"addr", "cidr", "host", "ua", "method", "path"}
+  local t = now()
+  table.sort(list, function(a, b)
+    return a.created > b.created
+  end)
   for _, rule in ipairs(list) do
     local matches = {}
     for _, key in ipairs(keys) do
@@ -654,10 +670,60 @@ function _M.list_html()
       end
     end
     rule.match = table.concat(matches, ",")
+    rule.created = tfmt(rule.created)
+    if rule.expires == 0 then
+      rule.expires = "never"
+    elseif rule.expires < t then
+      rule.expires = "expired"
+    else
+      rule.expires = tfmt(rule.expires)
+    end
   end
   local tpl = [[
   <!DOCTYPE html>
   <html>
+    <head>
+      <meta charset="utf-8">
+
+      <style>
+        html {
+          font-family: sans-serif;
+        }
+
+        table {
+          border-collapse: collapse;
+          border: 2px solid rgb(200,200,200);
+          letter-spacing: 1px;
+          font-size: 0.8rem;
+        }
+
+        td, th {
+          border: 1px solid rgb(190,190,190);
+          padding: 10px 20px;
+        }
+
+        th {
+          background-color: rgb(235,235,235);
+        }
+
+        td {
+          text-align: center;
+        }
+
+        tr:nth-child(even) td {
+          background-color: rgb(250,250,250);
+        }
+
+        tr:nth-child(odd) td {
+          background-color: rgb(245,245,245);
+        }
+
+        caption {
+          padding: 10px;
+        }
+      </style>
+
+    </head>
     <body>
       <h1>Rules</h1>
       <table>
@@ -665,10 +731,16 @@ function _M.list_html()
           <td>hash</td>
           <td>action</td>
           <td>source</td>
-          <td>match</td>
           <td>created</td>
           <td>expires</td>
           <td>terminate</td>
+
+          <td>addr</td>
+          <td>cidr</td>
+          <td>host</td>
+          <td>path</td>
+          <td>ua</td>
+          <td>method</td>
         </tr>
 
       {% for _, rule in ipairs(rules) do %}
@@ -679,7 +751,14 @@ function _M.list_html()
           <td>{{rule.created}}</td>
           <td>{{rule.expires}}</td>
           <td>{{rule.terminate and "yes" or "no" }}</td>
-          <td>{{rule.match}}</td>
+
+          <td>{{rule.addr}}</td>
+          <td>{{rule.cidr}}</td>
+          <td>{{rule.host}}</td>
+          <td>{{rule.path}}</td>
+          <td>{{rule.ua}}</td>
+          <td>{{rule.method}}</td>
+
         </tr>
       {% end %}
 
@@ -687,7 +766,7 @@ function _M.list_html()
     </body>
   </html>
   ]]
-  header["content-type"] = "application/json"
+  header["content-type"] = "text/html"
   ngx.say(
     template.render(tpl, { rules = list })
   )
@@ -806,6 +885,10 @@ function _M.log()
       pid = ngx.worker.pid(),
     },
   }
+
+  if entry.start_time then
+    entry.duration = now() - entry.start_time
+  end
 
   fh:write(cjson.encode(entry) .. "\n")
   fh:close()
