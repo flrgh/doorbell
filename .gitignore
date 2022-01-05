@@ -41,3 +41,6 @@ luac.out
 
 servroot
 .envrc
+
+conf
+assets/*.mmdb

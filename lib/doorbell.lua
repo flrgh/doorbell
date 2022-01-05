@@ -558,12 +558,12 @@ end
 local function render_form(req, errors, current)
   return template.answer({
     req = {
-      { "IP Address",   req.addr    },
-      { "Country Code", req.country },
-      { "User-Agent",   req.ua     },
-      { "Host",         req.host   },
-      { "Method",       req.method },
-      { "URI",          req.uri    },
+      { "addr",   req.addr    },
+      { "country", req.country },
+      { "user-agent",   req.ua     },
+      { "host",         req.host   },
+      { "method",       req.method },
+      { "uri",          req.uri    },
     },
     errors = errors or {},
     current_ip = current,
