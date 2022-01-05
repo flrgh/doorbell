@@ -554,8 +554,20 @@ function _M.ring()
   return HANDLERS[state](req)
 end
 
+---@param req doorbell.request
 local function render_form(req, err, current)
-  return template.answer({req = req, err = err, current_ip = current})
+  return template.answer({
+    req = {
+      { "IP Address",   req.addr    },
+      { "Country Code", req.country },
+      { "User-Agent",   req.ua     },
+      { "Host",         req.host   },
+      { "Method",       req.method },
+      { "URI",          req.uri    },
+    },
+    err = err,
+    current_ip = current,
+  })
 end
 
 function _M.answer()

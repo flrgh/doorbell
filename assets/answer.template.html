@@ -1,123 +1,130 @@
 <!DOCTYPE html>
 <html>
-    <style>
-        .page {
-            padding: 16px;
-            background-color: gray;
-        }
+	<style>
+		.page {
+			padding: 16px;
+			background-color: gray;
+		}
 
-        .heading {
-            color: #37FF33;
-            font-family: "Comic Sans MS", "Comic Sans", cursive;
-        }
+		.heading {
+			color: #37FF33;
+			font-family: "Comic Sans MS", "Comic Sans", cursive;
+		}
 
-        .error {
-            padding: 8px;
-            border-style: dashed;
-            border-color: teal;
-        }
+		.error {
+			padding: 8px;
+			border-style: dashed;
+			border-color: teal;
+		}
 
-        .form {
-            background-color: blue;
-        }
+		.form {
+			background-color: blue;
+		}
 
-        .item {
-            margin: 8px;
-            font-weight: 600;
-            letter-spacing: 2px;
-            color: white;
-        }
+		.item {
+			margin: 8px;
+			font-weight: 600;
+			letter-spacing: 2px;
+			color: white;
+		}
 
-        .input {
-            margin: 8px
-        }
+		.input {
+			margin: 8px
+		}
 
-        .button-container {
-            display: flex;
-            justify-content: flex-end;
-        }
+		.button-container {
+			display: flex;
+			justify-content: flex-end;
+		}
 
-        .button {
-            border: 25px outset red;
-            background-color: yellow;
-            text-align: center;
-            font-size: 50px
-        }
-    </style>
-    <body>
-        <div class="page">
-            <h1 class="heading">Access Request</h1>
+		.button {
+			border: 25px outset red;
+			background-color: yellow;
+			text-align: center;
+			font-size: 50px
+		}
 
-            {% if err then %}
-            <div class="error">
-                <h2>ERROR: {{err}}</h2>
-            </div>
-            {% end %}
+		.mono {
+			font-family: monospace;
+		}
 
-            <ul class="list">
-                <li>IP: {{req.addr}}</li>
-                <li>User-Agent: {{req.ua}}</li>
-                <li>Request: {{req.method}} {{req.url}}</li>
-            </ul>
+	</style>
+	<body>
+		<div class="page">
+			<h1 class="heading">Access Request</h1>
 
-            <br>
+			{% if err then %}
+			<div class="error">
+				<h2>ERROR: {{err}}</h2>
+			</div>
+			{% end %}
 
-            {% if current_ip then %}
-            <h3>this is your current IP address</h3>
-            {% end %}
+			<ul class="list">
+				{% for _, attr in ipairs(req) do %}
+					{% if attr[2] %}
+				<li>{{ attr[1] }}: <span class="mono">{{ attr[2] }}</span></li>
+					{% end %}
+				{% end %}
+			</ul>
 
-            <form class="form" action="" method="post">
-                <ul>
-                    <li class="item">
-                        <input class="input" type="radio" id="approve" name="action" value="approve">
-                        <label for="approve">approve</label><br>
+			<br>
 
-                        <input class="input" type="radio" id="deny" name="action" value="deny" checked="checked">
-                        <label for="deny">deny</label><br>
-                    </li>
+			{% if current_ip then %}
+			<h3>this is your current IP address</h3>
+			{% end %}
 
-                    <li class="item">
-                        <input class="input" type="radio" id="addr" name="subject" value="addr" checked="checked">
-                        <label for="addr">this ip ({{req.addr}})</label><br>
+			<form class="form" action="" method="post">
+				<ul>
+					<li class="item">
+						<input class="input" type="radio" id="approve" name="action" value="approve">
+						<label for="approve">approve</label><br>
 
-                        <input class="input" type="radio" id="ua" name="subject" value="ua">
-                        <label for="ua">this user agent ({{req.ua}})</label><br>
-                    </li>
+						<input class="input" type="radio" id="deny" name="action" value="deny" checked="checked">
+						<label for="deny">deny</label><br>
+					</li>
+
+					<li class="item">
+						<input class="input" type="radio" id="addr" name="subject" value="addr" checked="checked">
+						<label for="addr">this ip</label><br>
+
+						<input class="input" type="radio" id="ua" name="subject" value="ua">
+						<label for="ua">this user agent</label><br>
+					</li>
 
 
-                    <li class="item">
-                        <input class="input" type="radio" id="global" name="scope" value="global" checked="checked">
-                        <label for="global">global (all apps)</label><br>
+					<li class="item">
+						<input class="input" type="radio" id="global" name="scope" value="global" checked="checked">
+						<label for="global">global (all apps)</label><br>
 
-                        <input class="input" type="radio" id="host" name="scope" value="host">
-                        <label for="host">this app ({{req.host}})</label><br>
+						<input class="input" type="radio" id="host" name="scope" value="host">
+						<label for="host">this app</label><br>
 
-                        <input class="input" type="radio" id="url" name="scope" value="url">
-                        <label for="url">this URL ({{req.url}})</label><br>
-                    </li>
+						<input class="input" type="radio" id="url" name="scope" value="url">
+						<label for="url">this URL</label><br>
+					</li>
 
-                    <li class="item">
-                        <input class="input" type="radio" id="minute" name="period" value="minute">
-                        <label for="minute">1 minute</label><br>
+					<li class="item">
+						<input class="input" type="radio" id="minute" name="period" value="minute">
+						<label for="minute">1 minute</label><br>
 
-                        <input class="input" type="radio" id="hour" name="period" value="hour">
-                        <label for="hour">1 hour</label><br>
+						<input class="input" type="radio" id="hour" name="period" value="hour">
+						<label for="hour">1 hour</label><br>
 
-                        <input class="input" type="radio" id="day" name="period" value="day" checked="checked">
-                        <label for="day">1 day</label><br>
+						<input class="input" type="radio" id="day" name="period" value="day" checked="checked">
+						<label for="day">1 day</label><br>
 
-                        <input class="input" type="radio" id="week" name="period" value="week">
-                        <label for="week">1 week</label><br>
+						<input class="input" type="radio" id="week" name="period" value="week">
+						<label for="week">1 week</label><br>
 
-                        <input class="input" type="radio" id="forever" name="period" value="forever">
-                        <label for="forever">forever</label><br>
-                    </li>
+						<input class="input" type="radio" id="forever" name="period" value="forever">
+						<label for="forever">forever</label><br>
+					</li>
 
-                </ul>
-                <div class="button-container">
-                    <button class="button" type="submit">submit</button>
-                </div>
-            </form>
-        </div>
-    </body>
+				</ul>
+				<div class="button-container">
+					<button class="button" type="submit">submit</button>
+				</div>
+			</form>
+		</div>
+	</body>
 </html>
