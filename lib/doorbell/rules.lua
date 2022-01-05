@@ -432,6 +432,7 @@ end
 ---@field host       string
 ---@field path       string
 ---@field method     string
+---@field country    string
 ---@field conditions number
 ---@field terminate  boolean
 ---@field key        string
@@ -443,6 +444,7 @@ local CONDITIONS = {
   "host",
   "path",
   "method",
+  "country",
 }
 
 local hash_rule

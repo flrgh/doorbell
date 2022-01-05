@@ -2,37 +2,9 @@ local _M = {
   _VERSION = "0.1.0",
 }
 
-local ngx = ngx
-local var = ngx.var
-local header = ngx.header
-local now = ngx.now
-local sleep = ngx.sleep
-
-local exit = ngx.exit
-local HTTP_OK                    = ngx.HTTP_OK
-local HTTP_FORBIDDEN             = ngx.HTTP_FORBIDDEN
-local HTTP_UNAUTHORIZED          = ngx.HTTP_UNAUTHORIZED
-local HTTP_INTERNAL_SERVER_ERROR = ngx.HTTP_INTERNAL_SERVER_ERROR
-local HTTP_CREATED               = ngx.HTTP_CREATED
-local HTTP_BAD_REQUEST           = ngx.HTTP_BAD_REQUEST
-local HTTP_NOT_FOUND             = ngx.HTTP_NOT_FOUND
-local HTTP_NOT_ALLOWED           = ngx.HTTP_NOT_ALLOWED
-
-local read_body     = ngx.req.read_body
-local get_post_args = ngx.req.get_post_args
-local get_headers   = ngx.req.get_headers
-local http_version  = ngx.req.http_version
-local start_time    = ngx.req.start_time
-local get_resp_headers = ngx.resp.get_headers
-local get_method = ngx.req.get_method
-local get_uri_args = ngx.req.get_uri_args
-
-local fmt = string.format
-local open = io.open
-
-local rules = require "doorbell.rules"
-local const = require "doorbell.constants"
-local log   = require "doorbell.log"
+local rules   = require "doorbell.rules"
+local const   = require "doorbell.constants"
+local log     = require "doorbell.log"
 local metrics = require "doorbell.metrics"
 
 local cjson      = require "cjson"
@@ -42,6 +14,45 @@ local random     = require "resty.random"
 local resty_lock = require "resty.lock"
 local template   = require "resty.template"
 local str        = require "resty.string"
+local proc       = require "ngx.process"
+
+local ngx               = ngx
+local var               = ngx.var
+local header            = ngx.header
+local now               = ngx.now
+local sleep             = ngx.sleep
+local run_worker_thread = ngx.run_worker_thread
+local timer_at          = ngx.timer.at
+local utctime           = ngx.utctime
+local say               = ngx.say
+local print             = ngx.print
+local read_body         = ngx.req.read_body
+local get_post_args     = ngx.req.get_post_args
+local get_headers       = ngx.req.get_headers
+local http_version      = ngx.req.http_version
+local start_time        = ngx.req.start_time
+local get_resp_headers  = ngx.resp.get_headers
+local get_method        = ngx.req.get_method
+local get_uri_args      = ngx.req.get_uri_args
+local exit              = ngx.exit
+local exiting = ngx.worker.exiting
+
+local HTTP_OK                    = ngx.HTTP_OK
+local HTTP_FORBIDDEN             = ngx.HTTP_FORBIDDEN
+local HTTP_UNAUTHORIZED          = ngx.HTTP_UNAUTHORIZED
+local HTTP_INTERNAL_SERVER_ERROR = ngx.HTTP_INTERNAL_SERVER_ERROR
+local HTTP_CREATED               = ngx.HTTP_CREATED
+local HTTP_BAD_REQUEST           = ngx.HTTP_BAD_REQUEST
+local HTTP_NOT_FOUND             = ngx.HTTP_NOT_FOUND
+local HTTP_NOT_ALLOWED           = ngx.HTTP_NOT_ALLOWED
+
+local fmt      = string.format
+local tonumber = tonumber
+local ipairs   = ipairs
+local assert   = assert
+local encode   = cjson.encode
+local decode   = cjson.decode
+
 
 local cache
 do
@@ -50,6 +61,9 @@ do
 end
 
 local EMPTY = {}
+
+local WORKER_ID
+local WORKER_PID
 
 ---@type string
 local SAVE_PATH
@@ -71,14 +85,24 @@ local BASE_URL, HOST
 ---@type ngx.shared.DICT
 local SHM
 
----@class doorbell.request : table
----@field addr string
----@field scheme string
----@field host string
----@field uri string
----@field path string
----@field method string
----@field ua string
+local GEOIP
+
+---@param addr string
+---@return string?
+local function get_country(addr)
+  if not GEOIP then
+    return
+  end
+
+  local result, err = GEOIP:lookup_value(addr, "country", "iso_code")
+  if not result then
+    log.errf("failed looking up %s in geoip db: %s", addr, err)
+    return
+  end
+
+  return result
+end
+
 
 local STATES      = const.states
 local SCOPES      = const.scopes
@@ -97,7 +121,7 @@ local NOTIFY_PERIODS = {
 ---@return boolean
 local function in_notify_period()
   --    1234567890123456789
-  local yyyy_mm_dd_hh_mm_ss = ngx.utctime()
+  local yyyy_mm_dd_hh_mm_ss = utctime()
   local hours = tonumber(yyyy_mm_dd_hh_mm_ss:sub(12, 13))
 
   for _, p in ipairs(NOTIFY_PERIODS) do
@@ -158,7 +182,7 @@ local function generate_request_token(req)
   local bytes = random.bytes(32, true)
   local token = str.to_hex(bytes)
   local key = "token:" .. token
-  local value = cjson.encode(req)
+  local value = encode(req)
   local ok, err = SHM:safe_add(key, value, TTL_PENDING)
   if not ok then
     return nil, err
@@ -173,7 +197,7 @@ local function get_token_address(token)
   local key = "token:" .. token
   local v = SHM:get(key)
   if v then
-    return cjson.decode(v)
+    return decode(v)
   end
 end
 
@@ -298,7 +322,7 @@ local function request_auth(req)
   })
 
   if res then
-    log.debug("pushover notify response: ", cjson.encode(res))
+    log.debug("pushover notify response: ", encode(res))
   end
 
   if not ok then
@@ -358,7 +382,7 @@ local HANDLERS = {
   end,
 }
 
-local function require_trusted_ip()
+local function require_trusted_ip(ctx)
   local ip = assert(var.realip_remote_addr, "no $realip_remote_addr")
   local key = "trusted:" .. ip
   local trusted = cache:get(key)
@@ -371,6 +395,8 @@ local function require_trusted_ip()
     log.warn("denying connection from untrusted IP: ", ip)
     return exit(HTTP_FORBIDDEN)
   end
+
+  ctx.trusted_ip = trusted
 end
 
 ---@class doorbell.init.opts : table
@@ -383,6 +409,7 @@ end
 ---@field save_path string
 ---@field log_path  string
 ---@field notify_periods doorbell.notify_period[]
+---@field geoip_db string
 
 ---@param opts doorbell.init.opts
 function _M.init(opts)
@@ -410,7 +437,15 @@ function _M.init(opts)
 
   TRUSTED = assert(ipmatcher.new(opts.trusted or EMPTY))
 
-  local proc = require "ngx.process"
+  if opts.geoip_db then
+    local geoip = require("geoip")
+    local err
+    GEOIP, err = geoip.load_database(opts.geoip_db)
+    if not GEOIP then
+      log.alertf("failed loading geoip database file (%s): %s", opts.geoip_db, err)
+    end
+  end
+
   assert(proc.enable_privileged_agent(10))
 
   local ok, err = rules.load(SAVE_PATH)
@@ -437,28 +472,72 @@ function _M.init(opts)
   rules.reload()
 end
 
+---@class doorbell.request : table
+---@field addr     string
+---@field scheme   string
+---@field host     string
+---@field uri      string
+---@field path     string
+---@field method   string
+---@field ua       string
+---@field country? string
+
+
+local new_request, release_request
+do
+  local tb = require "tablepool"
+  local fetch = tb.fetch
+  local release = tb.release
+  local pool = "doorbell.request"
+
+  local narr = 0
+  local nrec = 8
+
+  ---@param ctx table
+  ---@return doorbell.request
+  function new_request(ctx)
+    assert(ctx.trusted_ip, "tried to build a request from an untrusted IP")
+
+    local r = fetch(pool, narr, nrec)
+    ctx.request = r
+
+    local headers = get_headers(1000)
+    ctx.request_headers = headers
+
+    r.addr    = assert(headers["x-forwarded-for"], "missing x-forwarded-for")
+    r.scheme  = assert(headers["x-forwarded-proto"], "missing x-forwarded-proto")
+    r.host    = assert(headers["x-forwarded-host"], "missing x-forwarded-host")
+    r.uri     = headers["x-forwarded-uri"] or "/"
+    r.path    = r.uri:gsub("?.*", "")
+    r.method  = assert(headers["x-forwarded-method"], "missing x-forwarded-method")
+    r.ua      = headers["user-agent"]
+    r.country = get_country(r.addr)
+
+    return r
+  end
+
+  function release_request(ctx)
+    local r = ctx.request
+    if r then
+      release(pool, r, true)
+    end
+  end
+end
+
+
 function _M.ring()
   assert(SHM, "doorbell was not initialized")
-  require_trusted_ip()
+  local ctx = ngx.ctx
 
-  ---@type doorbell.request
-  local req = {
-    addr    = var.http_x_forwarded_for,
-    scheme  = var.http_x_forwarded_proto,
-    host    = var.http_x_forwarded_host,
-    uri     = var.http_x_forwarded_uri,
-    method  = var.http_x_forwarded_method,
-    ua      = var.http_user_agent,
-  }
-
-  req.path = req.uri:gsub("?.*", "")
+  require_trusted_ip(ctx)
+  local req = new_request(ctx)
 
   if req.host == HOST and req.path == "/answer" then
     log.debugf("allowing request to %s/answer endpoint", HOST)
     return exit(HTTP_OK)
   end
 
-  local state = get_auth_state(req, ngx.ctx)
+  local state = get_auth_state(req, ctx)
 
   return HANDLERS[state](req)
 end
@@ -540,7 +619,7 @@ end
 
 function _M.answer()
   assert(SHM, "doorbell was not initialized")
-  require_trusted_ip()
+  require_trusted_ip(ngx.ctx)
 
   local t = var.arg_t
   if not t then
@@ -557,16 +636,16 @@ function _M.answer()
 
   req.url = req.scheme .. "://" .. req.host .. req.uri
 
-  local method = ngx.req.get_method()
+  local method = get_method()
   if not (method == "GET" or method == "POST") then
     exit(HTTP_BAD_REQUEST)
   end
 
-  local current_ip = req.addr == ngx.var.http_x_forwarded_for
+  local current_ip = req.addr == var.http_x_forwarded_for
 
   if method == "GET" then
     header["content-type"] = "text/html"
-    ngx.print(render_form(req, nil, current_ip))
+    print(render_form(req, nil, current_ip))
     return exit(HTTP_OK)
   end
 
@@ -591,7 +670,7 @@ function _M.answer()
 
   if err then
     header["content-type"] = "text/html"
-    ngx.print(render_form(req, err, current_ip))
+    print(render_form(req, err, current_ip))
     return exit(HTTP_BAD_REQUEST)
   end
 
@@ -638,14 +717,14 @@ function _M.answer()
   )
 
   header["content-type"] = "text/plain"
-  ngx.say(msg)
+  say(msg)
   return exit(HTTP_CREATED)
 end
 
 function _M.list()
   assert(SHM, "doorbell was not initialized")
   header["content-type"] = "application/json"
-  ngx.say(cjson.encode(rules.list()))
+  say(encode(rules.list()))
 end
 
 local date = os.date
@@ -767,20 +846,62 @@ function _M.list_html()
   </html>
   ]]
   header["content-type"] = "text/html"
-  ngx.say(
+  say(
     template.render(tpl, { rules = list })
   )
+end
+
+local LOG_BUF = { n = 0 }
+
+local function write_logs()
+  if LOG_BUF.n == 0 then
+    return
+  end
+
+  local entries = LOG_BUF
+  local n = entries.n
+
+  LOG_BUF = { n = 0 }
+  local thread_ok, thread_err_or_ok, err = run_worker_thread(
+    "doorbell.log.writer",
+    "doorbell.log.request",
+    "write",
+    LOG_PATH,
+    entries
+  )
+
+  if not thread_ok then
+    log.alert("log writer thread failed: ", thread_err_or_ok)
+  elseif not thread_err_or_ok then
+    log.alert("log writer thread returned error: ", err)
+  else
+    log.debugf("log writer wrote %s entries", n)
+  end
+
+  local ok
+  ok, err = timer_at(1, write_logs)
+  if not ok then
+    log.alert("failed to reschedule log writer: ", err)
+  end
+end
+
+local function append_log_entry(entry)
+  local n = LOG_BUF.n + 1
+  LOG_BUF[n] = entry
+  LOG_BUF.n = n
 end
 
 local function init_worker()
   metrics.init_worker()
   rules.init_worker()
+  assert(timer_at(1, write_logs))
+  WORKER_PID = ngx.worker.pid()
+  WORKER_ID  = ngx.worker.id()
 end
 
 local function init_agent()
   local save
   local last = rules.version()
-  local timer_at = ngx.timer.at
   local interval = 15
 
   save = function(premature)
@@ -803,7 +924,6 @@ end
 function _M.init_worker()
   assert(SHM, "doorbell was not initialized")
 
-  local proc = require "ngx.process"
   if proc.type() == "privileged agent" then
     return init_agent()
   end
@@ -816,17 +936,17 @@ function _M.reload()
   ngx.ctx.no_metrics = true
 
   assert(SHM, "doorbell was not initialized")
-  if ngx.req.get_method() ~= "POST" then
+  if get_method() ~= "POST" then
     return exit(HTTP_NOT_ALLOWED)
   end
   header["content-type"] = "text/plain"
   local ok, err = rules.load(SAVE_PATH)
   if ok then
-    ngx.say("success")
+    say("success")
     return exit(HTTP_CREATED)
   end
   log.err("failed reloading rules from disk: ", err)
-  ngx.say("failure")
+  say("failure")
   exit(HTTP_INTERNAL_SERVER_ERROR)
 end
 
@@ -839,6 +959,8 @@ end
 
 function _M.log()
   local ctx = ngx.ctx
+
+  release_request(ctx)
 
   if not ctx.no_metrics then
     metrics.requests:inc(1, {ngx.status})
@@ -853,45 +975,43 @@ function _M.log()
     return
   end
 
-  local fh, err = open(LOG_PATH, "a+")
-  if not fh then
-    log.errf("failed opening log file (%s): %s", LOG_PATH, err)
-    return
+  local duration
+  local log_time = now()
+  local start = start_time()
+  if start then
+    duration = now() - start
   end
 
   local entry = {
     addr                = var.remote_addr,
     client_addr         = var.realip_remote_addr,
     connection          = var.connection,
-    connection_requests = var.connection_requests,
+    connection_requests = tonumber(var.connection_requests),
     connection_time     = var.connection_time,
+    duration            = duration,
     host                = var.host,
     http_version        = http_version(),
-    log_time            = now(),
+    log_time            = log_time,
     method              = get_method(),
     path                = var.uri:gsub("?.*", ""),
     query               = get_uri_args(1000),
-    remote_port         = var.remote_port,
-    request_headers     = get_headers(1000),
+    remote_port         = tonumber(var.remote_port),
+    request_headers     = ctx.request_headers or get_headers(1000),
     request_uri         = var.request_uri,
     response_headers    = get_resp_headers(1000),
     rule                = ctx.rule,
     scheme              = var.scheme,
-    start_time          = start_time(),
+    start_time          = start,
     status              = ngx.status,
     uri                 = var.uri,
     worker = {
-      id = ngx.worker.id(),
-      pid = ngx.worker.pid(),
+      id = WORKER_ID,
+      pid = WORKER_PID,
+      exiting = exiting()
     },
   }
 
-  if entry.start_time then
-    entry.duration = now() - entry.start_time
-  end
-
-  fh:write(cjson.encode(entry) .. "\n")
-  fh:close()
+  append_log_entry(entry)
 end
 
 return _M

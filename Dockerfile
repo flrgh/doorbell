@@ -3,7 +3,8 @@ FROM openresty/openresty:alpine-fat
 RUN luarocks install lua-resty-http && \
     luarocks install lua-resty-ipmatcher && \
     luarocks install lua-resty-template && \
-    luarocks install nginx-lua-prometheus
+    luarocks install nginx-lua-prometheus && \
+    luarocks install luajit-geoip
 
 COPY ./lua-resty-pushover/lib/resty/* /usr/local/openresty/lualib/resty/
 COPY ./lib/ /usr/local/openresty/lualib/
