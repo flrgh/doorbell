@@ -25,7 +25,6 @@ local concat = table.concat
 local pairs  = pairs
 local ipairs = ipairs
 local type   = type
-local tostring = tostring
 local open = io.open
 local setmetatable = setmetatable
 local floor = math.floor
@@ -36,11 +35,7 @@ local META_NAME = const.shm.doorbell
 local META = assert(ngx.shared[META_NAME], "main SHM missing")
 local STATS = assert(ngx.shared[const.shm.stats], "stats SHM missing")
 
-local cache
-do
-  local lru = require "resty.lrucache"
-  cache = assert(lru.new(1000))
-end
+local cache = require("doorbell.cache").new(1000)
 
 local new_match, release_match
 do
@@ -158,21 +153,13 @@ end
 ---@return string
 local function cache_key(req)
   return fmt(
-    "req||%s||%s||%s||%s||%s",
+    "%s||%s||%s||%s||%s",
     req.addr,
     req.method,
     req.host,
     req.path,
     req.ua
   )
-end
-
----@param term string
----@param req doorbell.request
-local function term_key(term, req)
-  local val = req[term]
-  if not val then return end
-  return "term||" .. tostring(req[term])
 end
 
 local DENY  = const.actions.deny
@@ -858,16 +845,20 @@ function _M.match(req)
     reload()
   end
 
-  local cached = true
-  local key
   ---@type doorbell.rule
   local rule
+
+  local cached = true
+  local ns, key
+
   if cache_terms_n > 0 then
     for i = 1, cache_terms_n do
-      local tk = term_key(cache_terms[i], req)
-      rule = cache:get(tk)
+      ns = cache_terms[i]
+      key = req[ns]
+      if key then
+        rule = cache:get(ns, key)
+      end
       if rule then
-        key = tk
         break
       end
     end
@@ -875,7 +866,8 @@ function _M.match(req)
 
   if not rule then
     key = cache_key(req)
-    rule = cache:get(key)
+    ns = "req"
+    rule = cache:get(ns, key)
   end
 
   if not rule then
@@ -884,13 +876,6 @@ function _M.match(req)
   end
 
   if rule then
-    log.debugf(
-      "cache %s for %q => %s",
-      (cached and "HIT" or "MISS"),
-      key,
-      rule.action
-    )
-
     local time = now()
     if rule:expired(time) then
       return
@@ -898,10 +883,11 @@ function _M.match(req)
 
     if not cached then
       if rule.terminate then
-        cache:set(term_key(rule.key, req), rule, rule:ttl(time))
-      else
-        cache:set(key, rule, rule:ttl(time))
+        ns = rule.key
+        key = req[key]
       end
+
+      cache:set(ns, key, rule, rule:ttl(time))
     end
   end
 
@@ -1083,7 +1069,7 @@ function _M.init_worker()
   end)
 end
 
----@param ctx table
+---@param ctx doorbell.ctx
 ---@param start_time number
 function _M.log(ctx, start_time)
   ---@type doorbell.rule

@@ -1,26 +1,22 @@
 local _M = {
-  _VERSION = "0.1.0",
+  _VERSION = require("doorbell.constants").version,
 }
 
 local rules   = require "doorbell.rules"
 local const   = require "doorbell.constants"
 local log     = require "doorbell.log"
 local metrics = require "doorbell.metrics"
+local request = require "doorbell.request"
+local ip      = require "doorbell.ip"
+local auth       = require "doorbell.auth"
 
 local cjson      = require "cjson"
-local ipmatcher  = require "resty.ipmatcher"
-local pushover   = require "resty.pushover"
-local random     = require "resty.random"
-local resty_lock = require "resty.lock"
-local str        = require "resty.string"
 local proc       = require "ngx.process"
-local new_tab    = require "table.new"
 
 local ngx               = ngx
 local var               = ngx.var
 local header            = ngx.header
 local now               = ngx.now
-local sleep             = ngx.sleep
 local run_worker_thread = ngx.run_worker_thread
 local timer_at          = ngx.timer.at
 local utctime           = ngx.utctime
@@ -52,24 +48,9 @@ local tonumber = tonumber
 local ipairs   = ipairs
 local assert   = assert
 local encode   = cjson.encode
-local decode   = cjson.decode
-
+local date = os.date
 
 local cache
-do
-  local lru = require "resty.lrucache"
-  cache = assert(lru.new(1000))
-end
-
-local function cache_get(key)
-  local value = cache:get(key)
-  log.debugf(
-    "cache %s for %q",
-    (value ~= nil and "HIT") or "MISS",
-    key
-  )
-  return value
-end
 
 local EMPTY = {}
 
@@ -84,25 +65,8 @@ local SAVE_PATH
 ---@type string
 local LOG_PATH
 
----@type resty.pushover.client.opts
-local PUSHOVER_OPTS
-
 ---@type string
 local SHM_NAME = const.shm.doorbell
-
----@type resty.ipmatcher
-local TRUSTED
-
-
-local PRIVATE_IPS = ipmatcher.new({
-  "10.0.0.0/8",
-  "172.16.0.0/12",
-  "192.168.0.0/16",
-})
-
-local LOCALHOST_IPS = ipmatcher.new({
-  "127.0.0.0/8",
-})
 
 local BASE_URL, HOST
 
@@ -110,6 +74,20 @@ local BASE_URL, HOST
 local SHM
 
 local GEOIP
+
+local STATES      = const.states
+local SCOPES      = const.scopes
+local SUBJECTS    = const.subjects
+local WAIT_TIME   = const.wait_time
+local PERIODS     = const.periods
+
+---@type doorbell.notify_period[]
+local NOTIFY_PERIODS = {
+  -- UTC
+  { from = 15, to = 24 },
+  { from = 00, to = 07 },
+}
+
 
 local template = {}
 local ASSET_PATH = "/opt/doorbell/assets"
@@ -123,73 +101,6 @@ do
   template.answer     = assert(tpl.compile("answer.template.html"))
 end
 
----@param addr string
----@return string?
-local function get_country(addr)
-  if not GEOIP then
-    return
-  end
-
-  return GEOIP:lookup_value(addr, "country", "iso_code")
-end
-
-
----@class doorbell.addr
----@field country? string
----@field localhost_ip boolean
----@field private_ip boolean
-
----@param addr string
----@param ctx table
----@return doorbell.addr
-local function collect_ip_data(addr, ctx)
-  local cache_key = "addr||" .. addr
-
-  ---@type doorbell.addr
-  local data = cache_get(cache_key)
-
-  if data then
-    ctx.country_code = data.country
-    ctx.localhost_ip = data.localhost_ip
-    ctx.private_ip = data.private_ip
-    return data
-  end
-
-  data = new_tab(0, 3)
-
-  local code, err = get_country(addr)
-  if code then
-    ctx.country_code = code
-    data.country = code
-  else
-    ctx.geoip_error = err
-  end
-
-  ctx.localhost_ip = LOCALHOST_IPS:match(addr) and true
-  data.localhost_ip = ctx.localhost_ip
-
-  ctx.private_ip = PRIVATE_IPS:match(addr) and true
-  data.private_ip = ctx.private_ip
-
-  cache:set(cache_key, data)
-
-  return data
-end
-
-
-local STATES      = const.states
-local SCOPES      = const.scopes
-local SUBJECTS    = const.subjects
-local WAIT_TIME   = const.wait_time
-local TTL_PENDING = const.ttl.pending
-local PERIODS     = const.periods
-
----@type doorbell.notify_period[]
-local NOTIFY_PERIODS = {
-  -- UTC
-  { from = 15, to = 24 },
-  { from = 00, to = 07 },
-}
 
 ---@return boolean
 local function in_notify_period()
@@ -210,212 +121,9 @@ end
 ---@field from integer
 ---@field to integer
 
+local is_pending = auth.is_pending
 
----@param addr string
----@return boolean
-local function is_pending(addr)
-  return SHM:get("pending:" .. addr)
-end
-
----@param addr string
----@param pending boolean
-local function set_pending(addr, pending)
-  local key = "pending:" .. addr
-  if not pending then
-    assert(SHM:delete(key))
-  else
-    assert(SHM:safe_set(key, true, TTL_PENDING))
-  end
-end
-
----@param req doorbell.request
----@return doorbell.auth_state state
----@return string? error
-local function get_auth_state(req, ctx)
-  local rule, cached = rules.match(req)
-  if rule then
-    if ctx then
-      ctx.rule = rule
-      ctx.cached = cached
-    end
-    return rule.action
-  end
-
-  if is_pending(req.addr) then
-    return STATES.pending
-  end
-
-  return STATES.none
-end
-
----@param req doorbell.request
----@return string? token
----@return string? error
-local function generate_request_token(req)
-  local bytes = random.bytes(32, true)
-  local token = str.to_hex(bytes)
-  local key = "token:" .. token
-  for k, v in pairs(req) do
-    log.noticef("%s (%s) => %s", k, type(v), v)
-  end
-  local value = encode(req)
-  local ok, err = SHM:safe_add(key, value, TTL_PENDING)
-  if not ok then
-    return nil, err
-  end
-  return token
-end
-
----@param token string
----@return doorbell.request req
----@return string? error
-local function get_token_address(token)
-  local key = "token:" .. token
-  local v = SHM:get(key)
-  if v then
-    return decode(v)
-  end
-end
-
----@param addr string
----@return resty.lock? lock
----@return string? error
-local function lock_addr(addr)
-  local lock, err = resty_lock:new(SHM_NAME)
-  if not lock then
-    log.err("failed to create lock: ", err)
-    return nil, err
-  end
-
-  local elapsed
-  elapsed, err = lock:lock("lock:" .. addr)
-  if not elapsed then
-    log.err("failed to lock auth state for ", addr)
-    return nil, err
-  end
-
-  return lock
-end
-
----@param req doorbell.request
-local function await_allow(req)
-  local start = now()
-  while (now() - start) < WAIT_TIME do
-    if not is_pending(req.addr) then
-      break
-    end
-    sleep(1)
-  end
-
-  if is_pending(req.addr) then
-    return false
-  end
-
-  local state = get_auth_state(req)
-  if state == STATES.allow then
-    return true
-  elseif state == STATES.deny then
-    return false
-  end
-end
-
-
----@param req doorbell.request
----@return boolean
-local function request_auth(req)
-  local addr = req.addr
-  local lock, err = lock_addr(addr)
-  if not lock then
-    log.errf("failed acquiring addr lock for %s: %s", addr, err)
-    return false
-  end
-
-  if is_pending(addr) then
-    log.notice("access for ", addr, " is already waiting on a pending request")
-    lock:unlock()
-    return false
-  else
-    local rule = rules.match(req)
-    local state = (rule and rule.action)
-
-    if state == STATES.allow then
-      log.debug("acccess for ", addr, " was allowed before requesting it")
-      lock:unlock()
-      return true
-
-    elseif state == STATES.deny then
-      log.notice("access was denied for ", addr, " before requesting it")
-      lock:unlock()
-      return false
-    end
-  end
-
-  local po
-  po, err = pushover.new(PUSHOVER_OPTS)
-  if not po then
-    log.err("failed creating pushover client: ", err)
-    lock:unlock()
-    return false
-  end
-
-  local token
-  token, err = generate_request_token(req)
-  if not token then
-    log.errf("failed creating auth request token for %s: %s", addr, err)
-    lock:unlock()
-    return false
-  end
-
-  local request = fmt(
-    "%s %s://%s%s",
-    req.method,
-    req.scheme,
-    req.host,
-    req.uri
-  )
-
-  local message = fmt(
-    [[
-      IP address: %s
-      User-Agent: %s
-      Request: %s
-    ]],
-    addr,
-    req.ua or "<NONE>",
-    request
-  )
-
-  local url = fmt("%s/answer?t=%s", BASE_URL, token)
-  log.debug("approve/deny link: ", url)
-
-  local ok, res
-  ok, err, res = po:notify({
-    title     = "access requested for " .. addr,
-    message   = message,
-    monospace = true,
-    url       = url,
-    url_title = "approve or deny",
-  })
-
-  if res then
-    log.debug("pushover notify response: ", encode(res))
-  end
-
-  if not ok then
-    log.err("failed sending auth request: ", err)
-    lock:unlock()
-    metrics.notify:inc(1, {"failed"})
-    return false
-  end
-
-  metrics.notify:inc(1, {"sent"})
-  set_pending(addr, true)
-  lock:unlock()
-
-  return await_allow(req)
-end
-
----@alias doorbell.handler fun(req:doorbell.request)
+---@alias doorbell.handler fun(req:doorbell.request, ctx:doorbell.ctx)
 
 ---@type table<doorbell.auth_state, doorbell.handler>
 local HANDLERS = {
@@ -436,7 +144,7 @@ local HANDLERS = {
   [STATES.none] = function(req)
     if in_notify_period() then
       log.notice("requesting access for ", req.addr)
-      if request_auth(req) then
+      if auth.request(req) and auth.await(req) then
         log.notice("access approved for ", req.addr)
         return exit(HTTP_OK)
       end
@@ -449,7 +157,7 @@ local HANDLERS = {
 
   [STATES.pending] = function(req)
     log.notice("awaiting access for ", req.addr)
-    if await_allow(req) then
+    if auth.await(req) then
       return exit(HTTP_OK)
     end
     return exit(HTTP_UNAUTHORIZED)
@@ -460,23 +168,6 @@ local HANDLERS = {
     return exit(HTTP_INTERNAL_SERVER_ERROR)
   end,
 }
-
-local function require_trusted_ip(ctx)
-  local ip = assert(var.realip_remote_addr, "no $realip_remote_addr")
-  local key = "trusted:" .. ip
-  local trusted = cache_get(key)
-  if trusted == nil then
-    trusted = TRUSTED:match(ip) or false
-    cache:set(key, trusted)
-  end
-
-  if not trusted then
-    log.warn("denying connection from untrusted IP: ", ip)
-    return exit(HTTP_FORBIDDEN)
-  end
-
-  ctx.trusted_ip = trusted
-end
 
 ---@class doorbell.init.opts : table
 ---@field shm      string
@@ -489,15 +180,17 @@ end
 ---@field log_path  string
 ---@field notify_periods doorbell.notify_period[]
 ---@field geoip_db string
+---@field cache_size integer
 
 ---@param opts doorbell.init.opts
 function _M.init(opts)
   opts = opts or EMPTY
-  SHM_NAME = opts.shm or SHM_NAME
 
+  cache = require("doorbell.cache").new(opts.cache_size)
+
+  SHM_NAME = opts.shm or SHM_NAME
   SHM = assert(ngx.shared[SHM_NAME], "missing shm " .. SHM_NAME)
 
-  PUSHOVER_OPTS = assert(opts.pushover, "missing pushover API config")
 
   BASE_URL = assert(opts.base_url, "opts.base_url required")
   local m = ngx.re.match(BASE_URL, "^(http(s)?://)?(?<host>[^/]+)")
@@ -514,8 +207,6 @@ function _M.init(opts)
     NOTIFY_PERIODS = opts.notify_periods
   end
 
-  TRUSTED = assert(ipmatcher.new(opts.trusted or EMPTY))
-
   if opts.geoip_db then
     local geoip = require("geoip.mmdb")
     local err
@@ -524,6 +215,8 @@ function _M.init(opts)
       log.alertf("failed loading geoip database file (%s): %s", opts.geoip_db, err)
     end
   end
+
+  ip.init({ geoip = GEOIP, cache = cache, trusted = opts.trusted })
 
   assert(proc.enable_privileged_agent(10))
 
@@ -552,74 +245,42 @@ function _M.init(opts)
   rules.reload()
 end
 
----@class doorbell.request : table
----@field addr     string
----@field scheme   string
----@field host     string
----@field uri      string
----@field path     string
----@field method   string
----@field ua       string
+---@class doorbell.ctx : table
+---@field rule            doorbell.rule
+---@field request_headers table
+---@field trusted_ip      boolean
+---@field private_ip      boolean
+---@field localhost_ip    boolean
+---@field request         doorbell.request
+---@field country_code    string
+---@field geoip_error     string
+---@field cached          boolean
+---@field no_log          boolean
+---@field no_metrics      boolean
+
+---@class doorbell.addr
 ---@field country? string
-
-
-local new_request, release_request
-do
-  local tb = require "tablepool"
-  local fetch = tb.fetch
-  local release = tb.release
-  local pool = "doorbell.request"
-
-  local narr = 0
-  local nrec = 8
-
-  ---@param ctx table
-  ---@return doorbell.request
-  function new_request(ctx)
-    assert(ctx.trusted_ip, "tried to build a request from an untrusted IP")
-
-    local r = fetch(pool, narr, nrec)
-    ctx.request = r
-
-    local headers = get_headers(1000)
-    ctx.request_headers = headers
-
-    r.addr    = assert(headers["x-forwarded-for"], "missing x-forwarded-for")
-    r.scheme  = assert(headers["x-forwarded-proto"], "missing x-forwarded-proto")
-    r.host    = assert(headers["x-forwarded-host"], "missing x-forwarded-host")
-    r.uri     = headers["x-forwarded-uri"] or "/"
-    r.path    = r.uri:gsub("?.*", "")
-    r.method  = assert(headers["x-forwarded-method"], "missing x-forwarded-method")
-    r.ua      = headers["user-agent"]
-
-    local ip_data = collect_ip_data(r.addr, ctx)
-    r.country = ip_data.country
-
-    return r
-  end
-
-  function release_request(ctx)
-    local r = ctx.request
-    if r then
-      release(pool, r, true)
-    end
-  end
-end
-
+---@field localhost_ip boolean
+---@field private_ip boolean
 
 function _M.ring()
   assert(SHM, "doorbell was not initialized")
   local ctx = ngx.ctx
 
-  require_trusted_ip(ctx)
-  local req = new_request(ctx)
+  ip.require_trusted(ctx)
+
+  local req, err = request.new(ctx)
+  if not req then
+    log.alert("failed building request: ", err)
+    return exit(HTTP_BAD_REQUEST)
+  end
 
   if req.host == HOST and req.path == "/answer" then
     log.debugf("allowing request to %s/answer endpoint", HOST)
     return exit(HTTP_OK)
   end
 
-  local state = get_auth_state(req, ctx)
+  local state = auth.get_state(req, ctx)
 
   return HANDLERS[state](req, ctx)
 end
@@ -642,7 +303,7 @@ end
 
 function _M.answer()
   assert(SHM, "doorbell was not initialized")
-  require_trusted_ip(ngx.ctx)
+  ip.require_trusted(ngx.ctx)
 
   local t = var.arg_t
   if not t then
@@ -675,7 +336,7 @@ function _M.answer()
     return exit(HTTP_OK)
   end
 
-  local req = get_token_address(t)
+  local req = auth.get_token_address(t)
 
   if not req then
     log.noticef("/answer token %s not found", t)
@@ -754,7 +415,7 @@ function _M.answer()
 
   metrics.notify:inc(1, {"answered"})
 
-  set_pending(req.addr, false)
+  auth.set_pending(req.addr, false)
 
   local msg = fmt(
     "%s access for %q to %s %s",
@@ -774,8 +435,6 @@ function _M.list()
   header["content-type"] = "application/json"
   say(encode(rules.list()))
 end
-
-local date = os.date
 
 local function tfmt(stamp)
   return date("%Y-%m-%d %H:%M:%S", stamp)
@@ -822,43 +481,47 @@ end
 local LOG_BUF = { n = 0 }
 
 local function write_logs()
-  if LOG_BUF.n > 0 then
-    local entries = LOG_BUF
-    local n = entries.n
+  for _, = 1, 1000 do
+    if LOG_BUF.n > 0 then
+      local entries = LOG_BUF
+      local n = entries.n
 
-    LOG_BUF = { n = 0 }
+      LOG_BUF = { n = 0 }
 
-    local ok, log_err, written
+      local ok, log_err, written
 
-    if run_worker_thread then
-      local thread_ok
-      thread_ok, ok, log_err, written = run_worker_thread(
-        "doorbell.log.writer",
-        "doorbell.log.request",
-        "write",
-        LOG_PATH,
-        entries
-      )
+      if run_worker_thread then
+        local thread_ok
+        thread_ok, ok, log_err, written = run_worker_thread(
+          "doorbell.log.writer",
+          "doorbell.log.request",
+          "write",
+          LOG_PATH,
+          entries
+        )
 
-      if not thread_ok then
-        log.alert("log writer thread failed: ", ok)
-        written = 0
+        if not thread_ok then
+          log.alert("log writer thread failed: ", ok)
+          written = 0
+        end
+      else
+        -- ngx.run_worker_thread is new
+
+        ok, log_err, written = require("doorbell.log.request").write(
+          LOG_PATH,
+          entries
+        )
       end
+
+      if not ok then
+        local failed = n - written
+        log.alertf("failed writing %s/%s to the log: %s", failed, n, log_err)
+      end
+
+      log.debugf("wrote %s entries to the log file", written)
     else
-      -- ngx.run_worker_thread is new
-
-      ok, log_err, written = require("doorbell.log.request").write(
-        LOG_PATH,
-        entries
-      )
+      sleep(1)
     end
-
-    if not ok then
-      local failed = n - written
-      log.alertf("failed writing %s/%s to the log: %s", failed, n, log_err)
-    end
-
-    log.debugf("wrote %s entries to the log file", written)
   end
 
   local ok, err = timer_at(1, write_logs)
@@ -874,9 +537,9 @@ local function append_log_entry(entry)
 end
 
 local function init_worker()
-  metrics.init_worker()
+  metrics.init_worker(5)
   rules.init_worker()
-  assert(timer_at(1, write_logs))
+  assert(timer_at(0, write_logs))
   WORKER_PID = ngx.worker.pid()
   WORKER_ID  = ngx.worker.id()
 end
@@ -908,8 +571,9 @@ local function init_agent()
 end
 
 function _M.save()
-  ngx.ctx.no_log = true
-  ngx.ctx.no_metrics = true
+  local ctx = ngx.ctx
+  request.no_log(ctx)
+  request.no_metrics(ctx)
 
   assert(SHM, "doorbell was not initialized")
   if get_method() ~= "POST" then
@@ -938,8 +602,9 @@ function _M.init_worker()
 end
 
 function _M.reload()
-  ngx.ctx.no_log = true
-  ngx.ctx.no_metrics = true
+  local ctx = ngx.ctx
+  request.no_log(ctx)
+  request.no_metrics(ctx)
 
   assert(SHM, "doorbell was not initialized")
   if get_method() ~= "POST" then
@@ -957,8 +622,9 @@ function _M.reload()
 end
 
 function _M.metrics()
-  ngx.ctx.no_log = true
-  ngx.ctx.no_metrics = true
+  local ctx = ngx.ctx
+  request.no_log(ctx)
+  request.no_metrics(ctx)
 
   metrics.collect()
 end
@@ -966,7 +632,7 @@ end
 function _M.log()
   local ctx = ngx.ctx
 
-  release_request(ctx)
+  request.release(ctx)
   local start = start_time()
 
   if not ctx.no_metrics then

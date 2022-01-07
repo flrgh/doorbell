@@ -1,5 +1,7 @@
 local const = {}
 
+const.version = "0.1.0"
+
 ---@alias doorbell.action '"allow"'|'"deny"'
 
 --- lookup table of valid authorization rule actions
