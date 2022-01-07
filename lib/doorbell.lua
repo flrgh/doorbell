@@ -8,7 +8,9 @@ local log     = require "doorbell.log"
 local metrics = require "doorbell.metrics"
 local request = require "doorbell.request"
 local ip      = require "doorbell.ip"
-local auth       = require "doorbell.auth"
+local auth    = require "doorbell.auth"
+local views   = require "doorbell.views"
+local notify  = require "doorbell.notify"
 
 local cjson      = require "cjson"
 local proc       = require "ngx.process"
@@ -19,11 +21,7 @@ local header            = ngx.header
 local now               = ngx.now
 local run_worker_thread = ngx.run_worker_thread
 local timer_at          = ngx.timer.at
-local utctime           = ngx.utctime
 local say               = ngx.say
-local print             = ngx.print
-local read_body         = ngx.req.read_body
-local get_post_args     = ngx.req.get_post_args
 local get_headers       = ngx.req.get_headers
 local http_version      = ngx.req.http_version
 local start_time        = ngx.req.start_time
@@ -31,8 +29,8 @@ local get_resp_headers  = ngx.resp.get_headers
 local get_method        = ngx.req.get_method
 local get_uri_args      = ngx.req.get_uri_args
 local exit              = ngx.exit
-local exiting = ngx.worker.exiting
-local sleep = ngx.sleep
+local exiting           = ngx.worker.exiting
+local sleep             = ngx.sleep
 
 local HTTP_OK                    = ngx.HTTP_OK
 local HTTP_FORBIDDEN             = ngx.HTTP_FORBIDDEN
@@ -40,17 +38,15 @@ local HTTP_UNAUTHORIZED          = ngx.HTTP_UNAUTHORIZED
 local HTTP_INTERNAL_SERVER_ERROR = ngx.HTTP_INTERNAL_SERVER_ERROR
 local HTTP_CREATED               = ngx.HTTP_CREATED
 local HTTP_BAD_REQUEST           = ngx.HTTP_BAD_REQUEST
-local HTTP_NOT_FOUND             = ngx.HTTP_NOT_FOUND
 local HTTP_NOT_ALLOWED           = ngx.HTTP_NOT_ALLOWED
 
-local fmt      = string.format
 local tonumber = tonumber
 local ipairs   = ipairs
 local assert   = assert
 local encode   = cjson.encode
-local date = os.date
 
-local cache
+---@class doorbell.config : table
+local config
 
 local EMPTY = {}
 
@@ -60,63 +56,26 @@ local WORKER_PID
 local TARPIT_INTERVAL = const.periods.minute * 5
 
 ---@type string
-local SAVE_PATH
-
----@type string
-local LOG_PATH
-
----@type string
 local SHM_NAME = const.shm.doorbell
-
-local BASE_URL, HOST
-
 ---@type ngx.shared.DICT
-local SHM
+local SHM = assert(ngx.shared[SHM_NAME], "missing shm " .. SHM_NAME)
 
-local STATES      = const.states
-local SCOPES      = const.scopes
-local SUBJECTS    = const.subjects
-local PERIODS     = const.periods
+local STATES = const.states
 
----@type doorbell.notify_period[]
-local NOTIFY_PERIODS = {
-  -- UTC
-  { from = 15, to = 24 },
-  { from = 00, to = 07 },
-}
+---@class doorbell.ctx : table
+---@field rule            doorbell.rule
+---@field request_headers table
+---@field trusted_ip      boolean
+---@field private_ip      boolean
+---@field localhost_ip    boolean
+---@field request         doorbell.request
+---@field country_code    string
+---@field geoip_error     string
+---@field cached          boolean
+---@field no_log          boolean
+---@field no_metrics      boolean
+---@field template        fun(env:table):string
 
-
-local template = {}
-local ASSET_PATH = "/opt/doorbell/assets"
-do
-  local tpl = assert(
-    require("resty.template").new({
-      root = ASSET_PATH,
-    })
-  )
-  template.rules_list = assert(tpl.compile("rule_list.template.html"))
-  template.answer     = assert(tpl.compile("answer.template.html"))
-end
-
-
----@return boolean
-local function in_notify_period()
-  --    1234567890123456789
-  local yyyy_mm_dd_hh_mm_ss = utctime()
-  local hours = tonumber(yyyy_mm_dd_hh_mm_ss:sub(12, 13))
-
-  for _, p in ipairs(NOTIFY_PERIODS) do
-    if hours >= p.from and hours < p.to then
-      return true
-    end
-  end
-
-  return false
-end
-
----@class doorbell.notify_period : table
----@field from integer
----@field to integer
 
 ---@alias doorbell.handler fun(req:doorbell.request, ctx:doorbell.ctx)
 
@@ -137,7 +96,7 @@ local HANDLERS = {
   end,
 
   [STATES.none] = function(req)
-    if in_notify_period() then
+    if notify.in_notify_period() then
       log.notice("requesting access for ", req.addr)
       if auth.request(req) and auth.await(req) then
         log.notice("access approved for ", req.addr)
@@ -164,60 +123,21 @@ local HANDLERS = {
   end,
 }
 
----@class doorbell.init.opts : table
----@field shm      string
----@field base_url string
----@field allow    doorbell.rule[]
----@field deny     doorbell.rule[]
----@field trusted  string[]
----@field pushover resty.pushover.client.opts
----@field save_path string
----@field log_path  string
----@field notify_periods doorbell.notify_period[]
----@field geoip_db string
----@field cache_size integer
-
----@param opts doorbell.init.opts
+---@param opts doorbell.config
 function _M.init(opts)
   opts = opts or EMPTY
 
-  cache = require("doorbell.cache").new(opts.cache_size)
+  config = require("doorbell.config").new(opts)
 
-  SHM_NAME = opts.shm or SHM_NAME
-  SHM = assert(ngx.shared[SHM_NAME], "missing shm " .. SHM_NAME)
+  require("doorbell.cache").init(config)
 
-
-  BASE_URL = assert(opts.base_url, "opts.base_url required")
-  local m = ngx.re.match(BASE_URL, "^(http(s)?://)?(?<host>[^/]+)")
-  assert(m and m.host, "failed to parse hostname from base_url: " .. BASE_URL)
-  HOST = m.host:lower()
-
-  log.debug("doorbell BASE_URL: ", BASE_URL, ", HOST: ", HOST)
-
-  SAVE_PATH = opts.save_path or (ngx.config.prefix() .. "/rules.json")
-
-  LOG_PATH = opts.log_path or (ngx.config.prefix() .. "/request.json.log")
-
-  if opts.notify_periods then
-    NOTIFY_PERIODS = opts.notify_periods
-  end
-
-  local db
-
-  if opts.geoip_db then
-    local geoip = require("geoip.mmdb")
-    local err
-    db, err = geoip.load_database(opts.geoip_db)
-    if not db then
-      log.alertf("failed loading geoip database file (%s): %s", opts.geoip_db, err)
-    end
-  end
-
-  ip.init({ geoip = db, cache = cache, trusted = opts.trusted })
+  ip.init(opts)
+  views.init(opts)
+  notify.init(opts)
 
   assert(proc.enable_privileged_agent(10))
 
-  local ok, err = rules.load(SAVE_PATH, true)
+  local ok, err = rules.load(config.save_path, true)
   if not ok then
     log.err("failed loading rules from disk: ", err)
   end
@@ -242,24 +162,6 @@ function _M.init(opts)
   rules.reload()
 end
 
----@class doorbell.ctx : table
----@field rule            doorbell.rule
----@field request_headers table
----@field trusted_ip      boolean
----@field private_ip      boolean
----@field localhost_ip    boolean
----@field request         doorbell.request
----@field country_code    string
----@field geoip_error     string
----@field cached          boolean
----@field no_log          boolean
----@field no_metrics      boolean
-
----@class doorbell.addr
----@field country? string
----@field localhost_ip boolean
----@field private_ip boolean
-
 function _M.ring()
   assert(SHM, "doorbell was not initialized")
   local ctx = ngx.ctx
@@ -272,8 +174,8 @@ function _M.ring()
     return exit(HTTP_BAD_REQUEST)
   end
 
-  if req.host == HOST and req.path == "/answer" then
-    log.debugf("allowing request to %s/answer endpoint", HOST)
+  if req.host == config.host and req.path == "/answer" then
+    log.debugf("allowing request to %s/answer endpoint", config.host)
     return exit(HTTP_OK)
   end
 
@@ -282,149 +184,11 @@ function _M.ring()
   return HANDLERS[state](req, ctx)
 end
 
----@param req doorbell.request
-local function render_form(req, errors, current)
-  return template.answer({
-    req = {
-      { "addr",   req.addr    },
-      { "country", req.country },
-      { "user-agent",   req.ua     },
-      { "host",         req.host   },
-      { "method",       req.method },
-      { "uri",          req.uri    },
-    },
-    errors = errors or {},
-    current_ip = current,
-  })
-end
-
 function _M.answer()
   assert(SHM, "doorbell was not initialized")
-  ip.require_trusted(ngx.ctx)
-
-  local t = var.arg_t
-  if not t then
-    log.notice("/answer accessed with no token")
-    return exit(HTTP_NOT_FOUND)
-  end
-
-  if t == "TEST" then
-    ---@type doorbell.request
-    local req = {
-      addr = "178.45.6.125",
-      ua = "Mozilla/5.0 (X11; Ubuntu; Linux i686) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2830.76 Safari/537.36",
-      host = "prometheus.pancakes2.com",
-      uri = "/wikindex.php?f=/NmRtJOUjAdutReQj/scRjKUhleBpzmTyO.txt",
-      scheme = "https",
-      country = "US",
-      method = "GET",
-      path = "/wikindex.php",
-    }
-
-    local errors
-    if var.arg_errors then
-      errors = { "error: invalid action 'nope'" }
-    end
-
-    local current_ip = (var.arg_current and true) or false
-
-    header["content-type"] = "text/html"
-    print(render_form(req, errors, current_ip))
-    return exit(HTTP_OK)
-  end
-
-  local req = auth.get_token_address(t)
-
-  if not req then
-    log.noticef("/answer token %s not found", t)
-    return exit(HTTP_NOT_FOUND)
-  end
-
-  req.url = req.scheme .. "://" .. req.host .. req.uri
-
-  local method = get_method()
-  if not (method == "GET" or method == "POST") then
-    exit(HTTP_BAD_REQUEST)
-  end
-
-  local current_ip = req.addr == var.http_x_forwarded_for
-
-  if method == "GET" then
-    header["content-type"] = "text/html"
-    print(render_form(req, nil, current_ip))
-    return exit(HTTP_OK)
-  end
-
-  read_body()
-  local args = get_post_args()
-  local action = args.action or "NONE"
-  local scope = args.scope or "NONE"
-  local period = args.period or "NONE"
-  local subject = args.subject or "NONE"
-
-  local err
-
-  if not (action == "approve" or action == "deny") then
-    err = "invalid action: " .. tostring(action)
-  elseif not SCOPES[scope] then
-    err = "invalid scope: " .. tostring(scope)
-  elseif not PERIODS[period] then
-    err = "invalid period: " .. tostring(period)
-  elseif not SUBJECTS[subject] then
-    err = "invalid subject: " .. tostring(subject)
-  end
-
-  if err then
-    header["content-type"] = "text/html"
-    print(render_form(req, { err }, current_ip))
-    return exit(HTTP_BAD_REQUEST)
-  end
-
-  local terminate = false
-  local host, path = req.host, req.path
-  if scope == SCOPES.global then
-    host = nil
-    path = nil
-    terminate = true
-  elseif scope == SCOPES.host then
-    path = nil
-  end
-
-  local addr, ua = req.addr, req.ua
-  if subject == SUBJECTS.addr then
-    ua = nil
-  elseif subject == SUBJECTS.ua then
-    addr = nil
-  end
-
-  local rule = {
-    action    = (action == "approve" and "allow") or "deny",
-    source    = "user",
-    addr      = addr,
-    host      = host,
-    path      = path,
-    ua        = ua,
-    ttl       = PERIODS[period],
-    terminate = terminate,
-  }
-
-  assert(rules.add(rule))
-
-  metrics.notify:inc(1, {"answered"})
-
-  auth.set_pending(req.addr, false)
-
-  local msg = fmt(
-    "%s access for %q to %s %s",
-    (action == "approve" and "Approved") or "Denied",
-    (addr or ua),
-    (scope == SCOPES.global and "all apps.") or (scope == SCOPES.host and req.host) or req.url,
-    (PERIODS[period] == PERIODS.forever and "for all time") or ("for one " .. period)
-  )
-
-  header["content-type"] = "text/plain"
-  say(msg)
-  return exit(HTTP_CREATED)
+  local ctx = ngx.ctx
+  ip.require_trusted(ctx)
+  return views.answer(ctx)
 end
 
 function _M.list()
@@ -433,46 +197,11 @@ function _M.list()
   say(encode(rules.list()))
 end
 
-local function tfmt(stamp)
-  return date("%Y-%m-%d %H:%M:%S", stamp)
-end
-
 function _M.list_html()
   assert(SHM, "doorbell was not initialized")
-  local list = rules.list()
-  local keys = {"addr", "cidr", "host", "ua", "method", "path", "country"}
-  local t = now()
-  table.sort(list, function(a, b)
-    return a.created > b.created
-  end)
-  for _, rule in ipairs(list) do
-    local matches = {}
-    for _, key in ipairs(keys) do
-      if rule[key] then
-        table.insert(matches, key)
-      end
-    end
-    rule.match = table.concat(matches, ",")
-    rule.created = tfmt(rule.created)
-    if rule.expires == 0 then
-      rule.expires = "never"
-    elseif rule.expires < t then
-      rule.expires = "expired"
-    else
-      rule.expires = tfmt(rule.expires)
-    end
-
-    if rule.last_match then
-      rule.last_match = tfmt(rule.last_match)
-    else
-      rule.last_match = "never"
-    end
-
-    rule.match_count = rule.match_count or 0
-
-  end
-  header["content-type"] = "text/html"
-  say(template.rules_list({ rules = list, conditions = keys }))
+  local ctx = ngx.ctx
+  ip.require_trusted(ctx)
+  return views.rule_list(ctx)
 end
 
 local LOG_BUF = { n = 0 }
@@ -493,7 +222,7 @@ local function write_logs()
           "doorbell.log.writer",
           "doorbell.log.request",
           "write",
-          LOG_PATH,
+          config.log_path,
           entries
         )
 
@@ -505,7 +234,7 @@ local function write_logs()
         -- ngx.run_worker_thread is new
 
         ok, log_err, written = require("doorbell.log.request").write(
-          LOG_PATH,
+          config.log_path,
           entries
         )
       end
@@ -558,7 +287,7 @@ local function init_agent()
 
     if version ~= last or (stamp - last_stamp) > 60 then
       log.notice("saving rules...")
-      local v = rules.save(SAVE_PATH)
+      local v = rules.save(config.save_path)
       last = v or last
       last_stamp = stamp
     end
@@ -577,7 +306,7 @@ function _M.save()
     return exit(HTTP_NOT_ALLOWED)
   end
   header["content-type"] = "text/plain"
-  local ok, err = rules.save(SAVE_PATH)
+  local ok, err = rules.save(config.save_path)
   if ok then
     say("success")
     return exit(HTTP_CREATED)
@@ -608,7 +337,7 @@ function _M.reload()
     return exit(HTTP_NOT_ALLOWED)
   end
   header["content-type"] = "text/plain"
-  local ok, err = rules.load(SAVE_PATH, false)
+  local ok, err = rules.load(config.save_path, false)
   if ok then
     say("success")
     return exit(HTTP_CREATED)

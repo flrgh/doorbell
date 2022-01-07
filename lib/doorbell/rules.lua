@@ -65,8 +65,6 @@ local function show(t)
   log.notice(require("inspect")(t))
 end
 
-local MIN_STEP = 1
-
 ---@param exp number
 ---@return number ttl
 local function ttl_from_expires(exp, t)

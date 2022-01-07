@@ -6,6 +6,7 @@ local const = require "doorbell.constants"
 local log = require "doorbell.log"
 local metrics = require "doorbell.metrics"
 local rules = require "doorbell.rules"
+local notify = require "doorbell.notify"
 
 local resty_lock = require "resty.lock"
 local random     = require "resty.random"
@@ -26,8 +27,6 @@ local SHM = assert(ngx.shared[SHM_NAME], "missing shm " .. SHM_NAME)
 local WAIT_TIME   = const.wait_time
 local STATES      = const.states
 
----@type resty.pushover.client.opts
-local pushover_opts
 local base_url
 
 ---@param addr string
@@ -176,15 +175,6 @@ function _M.request(req)
       return false
     end
   end
-
-  local po
-  po, err = pushover.new(pushover_opts)
-  if not po then
-    log.err("failed creating pushover client: ", err)
-    lock:unlock()
-    return false
-  end
-
   local token
   token, err = generate_request_token(req)
   if not token then
@@ -193,42 +183,13 @@ function _M.request(req)
     return false
   end
 
-  local req_str = fmt(
-    "%s %s://%s%s",
-    req.method,
-    req.scheme,
-    req.host,
-    req.uri
-  )
-
-  local message = fmt(
-    [[
-      IP address: %s
-      User-Agent: %s
-      Request: %s
-    ]],
-    addr,
-    req.ua or "<NONE>",
-    req_str
-  )
-
   local url = fmt("%s/answer?t=%s", base_url, token)
   log.debug("approve/deny link: ", url)
 
-  local ok, res
-  ok, err, res = po:notify({
-    title     = "access requested for " .. addr,
-    message   = message,
-    monospace = true,
-    url       = url,
-    url_title = "approve or deny",
-  })
+  local sent
+  sent, err = notify.send(req, url)
 
-  if res then
-    log.debug("pushover notify response: ", encode(res))
-  end
-
-  if not ok then
+  if not sent then
     log.err("failed sending auth request: ", err)
     lock:unlock()
     metrics.notify:inc(1, {"failed"})
@@ -241,10 +202,9 @@ function _M.request(req)
   return true
 end
 
----@param conf doorbell.init.opts
+---@param conf doorbell.config
 function _M.init(conf)
-  pushover_opts = assert(conf.pushover, "missing pushover API config")
-  base_url = assert(conf.base_url)
+  base_url = conf.base_url
 end
 
 

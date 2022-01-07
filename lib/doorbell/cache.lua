@@ -1,3 +1,4 @@
+---@type doorbell.cache
 local _M = {
   _VERSION = require("doorbell.constants").version,
 }
@@ -66,6 +67,12 @@ function _M.new(size)
     },
     cache_mt
   )
+end
+
+---@param opts doorbell.init.opts
+function _M.init(opts)
+  _M.lru = assert(lrucache.new(opts.cache_size or 1000))
+  setmetatable(_M, cache_mt)
 end
 
 return _M

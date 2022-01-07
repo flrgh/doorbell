@@ -3,6 +3,7 @@ local _M = {
 }
 
 local log = require "doorbell.log"
+local cache = require "doorbell.cache"
 
 local ipmatcher = require "resty.ipmatcher"
 local new_tab = require "table.new"
@@ -26,7 +27,13 @@ local localhost = ipmatcher.new({
 local trusted
 
 local geoip
-local cache
+
+
+---@class doorbell.addr
+---@field country? string
+---@field localhost_ip boolean
+---@field private_ip boolean
+
 
 ---@param addr string
 ---@return string?
@@ -92,11 +99,18 @@ function _M.get(addr, ctx)
   return data
 end
 
----@param opts table
+---@param opts doorbell.config
 function _M.init(opts)
-  geoip = opts.geoip
-  cache = opts.cache
-  trusted = ipmatcher.new(assert(opts.trusted, "trusted ips missing"))
+  if opts.geoip_db then
+    local mmdb = require("geoip.mmdb")
+    local db, err = mmdb.load_database(opts.geoip_db)
+    if not db then
+      log.alertf("failed loading geoip database file (%s): %s", opts.geoip_db, err)
+    end
+    geoip = db
+  end
+
+  trusted = assert(ipmatcher.new(opts.trusted))
 end
 
 return _M
