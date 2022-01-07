@@ -17,6 +17,14 @@ const.sources = {
   user   = "user",
 }
 
+---@alias doorbell.deny_action '"exit"'|'"tarpit"'
+
+-- lookup table of possible rule deny methods
+const.deny_actions = {
+  tarpit = "tarpit",
+  exit   = "exit",
+}
+
 ---@alias doorbell.auth_state
 ---| '"allow"'   # allowed
 ---| '"deny"'    # explicitly denied
@@ -82,6 +90,8 @@ const.shm = {
   rules    = "doorbell_rules",
   -- storage for prometheus metrics
   metrics  = "doorbell_metrics",
+  -- storage statistics
+  stats    = "doorbell_stats",
 }
 
 return const

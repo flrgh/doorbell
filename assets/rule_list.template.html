@@ -17,7 +17,7 @@
 
 			td, th {
 				border: 1px solid rgb(190,190,190);
-				padding: 10px 20px;
+				padding: 5px 10px;
 			}
 
 			th {
@@ -37,7 +37,7 @@
 			}
 
 			caption {
-				padding: 10px;
+				padding: 5px;
 			}
 		</style>
 
@@ -52,13 +52,9 @@
 				<td>created</td>
 				<td>expires</td>
 				<td>terminate</td>
-
-				<td>addr</td>
-				<td>cidr</td>
-				<td>host</td>
-				<td>path</td>
-				<td>ua</td>
-				<td>method</td>
+				<td>last match</td>
+				<td># matches</td>
+				<td>conditions</td>
 			</tr>
 
 			{% for _, rule in ipairs(rules) do %}
@@ -69,14 +65,21 @@
 				<td>{{rule.created}}</td>
 				<td>{{rule.expires}}</td>
 				<td>{{rule.terminate and "yes" or "no" }}</td>
+				<td>{{ rule.last_match }}</td>
+				<td>{{ rule.match_count }}</td>
 
-				<td>{{rule.addr}}</td>
-				<td>{{rule.cidr}}</td>
-				<td>{{rule.host}}</td>
-				<td>{{rule.path}}</td>
-				<td>{{rule.ua}}</td>
-				<td>{{rule.method}}</td>
-
+				<td>
+					<table>
+						{% for _, key in ipairs(conditions) do %}
+							{% if rule[key] ~= nil then %}
+						<tr>
+							<td>{{ key }}</td>
+							<td>{{ rule[key] }}</td>
+						</tr>
+							{% end %}
+						{% end %}
+					</table>
+				</td>
 			</tr>
 			{% end %}
 

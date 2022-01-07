@@ -62,7 +62,7 @@ function _M.write(path, entries)
   end
 
   if err then
-    return nil, err
+    return nil, err, n
   end
 
   return true, err, n

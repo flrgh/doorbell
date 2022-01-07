@@ -11,6 +11,7 @@ local metrics = require "doorbell.metrics"
 local ngx     = ngx
 local re_find = ngx.re.find
 local now     = ngx.now
+local update_time = ngx.update_time
 
 local assert  = assert
 local encode = cjson.encode
@@ -26,11 +27,14 @@ local ipairs = ipairs
 local type   = type
 local tostring = tostring
 local open = io.open
+local setmetatable = setmetatable
+local floor = math.floor
 
 local SHM_NAME = const.shm.rules
 local SHM = assert(ngx.shared[SHM_NAME], "rules SHM missing")
 local META_NAME = const.shm.doorbell
 local META = assert(ngx.shared[META_NAME], "main SHM missing")
+local STATS = assert(ngx.shared[const.shm.stats], "stats SHM missing")
 
 local cache
 do
@@ -64,6 +68,65 @@ end
 
 local function show(t)
   log.notice(require("inspect")(t))
+end
+
+local MIN_STEP = 1
+
+---@param exp number
+---@return number ttl
+local function ttl_from_expires(exp, t)
+  if exp == 0 or not exp then
+    return 0
+  end
+
+  t = t or now()
+
+  local ttl = floor(exp - t)
+  if ttl <= 0 then
+    ttl = -1
+  end
+
+  return ttl
+end
+
+
+local rule_mt
+do
+  ---@class doorbell.rule : table
+  ---@field action     doorbell.action
+  ---@field source     doorbell.source
+  ---@field hash       string
+  ---@field created    number
+  ---@field expires    number
+  ---@field addr       string
+  ---@field cidr       string
+  ---@field ua         string
+  ---@field host       string
+  ---@field path       string
+  ---@field method     string
+  ---@field country    string
+  ---@field conditions number
+  ---@field terminate  boolean
+  ---@field key        string
+  ---@field deny_action doorbell.deny_action
+  ---@field match_count integer
+  ---@field last_match number
+  local rule = {}
+
+  ---@param at? number
+  ---@return boolean
+  function rule:expired(at)
+    local ttl = ttl_from_expires(self.expires, at)
+    return ttl < 0, ttl
+  end
+
+  ---@param at? number
+  ---@return number
+  function rule:ttl(at)
+    return ttl_from_expires(self.expires, at)
+  end
+
+  rule_mt = { __index = rule }
 end
 
 local function errorf(...)
@@ -115,6 +178,119 @@ end
 local DENY  = const.actions.deny
 local VERSION = 0
 
+local set_match_count, inc_match_count, set_last_match, update_stats_from_shm, delete_stats
+do
+  local function tpl(s)
+    return function(...) return s:format(...) end
+  end
+
+  local match_count = tpl("rule:match_count:%s")
+  local last_match  = tpl("rule:last_match:%s")
+
+  ---@param rule doorbell.rule
+  ---@param ts? number
+  function set_match_count(rule, count, ts)
+    local expired, ttl = rule:expired(ts)
+    if expired then
+      return
+    end
+    local hash = rule.hash
+    local ok, err = STATS:safe_set(match_count(hash), count, ttl)
+    if not ok then
+      log.errf("failed setting match count for rule %s: %s", hash, err)
+    end
+
+    rule.match_count = count
+  end
+
+  ---@param rule doorbell.rule
+  ---@param ts? number
+  function inc_match_count(rule, ts)
+    local expired, ttl = rule:expired(ts)
+    if expired then
+      return
+    end
+    local hash = rule.hash
+    local new, err = STATS:incr(match_count(hash), 1, 0, ttl)
+    if new then
+      rule.match_count = new
+    else
+      log.errf("failed incrementing match count for rule %s: %s", hash, err)
+    end
+  end
+
+  ---@param rule doorbell.rule
+  ---@param match number
+  ---@param ts? number
+  function set_last_match(rule, match, ts)
+    ts = ts or now()
+    local expired, ttl = rule:expired(ts)
+    if expired then
+      return
+    end
+
+    local hash = rule.hash
+    local ok, err = STATS:safe_set(last_match(hash), match, ttl)
+
+    if not ok then
+      log.errf("failed setting last match timestamp for rule %s: %s", hash, err)
+    end
+
+    rule.last_match = match
+  end
+
+  ---@param rule doorbell.rule
+  function update_stats_from_shm(rule)
+    local hash = rule.hash
+    rule.last_match = STATS:get(last_match(hash)) or rule.last_match
+    rule.match_count = STATS:get(match_count(hash)) or rule.match_count or 0
+  end
+
+  ---@param rule doorbell.rule
+  function delete_stats(rule)
+    local hash = rule.hash
+    local ok, err = STATS:set(last_match(hash), nil)
+    if ok then
+      ok, err = STATS:set(match_count(hash), nil)
+    end
+    return ok, err
+  end
+end
+
+---@param rule doorbell.rule
+local function delete_rule(rule)
+  local ok, err = SHM:set(rule.hash, nil)
+  if ok then
+    ok, err = delete_stats(rule)
+  end
+  return ok, err
+end
+
+---@param json string
+---@param stats '"set"'|'"pull"'
+---@return doorbell.rule
+local function hydrate_rule(json, stats)
+  ---@type doorbell.rule
+  local rule = json
+  if type(json) == "string" then
+    rule = decode(json)
+  end
+
+  setmetatable(rule, rule_mt)
+
+  if stats == "set" then
+    local t = now()
+    if rule.last_match then
+      set_last_match(rule, rule.last_match, t)
+    end
+    set_match_count(rule, rule.match_count or 0, t)
+  elseif stats == "pull" then
+    update_stats_from_shm(rule)
+  end
+
+  return rule
+end
+
 ---@return doorbell.rule[]
 local function get_all_rules()
   local rules = {}
@@ -126,7 +302,7 @@ local function get_all_rules()
     local value = SHM:get(key)
     if value then
       n = n + 1
-      rules[n] = decode(value)
+      rules[n] = hydrate_rule(value, "pull")
     end
   end
 
@@ -148,6 +324,7 @@ end
 ---| '"ua(plain)"'
 ---| '"ua(regex)"'
 ---| '"method"'
+---| '"country"'
 
 local CRITERIA = {
   addr       = "addr",
@@ -158,17 +335,8 @@ local CRITERIA = {
   ua_plain   = "ua(plain)",
   ua_regex   = "ua(regex)",
   method     = "method",
+  country    = "country",
 }
-
----@param rule doorbell.rule
----@param t? number
----@return boolean
-local function expired(rule, t)
-  local exp = rule.expires
-  if exp == 0 or not exp then return false end
-  t = t or now()
-  return exp <= t
-end
 
 local check_match
 
@@ -183,17 +351,17 @@ local function rebuild_matcher()
 
   local term_fields = {}
 
-
   do
     local rules = get_all_rules()
 
+    update_time()
     local time = now()
 
     ---@param rule doorbell.rule
     ---@param match doorbell.rule.criteria
     ---@param value string
     local function add_criteria(rule, match, value)
-      if expired(rule, time) then
+      if rule:expired(time) then
         log.warn("skipping expired rule: ", rule.hash)
         return
       end
@@ -246,6 +414,10 @@ local function rebuild_matcher()
           add_criteria(r, CRITERIA.ua_plain, r.ua)
         end
       end
+
+      if r.country then
+        add_criteria(r, CRITERIA.country, r.country)
+      end
     end
   end
 
@@ -262,6 +434,7 @@ local function rebuild_matcher()
 
   local hosts   = criteria[CRITERIA.host]  or empty
   local methods = criteria[CRITERIA.method] or empty
+  local countries = criteria[CRITERIA.country] or empty
 
 
   local addrs = criteria[CRITERIA.addr]  or empty
@@ -382,6 +555,7 @@ local function rebuild_matcher()
     local host   = assert(req.host, "missing request host")
     local method = assert(req.method, "missing request method")
     local ua     = req.ua or ""
+    local country = req.country
 
     ---@type doorbell.rule[]
     local match = new_match()
@@ -391,6 +565,10 @@ local function rebuild_matcher()
     update_match(match, methods[method])
     update_match(match, hosts[host])
     update_match(match, uas_plain[ua])
+
+    if country then
+      update_match(match, countries[country])
+    end
 
     if not match.terminate then
       -- plain/exact matches trump regex or cidr lookups
@@ -419,23 +597,6 @@ local function rebuild_matcher()
     return res
   end
 end
-
----@class doorbell.rule : table
----@field action     doorbell.action
----@field source     doorbell.source
----@field hash       string
----@field created    number
----@field expires    number
----@field addr       string
----@field cidr       string
----@field ua         string
----@field host       string
----@field path       string
----@field method     string
----@field country    string
----@field conditions number
----@field terminate  boolean
----@field key        string
 
 local CONDITIONS = {
   "addr",
@@ -505,6 +666,8 @@ do
     ua        = {"string"},
     created   = {"number"},
     terminate = {"boolean"},
+    country   = {"string"},
+    deny_action = {"string", false, const.deny_actions},
   }
 
   ---@param opts table
@@ -534,7 +697,7 @@ do
         ok = false
       end
 
-      if ok and lookup then
+      if ok and req and value ~= nil and lookup then
         if not lookup[value] then
           err(e_enum(name, tkeys(lookup), value))
         end
@@ -551,16 +714,19 @@ do
     local expires = opts.expires or 0
     local ttl = opts.ttl
 
+    update_time()
+    local time = now()
+
     if opts.ttl then
       if opts.expires then
         err("only one of `ttl` and `expires` allowed")
       elseif opts.ttl < 0 then
         err("`ttl` must be > 0")
       elseif opts.ttl > 0 then
-        expires = now() + opts.ttl
+        expires = time + opts.ttl
       end
     elseif expires > 0 then
-      ttl = expires - now()
+      ttl = ttl_from_expires(expires, time)
       if ttl <= 0 then
         err("rule is already expired")
       end
@@ -570,8 +736,12 @@ do
       err("`expires` must be >= 0")
     end
 
-    if #errors == 0 and not (opts.addr or opts.cidr or opts.ua or opts.method or opts.host or opts.path) then
-      err("at least one of `addr`|`cidr`|`ua`|`method`|`host`|`path` required")
+    if #errors == 0 and not (opts.addr or opts.cidr or opts.ua or opts.method or opts.host or opts.path or opts.country) then
+      err("at least one of `addr`|`cidr`|`ua`|`method`|`host`|`path`|`country` required")
+    end
+
+    if opts.action == const.actions.allow and opts.deny_action then
+      err("`deny_action` cannot be used when `action` is '" .. const.actions.allow .. "'")
     end
 
     local conditions = 0
@@ -595,25 +765,32 @@ do
       return nil, concat(errors, "\n")
     end
 
+    local deny_action
+    if opts.action == const.actions.deny then
+      deny_action = opts.deny_action or "exit"
+    end
+
+    ---@type doorbell.rule
     local rule = {
-      action  = opts.action,
-      source  = opts.source,
-      created = opts.created or now(),
-      expires = expires,
-      addr    = opts.addr,
-      cidr    = opts.cidr,
-      ua      = opts.ua,
-      host    = opts.host,
-      path    = opts.path,
-      method  = opts.method,
-      hash    = "",
-      conditions = conditions,
-      terminate = opts.terminate,
-      key = key,
+      action      = opts.action,
+      addr        = opts.addr,
+      cidr        = opts.cidr,
+      conditions  = conditions,
+      created     = opts.created or time,
+      deny_action = deny_action,
+      expires     = expires,
+      hash        = "",
+      host        = opts.host,
+      key         = key,
+      method      = opts.method,
+      path        = opts.path,
+      source      = opts.source,
+      terminate   = opts.terminate,
+      ua          = opts.ua,
     }
     rule.hash = hash_rule(rule)
 
-    return rule, nil, ttl
+    return hydrate_rule(rule)
   end
 end
 
@@ -641,12 +818,12 @@ end
 ---@return doorbell.rule? rule
 ---@return string? error
 function _M.add(opts, nobuild)
-  local rule, err, ttl = new_rule(opts)
+  local rule, err = new_rule(opts)
   if not rule then
     return nil, err
   end
   local unlock = lock_storage("add-rule")
-  assert(SHM:safe_set(rule.hash, encode(rule), ttl))
+  assert(SHM:safe_set(rule.hash, encode(rule), rule:ttl()))
   inc_version()
   if not nobuild then reload() end
   unlock()
@@ -658,13 +835,13 @@ end
 ---@return doorbell.rule? rule
 ---@return string? error
 function _M.upsert(opts, nobuild)
-  local rule, err, ttl = new_rule(opts)
+  local rule, err = new_rule(opts)
   if not rule then
     return nil, err
   end
 
   local unlock = lock_storage("update-rule")
-  assert(SHM:safe_set(rule.hash, encode(rule), ttl))
+  assert(SHM:safe_set(rule.hash, encode(rule), rule:ttl()))
   inc_version()
   if not nobuild then reload() end
   unlock()
@@ -713,20 +890,17 @@ function _M.match(req)
       key,
       rule.action
     )
-    local ttl
-    if rule.expires and rule.expires > 0 then
-      ttl = rule.expires - now()
-    end
 
-    if ttl and ttl < 0 then
+    local time = now()
+    if rule:expired(time) then
       return
     end
 
     if not cached then
       if rule.terminate then
-        cache:set(term_key(rule.key, req), rule, ttl)
+        cache:set(term_key(rule.key, req), rule, rule:ttl(time))
       else
-        cache:set(key, rule, ttl)
+        cache:set(key, rule, rule:ttl(time))
       end
     end
   end
@@ -747,6 +921,7 @@ function _M.save(fname)
   local version = get_version()
   local rules = get_all_rules()
   local fh, err = open(fname, "w+")
+
   if not fh then
     unlock()
     log.errf("failed opening save path (%s) for writing: %s", fname, err)
@@ -779,12 +954,13 @@ function _M.flush_expired()
   local unlock = lock_storage("flush-expired")
 
   SHM:flush_expired()
+  STATS:flush_expired()
 
   ---@type doorbell.rule[]
   local delete = {}
   local t = now()
   for _, rule in ipairs(get_all_rules()) do
-    if expired(rule, t) then
+    if rule:expired(t) then
       insert(delete, rule)
     end
   end
@@ -798,7 +974,7 @@ function _M.flush_expired()
   local count = #delete
 
   for _, rule in ipairs(delete) do
-    local ok, err = SHM:delete(rule.hash)
+    local ok, err = delete_rule(rule)
     if not ok then
       count = count - 1
       log.errf("failed deleting rule %s: %s", rule.hash, err)
@@ -814,7 +990,7 @@ end
 ---@param fname string
 ---@return boolean ok
 ---@return string? error
-function _M.load(fname)
+function _M.load(fname, set_stats)
   -- no lock: this should only run during init
   local fh, err = open(fname, "r")
   if not fh then
@@ -828,7 +1004,11 @@ function _M.load(fname)
     return nil, err
   end
 
-  local rules = decode(data)
+  ---@type doorbell.rule[]
+  local rules = {}
+  for i, rule in ipairs(decode(data)) do
+    rules[i] = hydrate_rule(rule, (set_stats and "set") or "pull")
+  end
   local count = 0
 
   local ok
@@ -844,16 +1024,16 @@ function _M.load(fname)
   local time = now()
 
   for _, rule in ipairs(rules) do
-    local ttl = 0
-    if rule.expires > 0 then
-      ttl = rule.expires - time
-      if ttl <= 0.1 then
-        ttl = -1
-      end
-    end
-    if ttl >= 0 then
+    -- Rules that are created from the doorbell config are only saved to disk
+    -- so that we can persist their stats (last match timestamp, match count, etc)
+    -- to disk.
+    --
+    -- We don't restore their contents because that could mean creating an
+    -- orphaned rule (if it no longer exists in the config).
+    local restore = not (rule:expired(time) or rule.source == const.sources.config)
+    if restore then
       count = count + 1
-      ok, err = SHM:safe_set(rule.hash, encode(rule), ttl)
+      ok, err = SHM:safe_set(rule.hash, encode(rule), rule:ttl(time))
       if not ok then
         log.alertf("failed restoring rule %s to shm: %s", rule.hash, err)
       end
@@ -901,6 +1081,22 @@ function _M.init_worker()
     -- cache size
     metrics.cache_items:set(cache:count())
   end)
+end
+
+---@param ctx table
+---@param start_time number
+function _M.log(ctx, start_time)
+  ---@type doorbell.rule
+  local rule = ctx.rule
+  if not rule then
+    return
+  end
+
+  local time = now()
+  inc_match_count(rule, time)
+  set_last_match(rule, start_time, time)
+  metrics.actions:inc(1, { rule.action })
+  metrics.cache_results:inc(1, { ctx.cached and "HIT" or "MISS" })
 end
 
 return _M

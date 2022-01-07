@@ -14,6 +14,7 @@ local random     = require "resty.random"
 local resty_lock = require "resty.lock"
 local str        = require "resty.string"
 local proc       = require "ngx.process"
+local new_tab    = require "table.new"
 
 local ngx               = ngx
 local var               = ngx.var
@@ -35,6 +36,7 @@ local get_method        = ngx.req.get_method
 local get_uri_args      = ngx.req.get_uri_args
 local exit              = ngx.exit
 local exiting = ngx.worker.exiting
+local sleep = ngx.sleep
 
 local HTTP_OK                    = ngx.HTTP_OK
 local HTTP_FORBIDDEN             = ngx.HTTP_FORBIDDEN
@@ -59,10 +61,22 @@ do
   cache = assert(lru.new(1000))
 end
 
+local function cache_get(key)
+  local value = cache:get(key)
+  log.debugf(
+    "cache %s for %q",
+    (value ~= nil and "HIT") or "MISS",
+    key
+  )
+  return value
+end
+
 local EMPTY = {}
 
 local WORKER_ID
 local WORKER_PID
+
+local TARPIT_INTERVAL = const.periods.minute * 5
 
 ---@type string
 local SAVE_PATH
@@ -78,6 +92,17 @@ local SHM_NAME = const.shm.doorbell
 
 ---@type resty.ipmatcher
 local TRUSTED
+
+
+local PRIVATE_IPS = ipmatcher.new({
+  "10.0.0.0/8",
+  "172.16.0.0/12",
+  "192.168.0.0/16",
+})
+
+local LOCALHOST_IPS = ipmatcher.new({
+  "127.0.0.0/8",
+})
 
 local BASE_URL, HOST
 
@@ -105,13 +130,50 @@ local function get_country(addr)
     return
   end
 
-  local result, err = GEOIP:lookup_value(addr, "country", "iso_code")
-  if not result then
-    log.errf("failed looking up %s in geoip db: %s", addr, err)
-    return
+  return GEOIP:lookup_value(addr, "country", "iso_code")
+end
+
+
+---@class doorbell.addr
+---@field country? string
+---@field localhost_ip boolean
+---@field private_ip boolean
+
+---@param addr string
+---@param ctx table
+---@return doorbell.addr
+local function collect_ip_data(addr, ctx)
+  local cache_key = "addr||" .. addr
+
+  ---@type doorbell.addr
+  local data = cache_get(cache_key)
+
+  if data then
+    ctx.country_code = data.country
+    ctx.localhost_ip = data.localhost_ip
+    ctx.private_ip = data.private_ip
+    return data
   end
 
-  return result
+  data = new_tab(0, 3)
+
+  local code, err = get_country(addr)
+  if code then
+    ctx.country_code = code
+    data.country = code
+  else
+    ctx.geoip_error = err
+  end
+
+  ctx.localhost_ip = LOCALHOST_IPS:match(addr) and true
+  data.localhost_ip = ctx.localhost_ip
+
+  ctx.private_ip = PRIVATE_IPS:match(addr) and true
+  data.private_ip = ctx.private_ip
+
+  cache:set(cache_key, data)
+
+  return data
 end
 
 
@@ -193,6 +255,9 @@ local function generate_request_token(req)
   local bytes = random.bytes(32, true)
   local token = str.to_hex(bytes)
   local key = "token:" .. token
+  for k, v in pairs(req) do
+    log.noticef("%s (%s) => %s", k, type(v), v)
+  end
   local value = encode(req)
   local ok, err = SHM:safe_add(key, value, TTL_PENDING)
   if not ok then
@@ -359,9 +424,12 @@ local HANDLERS = {
     return exit(HTTP_OK)
   end,
 
-  [STATES.deny] = function(req)
+  [STATES.deny] = function(req, ctx)
     log.notice("denying access for ", req.addr)
-    ngx.sleep(300)
+    if ctx.rule.deny_action == const.deny_actions.tarpit then
+      log.debugf("tarpit %s for %s seconds", req.addr, TARPIT_INTERVAL)
+      sleep(TARPIT_INTERVAL)
+    end
     return exit(HTTP_FORBIDDEN)
   end,
 
@@ -396,7 +464,7 @@ local HANDLERS = {
 local function require_trusted_ip(ctx)
   local ip = assert(var.realip_remote_addr, "no $realip_remote_addr")
   local key = "trusted:" .. ip
-  local trusted = cache:get(key)
+  local trusted = cache_get(key)
   if trusted == nil then
     trusted = TRUSTED:match(ip) or false
     cache:set(key, trusted)
@@ -449,7 +517,7 @@ function _M.init(opts)
   TRUSTED = assert(ipmatcher.new(opts.trusted or EMPTY))
 
   if opts.geoip_db then
-    local geoip = require("geoip")
+    local geoip = require("geoip.mmdb")
     local err
     GEOIP, err = geoip.load_database(opts.geoip_db)
     if not GEOIP then
@@ -459,7 +527,7 @@ function _M.init(opts)
 
   assert(proc.enable_privileged_agent(10))
 
-  local ok, err = rules.load(SAVE_PATH)
+  local ok, err = rules.load(SAVE_PATH, true)
   if not ok then
     log.err("failed loading rules from disk: ", err)
   end
@@ -523,7 +591,9 @@ do
     r.path    = r.uri:gsub("?.*", "")
     r.method  = assert(headers["x-forwarded-method"], "missing x-forwarded-method")
     r.ua      = headers["user-agent"]
-    r.country = get_country(r.addr)
+
+    local ip_data = collect_ip_data(r.addr, ctx)
+    r.country = ip_data.country
 
     return r
   end
@@ -551,7 +621,7 @@ function _M.ring()
 
   local state = get_auth_state(req, ctx)
 
-  return HANDLERS[state](req)
+  return HANDLERS[state](req, ctx)
 end
 
 ---@param req doorbell.request
@@ -714,7 +784,7 @@ end
 function _M.list_html()
   assert(SHM, "doorbell was not initialized")
   local list = rules.list()
-  local keys = {"addr", "cidr", "host", "ua", "method", "path"}
+  local keys = {"addr", "cidr", "host", "ua", "method", "path", "country"}
   local t = now()
   table.sort(list, function(a, b)
     return a.created > b.created
@@ -735,9 +805,18 @@ function _M.list_html()
     else
       rule.expires = tfmt(rule.expires)
     end
+
+    if rule.last_match then
+      rule.last_match = tfmt(rule.last_match)
+    else
+      rule.last_match = "never"
+    end
+
+    rule.match_count = rule.match_count or 0
+
   end
   header["content-type"] = "text/html"
-  say(template.rules_list({ rules = list }))
+  say(template.rules_list({ rules = list, conditions = keys }))
 end
 
 local LOG_BUF = { n = 0 }
@@ -806,6 +885,7 @@ local function init_agent()
   local save
   local last = rules.version()
   local interval = 15
+  local last_stamp = now()
 
   save = function(premature)
     if premature then
@@ -814,14 +894,37 @@ local function init_agent()
     rules.flush_expired()
 
     local version = rules.version()
-    if version ~= last then
+    local stamp = now()
+
+    if version ~= last or (stamp - last_stamp) > 60 then
       log.notice("saving rules...")
       local v = rules.save(SAVE_PATH)
       last = v or last
+      last_stamp = stamp
     end
     assert(timer_at(interval, save))
   end
   assert(timer_at(0, save))
+end
+
+function _M.save()
+  ngx.ctx.no_log = true
+  ngx.ctx.no_metrics = true
+
+  assert(SHM, "doorbell was not initialized")
+  if get_method() ~= "POST" then
+    return exit(HTTP_NOT_ALLOWED)
+  end
+  header["content-type"] = "text/plain"
+  local ok, err = rules.save(SAVE_PATH)
+  if ok then
+    say("success")
+    return exit(HTTP_CREATED)
+  end
+  log.err("failed saving rules to disk: ", err)
+  say("failure")
+  exit(HTTP_INTERNAL_SERVER_ERROR)
+
 end
 
 function _M.init_worker()
@@ -843,7 +946,7 @@ function _M.reload()
     return exit(HTTP_NOT_ALLOWED)
   end
   header["content-type"] = "text/plain"
-  local ok, err = rules.load(SAVE_PATH)
+  local ok, err = rules.load(SAVE_PATH, false)
   if ok then
     say("success")
     return exit(HTTP_CREATED)
@@ -864,14 +967,11 @@ function _M.log()
   local ctx = ngx.ctx
 
   release_request(ctx)
+  local start = start_time()
 
   if not ctx.no_metrics then
     metrics.requests:inc(1, {ngx.status})
-
-    if ctx.rule then
-      metrics.actions:inc(1, {ctx.rule.action})
-      metrics.cache_results:inc(1, {ctx.cached and "HIT" or "MISS" })
-    end
+    rules.log(ctx, start)
   end
 
   if ctx.no_log then
@@ -880,7 +980,7 @@ function _M.log()
 
   local duration
   local log_time = now()
-  local start = start_time()
+
   if start then
     duration = now() - start
   end
@@ -907,6 +1007,10 @@ function _M.log()
     start_time          = start,
     status              = ngx.status,
     uri                 = var.uri,
+    country_code        = ctx.country_code,
+    localhost_ip        = ctx.localhost_ip or false,
+    private_ip          = ctx.private_ip or false,
+    geoip_error         = ctx.geoip_error,
     worker = {
       id = WORKER_ID,
       pid = WORKER_PID,
