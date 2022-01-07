@@ -8,6 +8,8 @@ local cache = require "doorbell.cache"
 local ipmatcher = require "resty.ipmatcher"
 local new_tab = require "table.new"
 
+
+local setmetatable = setmetatable
 local assert = assert
 local var = ngx.var
 local exit = ngx.exit
@@ -29,11 +31,36 @@ local trusted
 local geoip
 
 
+local addr_mt = {
+  ---@param self doorbell.addr
+  __tostring = function(self)
+    if self.country then
+      return "ip(country:" .. self.country .. ")"
+    elseif self.localhost_ip then
+      return "ip(local)"
+    elseif self.private_ip then
+      return "ip(private)"
+    else
+      return "ip(unknown)"
+    end
+  end,
+}
+
 ---@class doorbell.addr
 ---@field country? string
 ---@field localhost_ip boolean
 ---@field private_ip boolean
 
+---@type doorbell.addr
+local nil_addr = setmetatable({
+  country = nil,
+  ["local"] = false,
+  private = false,
+  },
+  {
+    __tostring = function() return "unknown" end,
+  }
+)
 
 ---@param addr string
 ---@return string?
@@ -93,6 +120,13 @@ function _M.get(addr, ctx)
 
   ctx.private_ip = private:match(addr) and true
   data.private_ip = ctx.private_ip
+
+  -- use a single value as a negative lookup
+  if (data.country or data.localhost_ip or data.private_ip) then
+    setmetatable(data, addr_mt)
+  else
+    data = nil_addr
+  end
 
   cache:set("addr", addr, data)
 

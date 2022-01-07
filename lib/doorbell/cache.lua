@@ -14,6 +14,8 @@ local debugf = require("doorbell.log").debugf
 
 local lrucache = require "resty.lrucache"
 
+local tostring = tostring
+
 ---@param ns string
 ---@param key string
 ---@return any
@@ -22,7 +24,7 @@ function cache:get(ns, key)
   local value, stale = self.lru:get(cache_key)
 
   if value ~= nil then
-    debugf("cache HIT for %s => %q", cache_key, value)
+    debugf("cache HIT for %s => %q", cache_key, tostring(value))
   else
     if stale == nil then
       debugf("cache MISS for %s", cache_key)

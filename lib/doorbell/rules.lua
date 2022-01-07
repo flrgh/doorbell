@@ -34,6 +34,7 @@ local SHM = assert(ngx.shared[SHM_NAME], "rules SHM missing")
 local META_NAME = const.shm.doorbell
 local META = assert(ngx.shared[META_NAME], "main SHM missing")
 local STATS = assert(ngx.shared[const.shm.stats], "stats SHM missing")
+local SAVE_PATH
 
 local cache = require("doorbell.cache").new(1000)
 
@@ -119,7 +120,12 @@ do
     return ttl_from_expires(self.expires, at)
   end
 
-  rule_mt = { __index = rule }
+  rule_mt = {
+    __index = rule,
+    __tostring = function(self)
+      return "rule(" .. self.hash .. ")"
+    end
+  }
 end
 
 local function errorf(...)
@@ -855,9 +861,7 @@ function _M.match(req)
       key = req[ns]
       if key then
         rule = cache:get(ns, key)
-      end
-      if rule then
-        break
+        if rule then break end
       end
     end
   end
@@ -882,7 +886,7 @@ function _M.match(req)
     if not cached then
       if rule.terminate then
         ns = rule.key
-        key = req[key]
+        key = req[ns]
       end
 
       cache:set(ns, key, rule, rule:ttl(time))
@@ -1081,6 +1085,29 @@ function _M.log(ctx, start_time)
   set_last_match(rule, start_time, time)
   metrics.actions:inc(1, { rule.action })
   metrics.cache_results:inc(1, { ctx.cached and "HIT" or "MISS" })
+end
+
+---@param conf doorbell.config
+function _M.init(conf)
+  SAVE_PATH = conf.save_path
+
+  local ok, err = _M.load(SAVE_PATH, true)
+  if not ok then
+    log.alert("failed loading rules from disk: ", err)
+  end
+
+  for _, rule in ipairs(conf.allow or {}) do
+    rule.action = "allow"
+    rule.source = "config"
+    assert(_M.upsert(rule, true))
+  end
+
+  for _, rule in ipairs(conf.deny or {}) do
+    rule.action = "deny"
+    rule.source = "config"
+    assert(_M.upsert(rule, true))
+  end
+
 end
 
 return _M

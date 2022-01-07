@@ -6,6 +6,7 @@ local metrics = require "doorbell.metrics"
 
 local var = ngx.var
 local header = ngx.header
+local fmt = string.format
 
 
 local SCOPES = const.scopes

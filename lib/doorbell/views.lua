@@ -33,7 +33,7 @@ function _M.init(conf)
         error("failed loading view submodule " .. name .. ": " .. mod)
       end
 
-      local tpl, err = resty_template.compile(name)
+      local tpl, err = resty_template.compile(item)
       if not tpl then
         error("failed loading " .. name .. " template: " .. err)
       end

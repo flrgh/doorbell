@@ -98,9 +98,6 @@ local function generate_request_token(req)
   local bytes = random.bytes(32, true)
   local token = str.to_hex(bytes)
   local key = "token:" .. token
-  for k, v in pairs(req) do
-    log.noticef("%s (%s) => %s", k, type(v), v)
-  end
   local value = encode(req)
   local ok, err = SHM:safe_add(key, value, TTL_PENDING)
   if not ok then

@@ -125,39 +125,17 @@ local HANDLERS = {
 
 ---@param opts doorbell.config
 function _M.init(opts)
-  opts = opts or EMPTY
-
   config = require("doorbell.config").new(opts)
 
   require("doorbell.cache").init(config)
 
-  ip.init(opts)
-  views.init(opts)
-  notify.init(opts)
+  ip.init(config)
+  views.init(config)
+  notify.init(config)
+  auth.init(config)
+  rules.init(config)
 
   assert(proc.enable_privileged_agent(10))
-
-  local ok, err = rules.load(config.save_path, true)
-  if not ok then
-    log.err("failed loading rules from disk: ", err)
-  end
-
-  if opts.allow then
-    for _, rule in ipairs(opts.allow) do
-      rule.action = "allow"
-      rule.source = "config"
-      assert(rules.upsert(rule, true))
-    end
-  end
-
-  if opts.deny then
-    for _, rule in ipairs(opts.deny) do
-      rule.action = "deny"
-      rule.source = "config"
-      assert(rules.upsert(rule, true))
-    end
-  end
-
 
   rules.reload()
 end

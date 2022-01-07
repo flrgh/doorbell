@@ -12,7 +12,7 @@ RUN apk add --no-cache \
     curl \
         --fail \
         --silent \
-        --output /usr/local/openresty/lualib/resty/lfs_ffi.lua \
+        --output /usr/local/openresty/lualib/lfs_ffi.lua \
         --url https://raw.githubusercontent.com/spacewander/luafilesystem/0.3.0/lfs_ffi.lua
 
 
