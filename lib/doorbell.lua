@@ -73,12 +73,9 @@ local BASE_URL, HOST
 ---@type ngx.shared.DICT
 local SHM
 
-local GEOIP
-
 local STATES      = const.states
 local SCOPES      = const.scopes
 local SUBJECTS    = const.subjects
-local WAIT_TIME   = const.wait_time
 local PERIODS     = const.periods
 
 ---@type doorbell.notify_period[]
@@ -120,8 +117,6 @@ end
 ---@class doorbell.notify_period : table
 ---@field from integer
 ---@field to integer
-
-local is_pending = auth.is_pending
 
 ---@alias doorbell.handler fun(req:doorbell.request, ctx:doorbell.ctx)
 
@@ -207,16 +202,18 @@ function _M.init(opts)
     NOTIFY_PERIODS = opts.notify_periods
   end
 
+  local db
+
   if opts.geoip_db then
     local geoip = require("geoip.mmdb")
     local err
-    GEOIP, err = geoip.load_database(opts.geoip_db)
-    if not GEOIP then
+    db, err = geoip.load_database(opts.geoip_db)
+    if not db then
       log.alertf("failed loading geoip database file (%s): %s", opts.geoip_db, err)
     end
   end
 
-  ip.init({ geoip = GEOIP, cache = cache, trusted = opts.trusted })
+  ip.init({ geoip = db, cache = cache, trusted = opts.trusted })
 
   assert(proc.enable_privileged_agent(10))
 
@@ -481,7 +478,7 @@ end
 local LOG_BUF = { n = 0 }
 
 local function write_logs()
-  for _, = 1, 1000 do
+  for _ = 1, 1000 do
     if LOG_BUF.n > 0 then
       local entries = LOG_BUF
       local n = entries.n
