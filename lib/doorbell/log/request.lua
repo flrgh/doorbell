@@ -57,8 +57,7 @@ local function flush(fh)
   local n = 0
   local errors
   for i = 1, (entries.n or #entries) do
-    local json
-    json, err = encode(entries[i])
+    local json, err = encode(entries[i])
     if json ~= nil then
       n = n + 1
       buf[n] = json
@@ -71,8 +70,7 @@ local function flush(fh)
   if n > 0 then
     n = n + 1
     buf[n] = "\n"
-    local ok
-    ok, err = fh:write(concat(buf, "\n", 1, n))
+    local ok, err = fh:write(concat(buf, "\n", 1, n))
     if not ok then
       err = fmt("failed writing to %s: %s", PATH, err)
       if errors then
@@ -98,7 +96,8 @@ end
 
 ---@param premature boolean
 local function log_writer(premature)
-  if premature then
+  if premature or exiting() then
+    log.info("NGINX is exiting: flushing remaining logs")
     flush()
     return
   end
@@ -112,6 +111,7 @@ local function log_writer(premature)
 
   for _ = 1, ROUNDS do
     if exiting() then
+      log.info("NGINX is exiting: flushing remaining logs")
       flush(fh)
       break
     end

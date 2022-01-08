@@ -11,6 +11,7 @@ local ip      = require "doorbell.ip"
 local auth    = require "doorbell.auth"
 local views   = require "doorbell.views"
 local notify  = require "doorbell.notify"
+local cache   = require "doorbell.cache"
 
 local cjson      = require "cjson"
 local proc       = require "ngx.process"
@@ -24,6 +25,7 @@ local start_time        = ngx.req.start_time
 local get_method        = ngx.req.get_method
 local exit              = ngx.exit
 local sleep             = ngx.sleep
+local exiting           = ngx.worker.exiting
 
 local HTTP_OK                    = ngx.HTTP_OK
 local HTTP_FORBIDDEN             = ngx.HTTP_FORBIDDEN
@@ -111,7 +113,7 @@ local HANDLERS = {
 function _M.init(opts)
   config = require("doorbell.config").new(opts)
 
-  require("doorbell.cache").init(config)
+  cache.init(config)
 
   ip.init(config)
   views.init(config)
@@ -171,6 +173,7 @@ local function init_worker()
   metrics.init_worker(5)
   rules.init_worker()
   request.init_worker()
+  cache.init_worker()
 end
 
 local function init_agent()
@@ -180,7 +183,9 @@ local function init_agent()
   local last_stamp = now()
 
   save = function(premature)
-    if premature then
+    if premature or exiting() then
+      log.info("NGINX is exiting: saving the rules to disk one last time")
+      assert(rules.save(config.save_path))
       return
     end
     rules.flush_expired()

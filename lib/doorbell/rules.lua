@@ -36,7 +36,7 @@ local META = assert(ngx.shared[META_NAME], "main SHM missing")
 local STATS = assert(ngx.shared[const.shm.stats], "stats SHM missing")
 local SAVE_PATH
 
-local cache = require("doorbell.cache").new(1000)
+local cache = require("doorbell.cache").new("rules", 1000)
 
 local new_match, release_match
 do
@@ -331,10 +331,6 @@ local CRITERIA = {
 
 local check_match
 
----@type string[]
-local cache_terms = {}
-local cache_terms_n = 0
-
 local function rebuild_matcher()
   local criteria = {}
 
@@ -526,17 +522,6 @@ local function rebuild_matcher()
   end
 
   cache:flush_all()
-
-  do
-    local terms = {}
-    local n = 0
-    for field in pairs(term_fields) do
-      n = n + 1
-      terms[n] = field
-    end
-    cache_terms = terms
-    cache_terms_n = n
-  end
 
   ---@param req doorbell.request
   ---@return doorbell.rule?
@@ -849,28 +834,11 @@ function _M.match(req)
     reload()
   end
 
-  ---@type doorbell.rule
-  local rule
-
   local cached = true
-  local ns, key
+  local key = cache_key(req)
 
-  if cache_terms_n > 0 then
-    for i = 1, cache_terms_n do
-      ns = cache_terms[i]
-      key = req[ns]
-      if key then
-        rule = cache:get(ns, key)
-        if rule then break end
-      end
-    end
-  end
-
-  if not rule then
-    key = cache_key(req)
-    ns = "req"
-    rule = cache:get(ns, key)
-  end
+  ---@type doorbell.rule
+  local rule = cache:get("req", key)
 
   if not rule then
     cached = false
@@ -884,12 +852,7 @@ function _M.match(req)
     end
 
     if not cached then
-      if rule.terminate then
-        ns = rule.key
-        key = req[ns]
-      end
-
-      cache:set(ns, key, rule, rule:ttl(time))
+      cache:set("req", key, rule, rule:ttl(time))
     end
   end
 
@@ -1065,9 +1028,6 @@ function _M.init_worker()
         end
       end
     end
-
-    -- cache size
-    metrics.cache_items:set(cache:count())
   end)
 end
 
@@ -1084,7 +1044,6 @@ function _M.log(ctx, start_time)
   inc_match_count(rule, time)
   set_last_match(rule, start_time, time)
   metrics.actions:inc(1, { rule.action })
-  metrics.cache_results:inc(1, { ctx.cached and "HIT" or "MISS" })
 end
 
 ---@param conf doorbell.config

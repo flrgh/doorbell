@@ -47,15 +47,16 @@ function _M.init_worker(interval)
     { "status" }
   )
 
-  _M.cache_results = prometheus:counter(
-    "rules_cache_results",
-    "rules cache hit/miss counts",
-    { "status" }
+  _M.cache_lookups = prometheus:counter(
+    "cache_lookups",
+    "LRU cache hit/miss counts",
+    { "name", "status" }
   )
 
-  _M.cache_items = prometheus:gauge(
-    "rules_cache_items_total",
-    "number of items in the rules LRU cache"
+  _M.cache_entries = prometheus:gauge(
+    "cache_entries",
+    "number of items in the LRU cache(s)",
+    { "name" }
   )
 
   _M.rules = prometheus:gauge(

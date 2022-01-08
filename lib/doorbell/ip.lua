@@ -37,7 +37,6 @@ _M.localhost = ipmatcher.new({
   "127.0.0.0/8",
 })
 
-
 ---@param ctx doorbell.ctx
 function _M.require_trusted(ctx)
   assert(cache, "doorbell.ip module not initialized")
@@ -67,24 +66,23 @@ function _M.get_country(addr)
 
   local country = cache:get("geoip", addr)
 
-  if country then
-    return country
+  if country ~= nil then
+    return country or nil
   end
 
   local err
   country, err = lookup(addr)
-
-  if err then
-    return nil, err
-  elseif not country then
-    cache:set("addr", addr, false)
-
-    return
+  if country then
+    cache:set("geoip", addr, country)
+    return country
   end
 
-  cache:set("addr", addr, country)
+  if err == "failed to find entry" or err == nil then
+    cache:set("geoip", addr, false)
+    err = nil
+  end
 
-  return country
+  return nil, err
 end
 
 ---@param opts doorbell.config

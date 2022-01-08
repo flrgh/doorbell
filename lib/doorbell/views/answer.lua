@@ -7,6 +7,7 @@ local metrics = require "doorbell.metrics"
 local var = ngx.var
 local header = ngx.header
 local fmt = string.format
+local print = ngx.print
 
 
 local SCOPES = const.scopes
@@ -60,7 +61,7 @@ return function(ctx)
     local current_ip = (var.arg_current and true) or false
 
     header["content-type"] = "text/html"
-    ngx.print(render_form(ctx.template, req, errors, current_ip))
+    print(render_form(ctx.template, req, errors, current_ip))
     return ngx.exit(ngx.HTTP_OK)
   end
 

@@ -26,6 +26,7 @@ local fetch   = tb.fetch
 local release = tb.release
 
 local WORKER_ID, WORKER_PID
+local LOG = true
 
 ---@class doorbell.request : table
 ---@field addr     string
@@ -113,7 +114,7 @@ end
 
 ---@param ctx doorbell.ctx
 function _M.log(ctx)
-  if ctx.no_log then
+  if LOG == false or ctx.no_log then
     return
   end
 
@@ -162,12 +163,18 @@ end
 function _M.init_worker()
   WORKER_PID = ngx.worker.pid()
   WORKER_ID  = ngx.worker.id()
-  logger.init_worker()
+  if LOG then
+    logger.init_worker()
+  end
 end
 
 ---@param opts doorbell.config
 function _M.init(opts)
-  logger.init(opts)
+  if opts.log_path == "/dev/null" then
+    LOG = false
+  else
+    logger.init(opts)
+  end
 end
 
 return _M
