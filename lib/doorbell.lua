@@ -16,20 +16,13 @@ local cjson      = require "cjson"
 local proc       = require "ngx.process"
 
 local ngx               = ngx
-local var               = ngx.var
 local header            = ngx.header
 local now               = ngx.now
-local run_worker_thread = ngx.run_worker_thread
 local timer_at          = ngx.timer.at
 local say               = ngx.say
-local get_headers       = ngx.req.get_headers
-local http_version      = ngx.req.http_version
 local start_time        = ngx.req.start_time
-local get_resp_headers  = ngx.resp.get_headers
 local get_method        = ngx.req.get_method
-local get_uri_args      = ngx.req.get_uri_args
 local exit              = ngx.exit
-local exiting           = ngx.worker.exiting
 local sleep             = ngx.sleep
 
 local HTTP_OK                    = ngx.HTTP_OK
@@ -40,18 +33,11 @@ local HTTP_CREATED               = ngx.HTTP_CREATED
 local HTTP_BAD_REQUEST           = ngx.HTTP_BAD_REQUEST
 local HTTP_NOT_ALLOWED           = ngx.HTTP_NOT_ALLOWED
 
-local tonumber = tonumber
-local ipairs   = ipairs
 local assert   = assert
 local encode   = cjson.encode
 
 ---@class doorbell.config : table
 local config
-
-local EMPTY = {}
-
-local WORKER_ID
-local WORKER_PID
 
 local TARPIT_INTERVAL = const.periods.minute * 5
 
@@ -66,8 +52,6 @@ local STATES = const.states
 ---@field rule            doorbell.rule
 ---@field request_headers table
 ---@field trusted_ip      boolean
----@field private_ip      boolean
----@field localhost_ip    boolean
 ---@field request         doorbell.request
 ---@field country_code    string
 ---@field geoip_error     string
@@ -134,6 +118,7 @@ function _M.init(opts)
   notify.init(config)
   auth.init(config)
   rules.init(config)
+  request.init(config)
 
   assert(proc.enable_privileged_agent(10))
 
@@ -182,70 +167,10 @@ function _M.list_html()
   return views.rule_list(ctx)
 end
 
-local LOG_BUF = { n = 0 }
-
-local function write_logs()
-  for _ = 1, 1000 do
-    if LOG_BUF.n > 0 then
-      local entries = LOG_BUF
-      local n = entries.n
-
-      LOG_BUF = { n = 0 }
-
-      local ok, log_err, written
-
-      if run_worker_thread then
-        local thread_ok
-        thread_ok, ok, log_err, written = run_worker_thread(
-          "doorbell.log.writer",
-          "doorbell.log.request",
-          "write",
-          config.log_path,
-          entries
-        )
-
-        if not thread_ok then
-          log.alert("log writer thread failed: ", ok)
-          written = 0
-        end
-      else
-        -- ngx.run_worker_thread is new
-
-        ok, log_err, written = require("doorbell.log.request").write(
-          config.log_path,
-          entries
-        )
-      end
-
-      if not ok then
-        local failed = n - written
-        log.alertf("failed writing %s/%s to the log: %s", failed, n, log_err)
-      end
-
-      log.debugf("wrote %s entries to the log file", written)
-    else
-      sleep(1)
-    end
-  end
-
-  local ok, err = timer_at(1, write_logs)
-  if not ok then
-    log.alert("failed to reschedule log writer: ", err)
-  end
-end
-
-local function append_log_entry(entry)
-  local n = LOG_BUF.n + 1
-  LOG_BUF[n] = entry
-  LOG_BUF.n = n
-end
-
 local function init_worker()
   metrics.init_worker(5)
   rules.init_worker()
-  assert(timer_at(0, write_logs))
-  WORKER_PID = ngx.worker.pid()
-  WORKER_ID  = ngx.worker.id()
+  request.init_worker()
 end
 
 local function init_agent()
@@ -336,7 +261,6 @@ end
 function _M.log()
   local ctx = ngx.ctx
 
-  request.release(ctx)
   local start = start_time()
 
   if not ctx.no_metrics then
@@ -344,51 +268,8 @@ function _M.log()
     rules.log(ctx, start)
   end
 
-  if ctx.no_log then
-    return
-  end
-
-  local duration
-  local log_time = now()
-
-  if start then
-    duration = now() - start
-  end
-
-  local entry = {
-    addr                = var.remote_addr,
-    client_addr         = var.realip_remote_addr,
-    connection          = var.connection,
-    connection_requests = tonumber(var.connection_requests),
-    connection_time     = var.connection_time,
-    duration            = duration,
-    host                = var.host,
-    http_version        = http_version(),
-    log_time            = log_time,
-    method              = get_method(),
-    path                = var.uri:gsub("?.*", ""),
-    query               = get_uri_args(1000),
-    remote_port         = tonumber(var.remote_port),
-    request_headers     = ctx.request_headers or get_headers(1000),
-    request_uri         = var.request_uri,
-    response_headers    = get_resp_headers(1000),
-    rule                = ctx.rule,
-    scheme              = var.scheme,
-    start_time          = start,
-    status              = ngx.status,
-    uri                 = var.uri,
-    country_code        = ctx.country_code,
-    localhost_ip        = ctx.localhost_ip or false,
-    private_ip          = ctx.private_ip or false,
-    geoip_error         = ctx.geoip_error,
-    worker = {
-      id = WORKER_ID,
-      pid = WORKER_PID,
-      exiting = exiting()
-    },
-  }
-
-  append_log_entry(entry)
+  request.log(ctx)
+  request.release(ctx)
 end
 
 return _M
