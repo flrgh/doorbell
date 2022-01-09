@@ -9,6 +9,7 @@ RUN apk add --no-cache \
     luarocks install lua-resty-ipmatcher && \
     luarocks install lua-resty-template && \
     luarocks install nginx-lua-prometheus && \
+    luarocks install lua-resty-pushover && \
     curl \
         --fail \
         --silent \
@@ -16,7 +17,6 @@ RUN apk add --no-cache \
         --url https://raw.githubusercontent.com/spacewander/luafilesystem/0.3.0/lfs_ffi.lua
 
 
-COPY ./lua-resty-pushover/lib/resty/* /usr/local/openresty/lualib/resty/
 COPY ./lib/ /usr/local/openresty/lualib/
 COPY ./nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
 COPY ./assets/ /opt/doorbell/assets/
