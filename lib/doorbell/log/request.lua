@@ -18,11 +18,51 @@ local INTERVAL = 1
 local QSIZE    = 5
 local ROUNDS   = 100
 
+---@type string
 local PATH
 
-local ENTRIES = { n = 0 }
+---@type table[]
+local ENTRIES
 
+---@type string[]
 local buf = { n = 0 }
+
+---@type string[]
+local errors = { n = 0 }
+
+---@param t any[]
+---@param value any
+local function append(t, value)
+  local n = t.n + 1
+  t[n] = value
+  t.n = n
+end
+
+---@param t any[]
+local function clear(t)
+  local n = t.n
+  if n > 0 then
+    for i = 1, n do
+      t[i] = nil
+    end
+    t.n = 0
+  end
+end
+
+---@param t any[]
+---@param sep? string
+---@param start? number
+---@param stop? number
+---@return string?
+local function join(t, sep, start, stop)
+  local n = t.n
+  if n == 0 then
+    return
+  end
+  local s = concat(t, sep, start or 1, stop or n)
+  clear(t)
+  return s
+end
 
 ---@param fh? file*
 ---@return boolean ok
@@ -54,26 +94,22 @@ local function flush(fh)
     end
   end
 
-  local n = 0
-  local errors
   for i = 1, (entries.n or #entries) do
     local json, jerr = encode(entries[i])
     if json ~= nil then
-      n = n + 1
-      buf[n] = json
+      append(buf, json)
     else
-      errors = errors or {}
-      insert(errors, fmt("failed encoding entry #%s: %s", i, jerr))
+      append(errors, fmt("failed encoding entry #%s: %s", i, jerr))
     end
   end
 
+  local n = buf.n
   if n > 0 then
-    n = n + 1
-    buf[n] = "\n"
-    local ok, werr = fh:write(concat(buf, "\n", 1, n))
+    append(buf, "\n")
+    local ok, werr = fh:write(join(buf, "\n"))
     if not ok then
-      errors = errors or {}
-      insert(errors, fmt("failed writing to %s: %s", PATH, werr))
+      n = 0
+      append(errors, fmt("failed writing to %s: %s", PATH, werr))
     end
   end
 
@@ -81,9 +117,7 @@ local function flush(fh)
     fh:close()
   end
 
-  if errors then
-    err = concat(errors, "\n")
-  end
+  err = join(errors, "\n")
 
   if err then
     return nil, err, n
@@ -124,7 +158,7 @@ local function log_writer(premature)
     if not ok then
       local failed = expect - written
       log.alertf("failed writing %s/%s entries to the log: %s", failed, expect, err)
-    else
+    elseif written > 0 then
       log.debugf("wrote %s entries to the log", written)
     end
   end
@@ -143,9 +177,12 @@ function _M.add(entry)
     return
   end
 
-  local n = ENTRIES.n + 1
-  ENTRIES[n] = entry
-  ENTRIES.n = n
+  if not entry then
+    log.warn("nil entry passed in")
+    return
+  end
+
+  append(ENTRIES, entry)
 
   if SEM:count() < 0 then
     SEM:post(1)
@@ -155,6 +192,7 @@ end
 ---@param conf doorbell.config
 function _M.init(conf)
   PATH = conf.log_path
+  ENTRIES = { n = 0 }
 end
 
 function _M.init_worker()
