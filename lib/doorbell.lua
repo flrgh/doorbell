@@ -177,31 +177,7 @@ local function init_worker()
 end
 
 local function init_agent()
-  local save
-  local last = rules.version()
-  local interval = 15
-  local last_stamp = now()
-
-  save = function(premature)
-    if premature or exiting() then
-      log.info("NGINX is exiting: saving the rules to disk one last time")
-      assert(rules.save(config.save_path))
-      return
-    end
-    rules.flush_expired()
-
-    local version = rules.version()
-    local stamp = now()
-
-    if version ~= last or (stamp - last_stamp) > 60 then
-      log.notice("saving rules...")
-      local v = rules.save(config.save_path)
-      last = v or last
-      last_stamp = stamp
-    end
-    assert(timer_at(interval, save))
-  end
-  assert(timer_at(0, save))
+  rules.init_agent()
 end
 
 function _M.save()

@@ -12,11 +12,13 @@ local ngx     = ngx
 local re_find = ngx.re.find
 local now     = ngx.now
 local update_time = ngx.update_time
+local timer_at = ngx.timer.at
 
 local assert  = assert
 local encode = cjson.encode
 local decode = cjson.decode
 local max    = math.max
+local min = math.min
 local ceil   = math.ceil
 local fmt    = string.format
 local insert = table.insert
@@ -27,6 +29,7 @@ local ipairs = ipairs
 local type   = type
 local open = io.open
 local setmetatable = setmetatable
+local exiting = ngx.worker.exiting
 
 local SHM_NAME  = const.shm.rules
 local SHM       = assert(ngx.shared[SHM_NAME], "rules SHM missing")
@@ -285,8 +288,9 @@ local function hydrate_rule(json, stats)
   return rule
 end
 
+---@param include_stats boolean
 ---@return doorbell.rule[]
-local function get_all_rules()
+local function get_all_rules(include_stats)
   local rules = {}
   local n = 0
 
@@ -296,12 +300,66 @@ local function get_all_rules()
     local value = SHM:get(key)
     if value then
       n = n + 1
-      rules[n] = hydrate_rule(value, "pull")
+      rules[n] = hydrate_rule(value, include_stats and "pull")
     end
   end
 
   return rules
 end
+
+local function inc_version()
+  assert(META:incr("rules:version", 1, 0))
+end
+
+--- flush any expired rules from shared memory
+local function flush_expired(premature, schedule)
+  if premature or exiting() then
+    return
+  end
+
+  local unlock = lock_storage("flush-expired")
+
+  SHM:flush_expired()
+  STATS:flush_expired()
+
+  ---@type doorbell.rule[]
+  local delete = {}
+  local t = now()
+  local min_ttl = const.periods.hour
+  for _, rule in ipairs(get_all_rules()) do
+    local expired, ttl = rule:expired(t)
+    if expired then
+      insert(delete, rule)
+    else
+      min_ttl = min(min_ttl, ttl)
+    end
+  end
+
+  if #delete == 0 then
+    log.debug("no expired rules to delete")
+    unlock()
+    return
+  end
+
+  local count = #delete
+
+  for _, rule in ipairs(delete) do
+    local ok, err = delete_rule(rule)
+    if not ok then
+      count = count - 1
+      log.errf("failed deleting rule %s: %s", rule.hash, err)
+    end
+  end
+
+  inc_version()
+  unlock()
+  log.debugf("removed %s expired rules", count)
+
+  if schedule then
+    assert(timer_at(min_ttl, flush_expired, schedule))
+  end
+end
+
 
 ---@param s string
 ---@return boolean
@@ -364,6 +422,8 @@ local function rebuild_matcher()
   local max_possible_conditions = 0
 
   do
+    flush_expired(false, false)
+
     local rules = get_all_rules()
 
     update_time()
@@ -775,10 +835,6 @@ local function get_version()
   return META:get("rules:version") or 0
 end
 
-local function inc_version()
-  assert(META:incr("rules:version", 1, 0))
-end
-
 local function reload()
   local version = get_version()
   local start = now()
@@ -861,7 +917,7 @@ end
 
 --- retrieve a list of all current rules
 function _M.list()
-  return get_all_rules()
+  return get_all_rules(true)
 end
 
 --- save rules from shared memory to disk
@@ -870,7 +926,7 @@ end
 function _M.save(fname)
   local unlock = lock_storage("save")
   local version = get_version()
-  local rules = get_all_rules()
+  local rules = get_all_rules(true)
   local fh, err = open(fname, "w+")
 
   if not fh then
@@ -905,41 +961,34 @@ function _M.reload()
   return reload()
 end
 
---- flush any expired rules from shared memory
-function _M.flush_expired()
-  local unlock = lock_storage("flush-expired")
 
-  SHM:flush_expired()
-  STATS:flush_expired()
+function _M.init_agent()
+  assert(timer_at(0, flush_expired, true))
 
-  ---@type doorbell.rule[]
-  local delete = {}
-  local t = now()
-  for _, rule in ipairs(get_all_rules()) do
-    if rule:expired(t) then
-      insert(delete, rule)
+  local save
+  local last = get_version()
+  local interval = 15
+  local last_stamp = now()
+
+  save = function(premature)
+    if premature or exiting() then
+      log.info("NGINX is exiting: saving the rules to disk one last time")
+      assert(_M.save(SAVE_PATH))
+      return
     end
-  end
 
-  if #delete == 0 then
-    log.debug("no expired rules to delete")
-    unlock()
-    return
-  end
+    local version = get_version()
+    local stamp = now()
 
-  local count = #delete
-
-  for _, rule in ipairs(delete) do
-    local ok, err = delete_rule(rule)
-    if not ok then
-      count = count - 1
-      log.errf("failed deleting rule %s: %s", rule.hash, err)
+    if version ~= last or (stamp - last_stamp) > 60 then
+      log.notice("saving rules...")
+      local v = _M.save(SAVE_PATH)
+      last = v or last
+      last_stamp = stamp
     end
+    assert(timer_at(interval, save))
   end
-
-  inc_version()
-  unlock()
-  log.debugf("removed %s expired rules", count)
+  assert(timer_at(0, save))
 end
 
 --- reload rules from disk
