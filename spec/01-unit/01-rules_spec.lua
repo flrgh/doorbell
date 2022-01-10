@@ -235,7 +235,7 @@ describe("doorbell.rules", function()
     it("auto-generates the `hash` field based on rule conditions", function()
       local rule, err = new { ua = "test", action = "deny", source = "config" }
       assert.is_nil(err)
-      assert.equals("b1eef463848dc017b6511f870194db86", rule.hash)
+      assert.equals("c6327873a06d2806f4584678ff658a79", rule.hash)
 
       local other = new { ua = "test", action = "allow", source = "user"}
       assert.equals(rule.hash, other.hash)

@@ -597,7 +597,8 @@ do
     buf[4] = rule.host   or ""
     buf[5] = rule.path   or ""
     buf[6] = rule.ua     or ""
-    local s = concat(buf, "||")
+    buf[7] = rule.country or ""
+    local s = concat(buf, "||", 1, 7)
     return md5(s)
   end
 end
