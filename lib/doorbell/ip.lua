@@ -56,6 +56,11 @@ function _M.require_trusted(ctx)
   ctx.trusted_ip = trusted
 end
 
+---@return boolean
+function _M.geoip_enabled()
+  return (geoip and true) or false
+end
+
 ---@param addr string
 ---@return string? country
 ---@return string? error

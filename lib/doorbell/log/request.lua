@@ -42,12 +42,12 @@ local function flush(fh)
   ENTRIES = { n = 0 }
 
   local need_close = false
+  local err
   if fh then
     fh:seek("end")
   else
     need_close = true
 
-    local err
     fh, err = open(PATH, "a+")
     if not fh then
       return nil, err, 0
@@ -57,25 +57,23 @@ local function flush(fh)
   local n = 0
   local errors
   for i = 1, (entries.n or #entries) do
-    local json, err = encode(entries[i])
+    local json, jerr = encode(entries[i])
     if json ~= nil then
       n = n + 1
       buf[n] = json
     else
       errors = errors or {}
-      insert(errors, fmt("failed encoding entry #%s: %s", i, err))
+      insert(errors, fmt("failed encoding entry #%s: %s", i, jerr))
     end
   end
 
   if n > 0 then
     n = n + 1
     buf[n] = "\n"
-    local ok, err = fh:write(concat(buf, "\n", 1, n))
+    local ok, werr = fh:write(concat(buf, "\n", 1, n))
     if not ok then
-      err = fmt("failed writing to %s: %s", PATH, err)
-      if errors then
-        insert(errors, err)
-      end
+      errors = errors or {}
+      insert(errors, fmt("failed writing to %s: %s", PATH, werr))
     end
   end
 
@@ -127,7 +125,7 @@ local function log_writer(premature)
       local failed = expect - written
       log.alertf("failed writing %s/%s entries to the log: %s", failed, expect, err)
     else
-      log.debuf("wrote %s entries to the log", written)
+      log.debugf("wrote %s entries to the log", written)
     end
   end
 

@@ -6,7 +6,7 @@ local resty_lock = require "resty.lock"
 local const = require "doorbell.constants"
 local log = require "doorbell.log"
 local metrics = require "doorbell.metrics"
-
+local ip = require "doorbell.ip"
 
 local ngx     = ngx
 local re_find = ngx.re.find
@@ -27,13 +27,12 @@ local ipairs = ipairs
 local type   = type
 local open = io.open
 local setmetatable = setmetatable
-local floor = math.floor
 
-local SHM_NAME = const.shm.rules
-local SHM = assert(ngx.shared[SHM_NAME], "rules SHM missing")
+local SHM_NAME  = const.shm.rules
+local SHM       = assert(ngx.shared[SHM_NAME], "rules SHM missing")
 local META_NAME = const.shm.doorbell
-local META = assert(ngx.shared[META_NAME], "main SHM missing")
-local STATS = assert(ngx.shared[const.shm.stats], "stats SHM missing")
+local META      = assert(ngx.shared[META_NAME], "main SHM missing")
+local STATS     = assert(ngx.shared[const.shm.stats], "stats SHM missing")
 local SAVE_PATH
 
 local cache = require("doorbell.cache").new("rules", 1000)
@@ -62,10 +61,6 @@ do
 end
 
 
-local function show(t)
-  log.notice(require("inspect")(t))
-end
-
 ---@param exp number
 ---@return number ttl
 local function ttl_from_expires(exp, t)
@@ -75,8 +70,8 @@ local function ttl_from_expires(exp, t)
 
   t = t or now()
 
-  local ttl = floor(exp - t)
-  if ttl <= 0 then
+  local ttl = exp - t
+  if ttl >= 0 and ttl < 1 then
     ttl = -1
   end
 
@@ -105,10 +100,12 @@ do
   ---@field deny_action doorbell.deny_action
   ---@field match_count integer
   ---@field last_match number
+  ---@field comment    string
   local rule = {}
 
   ---@param at? number
-  ---@return boolean
+  ---@return boolean expired
+  ---@return number  ttl
   function rule:expired(at)
     local ttl = ttl_from_expires(self.expires, at)
     return ttl < 0, ttl
@@ -152,18 +149,24 @@ local function lock_storage(action)
   end
 end
 
---- generate a cache key for a request object
----@param  req doorbell.request
----@return string
-local function cache_key(req)
-  return fmt(
-    "%s||%s||%s||%s||%s",
-    req.addr,
-    req.method,
-    req.host,
-    req.path,
-    req.ua
-  )
+local cache_key
+do
+  local have_geoip = ip.geoip_enabled()
+  --- generate a cache key for a request object
+  ---@param  req doorbell.request
+  ---@return string
+  function cache_key(req)
+    local country = (have_geoip and req.country) or "_"
+    return fmt(
+      "%s||%s||%s||%s||%s||%s",
+      req.addr,
+      country,
+      req.method,
+      req.host,
+      req.path,
+      req.ua
+    )
+  end
 end
 
 local DENY  = const.actions.deny
@@ -306,6 +309,30 @@ local function is_regex(s)
   return s:sub(1, 1) == "~"
 end
 
+---@param a doorbell.rule
+---@param b doorbell.rule
+---@return boolean
+local function cmp_rule(a, b)
+  -- termintation rules have the highest priority
+  if a.terminate ~= b.terminate then
+    return a.terminate == true
+  end
+
+  -- more conditions, mo better
+  if a.conditions ~= b.conditions then
+    return a.conditions > b.conditions
+  end
+
+  -- deny actions have priority over allow
+  if a.action ~= b.action then
+    return a.action == DENY
+  end
+
+  -- else, the newest rule wins
+  return a.created > b.created
+end
+
+
 ---@alias doorbell.rule.criteria
 ---| '"addr"'
 ---| '"cidr"'
@@ -334,9 +361,7 @@ local check_match
 local function rebuild_matcher()
   local criteria = {}
 
-  local max_conditions = 0
-
-  local term_fields = {}
+  local max_possible_conditions = 0
 
   do
     local rules = get_all_rules()
@@ -353,7 +378,7 @@ local function rebuild_matcher()
         return
       end
 
-      max_conditions = max(max_conditions, rule.conditions)
+      max_possible_conditions = max(max_possible_conditions, rule.conditions)
 
       criteria[match] = criteria[match] or {}
       criteria[match][value] = criteria[match][value] or { n = 0 }
@@ -365,10 +390,6 @@ local function rebuild_matcher()
     for i = 1, #rules do
       ---@type doorbell.rule
       local r = rules[i]
-
-      if r.terminate and r.key then
-        term_fields[r.key] = true
-      end
 
       if r.addr then
         add_criteria(r, CRITERIA.addr, r.addr)
@@ -443,9 +464,8 @@ local function rebuild_matcher()
     for i = 1, t.n do
       local item = t[i]
       local re = item[1]
-      local matched = item[2]
       if re_find(value, re, "oj") then
-        return matched
+        return item[2]
       end
     end
   end
@@ -477,7 +497,7 @@ local function rebuild_matcher()
             match.terminate = true
           end
 
-          -- if our rule has met more conditions than any other, so can clear out
+          -- if our rule has met more conditions than any other, we can clear out
           -- prior matches
           if terminate or count > match.conditions then
             match.conditions = count
@@ -496,29 +516,6 @@ local function rebuild_matcher()
         end
       end
     end
-  end
-
-  ---@param a doorbell.rule
-  ---@param b doorbell.rule
-  ---@return boolean
-  local function cmp_rule(a, b)
-    -- termintation rules have the highest priority
-    if a.terminate ~= b.terminate then
-      return a.terminate == true
-    end
-
-    -- deny actions have priority over allow
-    if a.action ~= b.action then
-      return a.action == DENY
-    end
-
-    -- this probably shouldn't happen
-    if a.conditions ~= b.conditions then
-      return a.conditions > b.conditions
-    end
-
-    -- else, the newest rule wins
-    return a.created > b.created
   end
 
   cache:flush_all()
@@ -553,7 +550,7 @@ local function rebuild_matcher()
       -- we've matched the path, ua, or addr already
       --
       -- first, see if we have a match with the maximal number of conditions met
-      if match.conditions < max_conditions then
+      if match.conditions < max_possible_conditions then
         update_match(match, cidrs:match(addr))
         if not match.terminate then
           update_match(match, regex_match(paths_regex, path))
@@ -572,6 +569,8 @@ local function rebuild_matcher()
     release_match(match)
     return res
   end
+
+  return check_match
 end
 
 local CONDITIONS = {
@@ -592,13 +591,12 @@ do
   ---@param rule doorbell.rule
   ---@return string
   function hash_rule(rule)
-    buf[1] = rule.action
-    buf[2] = rule.addr   or ""
-    buf[3] = rule.cidr   or ""
-    buf[4] = rule.method or ""
-    buf[5] = rule.host   or ""
-    buf[6] = rule.path   or ""
-    buf[7] = rule.ua     or ""
+    buf[1] = rule.addr   or ""
+    buf[2] = rule.cidr   or ""
+    buf[3] = rule.method or ""
+    buf[4] = rule.host   or ""
+    buf[5] = rule.path   or ""
+    buf[6] = rule.ua     or ""
     local s = concat(buf, "||")
     return md5(s)
   end
@@ -623,6 +621,7 @@ do
     for k in pairs(t) do
       insert(keys, fmt("%q", k))
     end
+    sort(keys)
     return concat(keys, "|")
   end
 
@@ -644,6 +643,7 @@ do
     terminate = {"boolean"},
     country   = {"string"},
     deny_action = {"string", false, const.deny_actions},
+    comment   = {"string"},
   }
 
   ---@param opts table
@@ -673,7 +673,7 @@ do
         ok = false
       end
 
-      if ok and req and value ~= nil and lookup then
+      if ok and value ~= nil and lookup then
         if not lookup[value] then
           err(e_enum(name, tkeys(lookup), value))
         end
@@ -688,7 +688,6 @@ do
     validate(opts)
 
     local expires = opts.expires or 0
-    local ttl = opts.ttl
 
     update_time()
     local time = now()
@@ -702,8 +701,7 @@ do
         expires = time + opts.ttl
       end
     elseif expires > 0 then
-      ttl = ttl_from_expires(expires, time)
-      if ttl <= 0 then
+      if ttl_from_expires(expires, time) <= 0 then
         err("rule is already expired")
       end
     end
@@ -712,7 +710,7 @@ do
       err("`expires` must be >= 0")
     end
 
-    if #errors == 0 and not (opts.addr or opts.cidr or opts.ua or opts.method or opts.host or opts.path or opts.country) then
+    if not (opts.addr or opts.cidr or opts.ua or opts.method or opts.host or opts.path or opts.country) then
       err("at least one of `addr`|`cidr`|`ua`|`method`|`host`|`path`|`country` required")
     end
 
@@ -763,6 +761,7 @@ do
       source      = opts.source,
       terminate   = opts.terminate,
       ua          = opts.ua,
+      comment     = opts.comment,
     }
     rule.hash = hash_rule(rule)
 
@@ -799,7 +798,7 @@ function _M.add(opts, nobuild)
     return nil, err
   end
   local unlock = lock_storage("add-rule")
-  assert(SHM:safe_set(rule.hash, encode(rule), rule:ttl()))
+  assert(SHM:safe_add(rule.hash, encode(rule), rule:ttl()))
   inc_version()
   if not nobuild then reload() end
   unlock()
@@ -892,6 +891,11 @@ function _M.save(fname)
 
   unlock()
   return version
+end
+
+function _M.reset()
+  SHM:flush_all()
+  assert(SHM:flush_expired(0))
 end
 
 --- reload the rule matching function from shared memory
@@ -1067,6 +1071,14 @@ function _M.init(conf)
     assert(_M.upsert(rule, true))
   end
 
+end
+
+---@diagnostic disable-next-line
+if _G._TEST then
+  _M._new_rule = new_rule
+  _M._ttl_from_expires = ttl_from_expires
+  _M._cmp_rule = cmp_rule
+  _M._rebuild_matcher = rebuild_matcher
 end
 
 return _M

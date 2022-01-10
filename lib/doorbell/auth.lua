@@ -12,7 +12,6 @@ local resty_lock = require "resty.lock"
 local random     = require "resty.random"
 local str        = require "resty.string"
 local cjson      = require "cjson"
-local pushover   = require "resty.pushover"
 
 local encode     = cjson.encode
 local decode     = cjson.decode

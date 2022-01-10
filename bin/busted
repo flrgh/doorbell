@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+exec resty \
+    -I ./lib \
+    --http-include "./spec/fixtures/busted.nginx.http.conf" \
+    -l "spec.busted-runner"
