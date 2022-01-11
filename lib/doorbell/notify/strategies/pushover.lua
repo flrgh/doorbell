@@ -59,7 +59,7 @@ function _M.send(req, url)
     log.debug("pushover notify response: ", encode(res))
   end
 
-  return sent, err
+  return sent, err, res
 end
 
 

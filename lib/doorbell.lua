@@ -201,6 +201,45 @@ function _M.save()
 
 end
 
+function _M.notify_test()
+  local ctx = ngx.ctx
+  request.no_log(ctx)
+  request.no_metrics(ctx)
+
+  assert(SHM, "doorbell was not initialized")
+  if get_method() ~= "POST" then
+    return exit(HTTP_NOT_ALLOWED)
+  end
+
+  local req = {
+    addr = "178.45.6.125",
+    ua = "Mozilla/5.0 (X11; Ubuntu; Linux i686) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2830.76 Safari/537.36",
+    host = "prometheus.pancakes2.com",
+    uri = "/wikindex.php?f=/NmRtJOUjAdutReQj/scRjKUhleBpzmTyO.txt",
+    scheme = "https",
+    country = "US",
+    method = "GET",
+    path = "/wikindex.php",
+  }
+  local token = "TEST"
+
+  local ok, err, res = notify.send(req, token)
+
+  local response = {
+    strategy = notify.strategy,
+    status   = (ok and "OK") or "FAIL",
+    error    = err,
+    response = res,
+  }
+
+  local status = ok and HTTP_OK or HTTP_INTERNAL_SERVER_ERROR
+  ngx.status = status
+  header["content-type"] = "application/json"
+  ngx.print(cjson.encode(response))
+  exit(0)
+end
+
+
 function _M.init_worker()
   assert(SHM, "doorbell was not initialized")
 

@@ -24,7 +24,7 @@ local periods
 
 ---@class doorbell.notify.strategy
 ---@field init fun(conf:doorbell.notify.config)
----@field send fun(req:doorbell.request, url:string):boolean, string
+---@field send fun(req:doorbell.request, url:string):boolean, string, string|table|nil
 local strategy
 
 ---@param conf doorbell.config
@@ -40,6 +40,8 @@ function _M.init(conf)
   if not periods then
     log.warn("no notify periods configured; auth requests will be sent at all hours")
   end
+
+  _M.strategy = strat
 end
 
 function _M.send(req, token)

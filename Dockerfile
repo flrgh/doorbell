@@ -1,6 +1,7 @@
 FROM openresty/openresty:alpine-fat
 
 RUN apk add --no-cache \
+        ca-certificates \
         libmaxminddb && \
     ln -v -s /usr/lib/libGeoIP.so.1 /usr/lib/libGeoIP.so && \
     ln -v -s /usr/lib/libmaxminddb.so.0 /usr/lib/libmaxminddb.so && \
