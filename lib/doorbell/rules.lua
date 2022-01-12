@@ -863,6 +863,9 @@ function _M.add(opts, nobuild)
   local ok, shm_err = SHM:safe_add(rule.hash, encode(rule), rule:ttl())
   if not ok then
     unlock()
+    if err == "exists" then
+      return nil, err
+    end
     errorf("failed adding rule: %s", shm_err)
   end
   ok, err = inc_version()

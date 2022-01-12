@@ -158,10 +158,91 @@ function _M.answer()
   return views.answer(ctx)
 end
 
-function _M.list()
+local function get_json_request_body()
+  ngx.req.read_body()
+  local body, err = ngx.req.get_body_data()
+  if not body then
+    local fname = ngx.req.get_body_file()
+    if fname then
+      local fh
+      fh, err = io.open(fname, "r")
+      if fh then
+        body, err = fh:read("*a")
+        fh:close()
+      end
+    end
+  end
+
+  if body and body ~= "" then
+    local json, jerr = safe_decode(body)
+    if jerr then
+      return nil, err
+    elseif json ~= nil then
+      return json
+    end
+  end
+
+  return nil, err
+end
+
+function _M.rules_api()
   assert(SHM, "doorbell was not initialized")
+  ip.require_trusted(ngx.ctx)
+
+  local hash = var.rule_hash
+  if hash == "" then hash = nil end
+
+  local status, res
+
+  local method = get_method()
+
+  if method == "GET" then
+    local list = rules.list()
+    if hash then
+      for _, rule in ipairs(list) do
+        if rule.hash == hash then
+          res = rule
+          break
+        end
+      end
+    else
+      res = list
+    end
+
+    if res then
+      status = ngx.HTTP_OK
+    else
+      status = ngx.HTTP_NOT_FOUND
+    end
+
+  elseif method == "POST" then
+    if hash then
+      status = HTTP_NOT_ALLOWED
+      res = { error = "method not allowed" }
+
+    else
+      local json, err = get_json_request_body()
+      if not json then
+        status = HTTP_BAD_REQUEST
+        res = { error = "failed reading request body json: " .. tostring(err or "unknown") }
+
+      else
+        local rule, rerr = rules.add(json)
+        if not rule then
+          status = HTTP_BAD_REQUEST
+          res = { error = "failed adding rule: " .. tostring(rerr or "unknown") }
+
+        else
+          res = rule
+          status = ngx.HTTP_CREATED
+        end
+      end
+    end
+  end
+
+  ngx.status = status or 200
   header["content-type"] = "application/json"
-  say(encode(rules.list()))
+  say(cjson.encode(res))
 end
 
 function _M.list_html()
