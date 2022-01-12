@@ -132,9 +132,14 @@ local function errorf(...)
   error(fmt(...))
 end
 
+local LOCK_OPTS = {
+  exptime = 30,
+  timeout = 5,
+}
+
 ---@nodiscard
 local function lock_storage(action)
-  local lock, err = resty_lock:new(META_NAME)
+  local lock, err = resty_lock:new(META_NAME, LOCK_OPTS)
   if not lock then
     errorf("failed creating storage lock (action = %s): %s", action, err or "unknown")
   end
@@ -308,7 +313,7 @@ local function get_all_rules(include_stats)
 end
 
 local function inc_version()
-  assert(META:incr("rules:version", 1, 0))
+  return META:incr("rules:version", 1, 0)
 end
 
 --- flush any expired rules from shared memory
@@ -855,8 +860,16 @@ function _M.add(opts, nobuild)
     return nil, err
   end
   local unlock = lock_storage("add-rule")
-  assert(SHM:safe_add(rule.hash, encode(rule), rule:ttl()))
-  inc_version()
+  local ok, shm_err = SHM:safe_add(rule.hash, encode(rule), rule:ttl())
+  if not ok then
+    unlock()
+    errorf("failed adding rule: %s", shm_err)
+  end
+  ok, err = inc_version()
+  if not ok then
+    unlock()
+    errorf("failed incrementing version: %s", err)
+  end
   if not nobuild then reload() end
   unlock()
   return rule
@@ -873,8 +886,17 @@ function _M.upsert(opts, nobuild)
   end
 
   local unlock = lock_storage("update-rule")
-  assert(SHM:safe_set(rule.hash, encode(rule), rule:ttl()))
-  inc_version()
+  local ok, shm_err = SHM:safe_set(rule.hash, encode(rule), rule:ttl())
+  if not ok then
+    unlock()
+    errorf("failed adding rule: %s", shm_err)
+  end
+  ok, err = inc_version()
+  if not ok then
+    unlock()
+    errorf("failed incrementing version: %s", err)
+  end
+
   if not nobuild then reload() end
   unlock()
   return rule
@@ -932,22 +954,27 @@ function _M.save(fname)
   if not fh then
     unlock()
     log.errf("failed opening save path (%s) for writing: %s", fname, err)
-    return version
+    return false
   end
 
+  local failed = false
   local ok
   ok, err = fh:write(encode(rules))
   if not ok then
+    failed = true
     log.err("failed writing rules to disk: ", err)
   end
+
   ok, err = fh:close()
   if not ok then
+    failed = true
     log.err("failed closing file handle: ", err)
   end
   log.noticef("saved %s rules to disk", #rules)
 
+  ok, err = META:safe_set("rules:last-save", ngx.now())
   unlock()
-  return version
+  return failed or version
 end
 
 function _M.reset()
@@ -971,24 +998,61 @@ function _M.init_agent()
   local last_stamp = now()
 
   save = function(premature)
-    if premature or exiting() then
-      log.info("NGINX is exiting: saving the rules to disk one last time")
-      assert(_M.save(SAVE_PATH))
-      return
-    end
+    for _ = 1, 1000 do
+      if premature or exiting() then
+        log.info("NGINX is exiting: saving the rules to disk one last time")
+        assert(_M.save(SAVE_PATH))
+        return
+      end
 
-    local version = get_version()
-    local stamp = now()
+      local need_save = false
+      local req_stamp = META:get("rules:request-save") or 0
 
-    if version ~= last or (stamp - last_stamp) > 60 then
-      log.notice("saving rules...")
-      local v = _M.save(SAVE_PATH)
-      last = v or last
-      last_stamp = stamp
+      if req_stamp > 0 then
+        log.debug("got save request from a worker process")
+        need_save = true
+      else
+        local version = get_version()
+        local stamp = now()
+
+        if version ~= last or (stamp - last_stamp) > 60 then
+          need_save = true
+          last_stamp = stamp
+        end
+      end
+
+      if need_save then
+        log.notice("saving rules...")
+        local v = _M.save(SAVE_PATH)
+        last = v or last
+        if (META:get("rules:request-save") or 0) == req_stamp then
+          META:delete("rules:request-save")
+        end
+      end
+
+      ngx.sleep(1)
     end
     assert(timer_at(interval, save))
   end
   assert(timer_at(0, save))
+end
+
+function _M.request_save()
+  local before = META:get("rules:last-save") or 0
+  local time = ngx.now()
+  local ok, err = META:safe_set("rules:request-save", time)
+  if not ok then
+    return nil, err
+  end
+  local waited = 0
+  while waited < 10 do
+    local stamp = META:get("rules:last-save") or 0
+    if stamp >= before and stamp >= time then
+      return true
+    end
+  end
+
+  return nil, "timeout"
 end
 
 --- reload rules from disk

@@ -94,19 +94,20 @@ local function flush(fh)
     end
   end
 
-  for i = 1, (entries.n or #entries) do
+  local n = 0
+  for i = 1, len do
     local json, jerr = encode(entries[i])
-    if json ~= nil then
-      append(buf, json)
-    else
+    if jerr then
       append(errors, fmt("failed encoding entry #%s: %s", i, jerr))
+    else
+      n = n + 1
+      append(buf, json)
+      append(buf, "\n")
     end
   end
 
-  local n = buf.n
   if n > 0 then
-    append(buf, "\n")
-    local ok, werr = fh:write(join(buf, "\n"))
+    local ok, werr = fh:write(join(buf))
     if not ok then
       n = 0
       append(errors, fmt("failed writing to %s: %s", PATH, werr))

@@ -15,6 +15,7 @@ local cache   = require "doorbell.cache"
 
 local cjson      = require "cjson"
 local proc       = require "ngx.process"
+local safe_decode = require("cjson.safe").decode
 
 local ngx               = ngx
 local header            = ngx.header
@@ -26,6 +27,7 @@ local get_method        = ngx.req.get_method
 local exit              = ngx.exit
 local sleep             = ngx.sleep
 local exiting           = ngx.worker.exiting
+local var               = ngx.var
 
 local HTTP_OK                    = ngx.HTTP_OK
 local HTTP_FORBIDDEN             = ngx.HTTP_FORBIDDEN
@@ -189,16 +191,21 @@ function _M.save()
   if get_method() ~= "POST" then
     return exit(HTTP_NOT_ALLOWED)
   end
-  header["content-type"] = "text/plain"
-  local ok, err = rules.save(config.save_path)
-  if ok then
-    say("success")
-    return exit(HTTP_CREATED)
-  end
-  log.err("failed saving rules to disk: ", err)
-  say("failure")
-  exit(HTTP_INTERNAL_SERVER_ERROR)
 
+  local ok, err = rules.request_save()
+
+  ngx.status = (ok and HTTP_CREATED) or HTTP_INTERNAL_SERVER_ERROR
+
+  header["content-type"] = "text/plain"
+
+  if err then
+    log.err("failed saving rules to disk: ", err)
+    say("failure")
+  else
+    say("success")
+  end
+
+  return exit(0)
 end
 
 function _M.notify_test()
@@ -290,6 +297,52 @@ function _M.log()
 
   request.log(ctx)
   request.release(ctx)
+end
+
+function _M.shm_api()
+  assert(SHM, "doorbell was not initialized")
+  ip.require_trusted(ngx.ctx)
+
+  local zone, key = var.zone, var.key
+  log.debugf("zone: %s, key: %s", zone, key)
+  if key == "" then
+    key = nil
+  end
+  if zone == "" then
+    zone = nil
+  end
+
+  local res, err
+  if not zone then
+    res = {}
+    for name in pairs(ngx.shared) do
+      table.insert(res, name)
+    end
+  elseif not key then
+    local shm = ngx.shared[zone]
+    if shm then
+      res, err = shm:get_keys(0)
+    end
+  else
+    local shm = ngx.shared[zone]
+    if shm then
+      res, err = shm:get(key)
+      if res ~= nil then
+        local json, jerr = safe_decode(res)
+        if jerr == nil then
+          res = json
+        end
+      end
+    end
+  end
+
+  ngx.status = (res ~= nil and 200) or 404
+  header["content-type"] = "application/json"
+  if res == nil then
+    res = err
+  end
+  ngx.say(cjson.encode(res))
+  ngx.exit(0)
 end
 
 return _M
