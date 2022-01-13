@@ -254,19 +254,23 @@ local function save_rule(rule, inplace, stamp)
 end
 
 ---@param id string
----@return doorbell.rule?
-local function get_by_id(id)
-  local hash = HASH:get(id)
-  if not id then return end
-  return SHM:get(hash)
+---@return string?
+local function get_hash_by_id(id)
+  return HASH:get(id)
 end
 
 local function get(hash_or_id)
   if #hash_or_id == 36 then
-    return get_by_id(hash_or_id)
+    hash_or_id = get_hash_by_id(hash_or_id)
+  end
+  if not hash_or_id then
+    return
   end
 
-  return SHM:get(hash_or_id)
+  local rule = SHM:get(hash_or_id)
+  if rule then
+    return hydrate_rule(rule, true)
+  end
 end
 
 
@@ -887,16 +891,7 @@ function _M.get(id_or_hash)
   if type(id_or_hash) ~= "string" then
     return nil, "input must be a string"
   end
-
-  local len = #id_or_hash
-
-  if len == 32 then
-    return SHM:get(id_or_hash)
-  elseif len == 36 then
-    return get_by_id(id_or_hash)
-  end
-
-  return nil, "bad rule id or hash"
+  return get(id_or_hash)
 end
 
 --- create or update a rule
