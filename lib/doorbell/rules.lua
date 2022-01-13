@@ -317,12 +317,12 @@ local function inc_version()
 end
 
 --- flush any expired rules from shared memory
-local function flush_expired(premature, schedule)
+local function flush_expired(premature, schedule, locked)
   if premature or exiting() then
     return
   end
 
-  local unlock = lock_storage("flush-expired")
+  local unlock = locked or lock_storage("flush-expired")
 
   SHM:flush_expired()
   STATS:flush_expired()
@@ -342,7 +342,7 @@ local function flush_expired(premature, schedule)
 
   if #delete == 0 then
     log.debug("no expired rules to delete")
-    unlock()
+    if not locked then unlock() end
     return
   end
 
@@ -357,7 +357,7 @@ local function flush_expired(premature, schedule)
   end
 
   inc_version()
-  unlock()
+  if not locked then unlock() end
   log.debugf("removed %s expired rules", count)
 
   if schedule then
@@ -427,7 +427,7 @@ local function rebuild_matcher()
   local max_possible_conditions = 0
 
   do
-    flush_expired(false, false)
+    flush_expired(false, false, true)
 
     local rules = get_all_rules()
 
