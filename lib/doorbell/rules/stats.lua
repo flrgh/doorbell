@@ -3,8 +3,8 @@ local _M = {
 }
 
 local const = require "doorbell.constants"
-local log = require "doorbell.log"
-local util = require "doorbell.util"
+local log   = require "doorbell.log"
+local util  = require "doorbell.util"
 
 local ipairs   = ipairs
 local type     = type
@@ -13,14 +13,19 @@ local timer_at = ngx.timer.at
 local exiting  = ngx.worker.exiting
 local sleep    = ngx.sleep
 
-local SHM = assert(ngx.shared[const.shm.stats], "stats SHM missing")
 local SAVE_PATH
 
+local SHM  = assert(ngx.shared[const.shm.stats], "stats SHM missing")
+local META = assert(ngx.shared[const.shm.doorbell], "main SHM missing")
+
 local function need_save(x)
+  local key = "stats:need-save"
+
   if type(x) == "number" then
-    return SHM:incr("need-save", x, 1, 0) or 0
+    return META:incr(key, x, 1, 0) or 0
   end
-  return SHM:get("need-save") or 0
+
+  return META:get(key) or 0
 end
 
 local function tpl(f)

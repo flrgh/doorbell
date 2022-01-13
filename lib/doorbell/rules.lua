@@ -18,6 +18,7 @@ local re_find     = ngx.re.find
 local now         = ngx.now
 local update_time = ngx.update_time
 local timer_at    = ngx.timer.at
+local sleep       = ngx.sleep
 
 local assert       = assert
 local encode       = cjson.encode
@@ -64,6 +65,29 @@ do
   function release_match(m)
     release(pool, m)
   end
+end
+
+local function need_save(x)
+  local key = "rules:need-save"
+
+  if type(x) == "number" then
+    return META:incr(key, x, 1, 0) or 0
+  end
+  return META:get(key) or 0
+end
+
+local function last_saved(x)
+  local key = "rules:last-saved"
+
+  if type(x) == "number" then
+    local ok, err = META:safe_set(key, x)
+    if not ok then
+      log.alertf("failed setting %s: %s", key, err)
+      return 0
+    end
+    return x
+  end
+  return META:get(key) or 0
 end
 
 
@@ -274,7 +298,7 @@ local function flush_expired(premature, schedule, locked)
     end
   end
 
-  inc_version()
+  need_save(1)
   if not locked then unlock() end
   log.debugf("removed %s expired rules", count)
 
@@ -787,6 +811,7 @@ function _M.add(opts, nobuild)
     errorf("failed adding rule: %s", shm_err)
   end
   ok, err = inc_version()
+  need_save(1)
   if not ok then
     unlock()
     errorf("failed incrementing version: %s", err)
@@ -813,6 +838,7 @@ function _M.upsert(opts, nobuild)
     errorf("failed adding rule: %s", shm_err)
   end
   ok, err = inc_version()
+  need_save(1)
   if not ok then
     unlock()
     errorf("failed incrementing version: %s", err)
@@ -880,7 +906,8 @@ function _M.save(fname)
 
   log.noticef("saved %s rules to disk", #rules)
 
-  ok, err = META:safe_set("rules:last-save", ngx.now())
+  last_saved(now())
+
   unlock()
   return version
 end
@@ -896,70 +923,60 @@ function _M.reload()
   return reload()
 end
 
+local function saver(premature)
+  if premature then
+    return
+  end
+
+  local last = now()
+
+  for _ = 1, 1000 do
+    if exiting() then
+      return
+    end
+
+    local c = need_save()
+    if c > 0 then
+      _M.save(SAVE_PATH)
+      need_save(-c)
+      last = now()
+    elseif (now() - last) > 60 then
+      _M.save(SAVE_PATH)
+      last = now()
+    else
+      sleep(1)
+    end
+  end
+
+  assert(timer_at(0, saver))
+end
+
 
 function _M.init_agent()
   assert(timer_at(0, flush_expired, true))
+  assert(timer_at(0, saver))
   stats.init_agent()
-
-  local save
-  local last = get_version()
-  local interval = 15
-  local last_stamp = now()
-
-  save = function(premature)
-    for _ = 1, 1000 do
-      if premature or exiting() then
-        log.info("NGINX is exiting: saving the rules to disk one last time")
-        assert(_M.save(SAVE_PATH))
-        return
-      end
-
-      local need_save = false
-      local req_stamp = META:get("rules:request-save") or 0
-
-      if req_stamp > 0 then
-        log.debug("got save request from a worker process")
-        need_save = true
-      else
-        local version = get_version()
-        local stamp = now()
-
-        if version ~= last or (stamp - last_stamp) > 60 then
-          need_save = true
-          last_stamp = stamp
-        end
-      end
-
-      if need_save then
-        log.notice("saving rules...")
-        local v = _M.save(SAVE_PATH)
-        last = v or last
-        if (META:get("rules:request-save") or 0) == req_stamp then
-          META:delete("rules:request-save")
-        end
-      end
-
-      ngx.sleep(1)
-    end
-    assert(timer_at(interval, save))
-  end
-  assert(timer_at(0, save))
 end
 
 function _M.request_save()
-  local before = META:get("rules:last-save") or 0
-  local time = ngx.now()
-  local ok, err = META:safe_set("rules:request-save", time)
-  if not ok then
+  local before = last_saved()
+  local time = now()
+
+  local _, err = need_save(1)
+  if err then
     return nil, err
   end
+
   local waited = 0
   while waited < 10 do
-    local stamp = META:get("rules:last-save") or 0
+    local stamp = last_saved()
     if stamp >= before and stamp >= time then
       return true
     end
   end
+
+  sleep(0.01)
+  waited = waited + 0.01
 
   return nil, "timeout"
 end
