@@ -173,12 +173,11 @@ function _M.load(rules)
   end
 
   local time = now()
+  local empty = {}
   for _, rule in ipairs(rules) do
-    local st = stats[rule.hash]
-    if st then
-      _last_matched(rule, st.last_match or rule.last_match or nil, rule:ttl(time))
-      _match_count(rule, st.match_count or rule.match_count or nil, rule:ttl(time))
-    end
+    local st = stats[rule.hash] or empty
+    _last_matched(rule, st.last_match or rule.last_match or nil, rule:ttl(time))
+    _match_count(rule, st.match_count or rule.match_count or nil, rule:ttl(time))
   end
 end
 
