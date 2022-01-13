@@ -94,6 +94,8 @@ const.shm = {
   metrics  = "doorbell_metrics",
   -- storage statistics
   stats    = "doorbell_stats",
+
+  rule_hash = "doorbell_rules_hash",
 }
 
 return const

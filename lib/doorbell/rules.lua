@@ -42,6 +42,7 @@ local SHM       = assert(ngx.shared[SHM_NAME], "rules SHM missing")
 local META_NAME = const.shm.doorbell
 local META      = assert(ngx.shared[META_NAME], "main SHM missing")
 local SAVE_PATH
+local HASH  = assert(ngx.shared[const.shm.rule_hash])
 
 local cache = require("doorbell.cache").new("rules", 1000)
 
@@ -235,6 +236,49 @@ local function hydrate_rule(json, pull_stats)
   end
 
   return rule
+end
+
+---@param rule doorbell.rule
+---@param inplace boolean
+---@return boolean ok
+---@return string? error
+local function save_rule(rule, inplace, stamp)
+  local exp, ttl = rule:expired(stamp)
+  if exp then
+    return nil, "expired"
+  end
+
+  local ok, err
+  if inplace then
+    ok, err = HASH:safe_set(rule.hash, rule.id, ttl)
+  else
+    ok, err = HASH:safe_add(rule.hash, rule.id, ttl)
+  end
+
+  if not ok then
+    return nil, err
+  end
+
+  return SHM:safe_set(rule.id, encode(rule), ttl)
+end
+
+---@param rule doorbell.rule
+---@return boolean ok
+---@return string? error
+local function delete_rule(rule)
+  local ok, err = SHM:set(rule.id, nil)
+  if not ok then
+    return nil, err
+  end
+  return HASH:set(rule.hash, nil)
+end
+
+---@param hash string
+---@return doorbell.rule?
+local function get_by_hash(hash)
+  local id = HASH:get(hash)
+  if not id then return end
+  return SHM:get(id)
 end
 
 ---@param include_stats boolean
@@ -805,7 +849,7 @@ function _M.add(opts, nobuild)
     return nil, err
   end
   local unlock = lock_storage("add-rule")
-  local ok, shm_err = SHM:safe_add(rule.hash, encode(rule), rule:ttl())
+  local ok, shm_err = save_rule(rule, false)
   if not ok then
     unlock()
     if err == "exists" then
@@ -813,15 +857,35 @@ function _M.add(opts, nobuild)
     end
     errorf("failed adding rule: %s", shm_err)
   end
-  ok, err = inc_version()
+
   need_save(1)
+
+  ok, err = inc_version()
   if not ok then
     unlock()
     errorf("failed incrementing version: %s", err)
   end
+
   if not nobuild then reload() end
   unlock()
   return rule
+end
+
+---@return doorbell.rule?
+function _M.get(id_or_hash)
+  if type(id_or_hash) ~= "string" then
+    return nil, "input must be a string"
+  end
+
+  local len = #id_or_hash
+
+  if len == 36 then
+    return SHM:get(id_or_hash)
+  elseif len == 32 then
+    return get_by_hash(id_or_hash)
+  end
+
+  return nil, "bad rule id or hash"
 end
 
 --- create or update a rule
@@ -835,7 +899,7 @@ function _M.upsert(opts, nobuild)
   end
 
   local unlock = lock_storage("update-rule")
-  local ok, shm_err = SHM:safe_set(rule.hash, encode(rule), rule:ttl())
+  local ok, shm_err = save_rule(rule, true)
   if not ok then
     unlock()
     errorf("failed adding rule: %s", shm_err)

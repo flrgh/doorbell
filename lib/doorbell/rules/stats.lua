@@ -55,12 +55,13 @@ local function get_all()
   end
 
   for _, key in ipairs(keys) do
-    local hash, stat = key:match("([^:]+):(.+)")
-    if hash and stat then
+    local id = key:sub(1, 36)
+    local stat = key:sub(38)
+    if id and stat then
       local value = SHM:get(key)
       if value then
-        stats[hash] = stats[hash] or {}
-        stats[hash][stat] = value
+        stats[id] = stats[id] or {}
+        stats[id][stat] = value
       end
     end
   end

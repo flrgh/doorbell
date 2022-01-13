@@ -195,12 +195,7 @@ function _M.rules_api()
   if method == "GET" then
     local list = rules.list()
     if hash then
-      for _, rule in ipairs(list) do
-        if rule.hash == hash then
-          res = rule
-          break
-        end
-      end
+      res = rules.get(hash)
     else
       res = list
     end
