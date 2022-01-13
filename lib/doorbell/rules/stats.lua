@@ -6,11 +6,12 @@ local const = require "doorbell.constants"
 local log = require "doorbell.log"
 local util = require "doorbell.util"
 
-local ipairs = ipairs
-local type = type
-local now = ngx.now
+local ipairs   = ipairs
+local type     = type
+local now      = ngx.now
 local timer_at = ngx.timer.at
-local exiting = ngx.worker.exiting
+local exiting  = ngx.worker.exiting
+local sleep    = ngx.sleep
 
 local SHM = assert(ngx.shared[const.shm.stats], "stats SHM missing")
 local SAVE_PATH
