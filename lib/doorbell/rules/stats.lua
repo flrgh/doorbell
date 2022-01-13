@@ -12,6 +12,7 @@ local now      = ngx.now
 local timer_at = ngx.timer.at
 local exiting  = ngx.worker.exiting
 local sleep    = ngx.sleep
+local insert   = table.insert
 
 local SAVE_PATH
 
@@ -65,6 +66,27 @@ local function get_all()
     end
   end
 
+  return stats
+end
+
+local function table_keys(t)
+  local tmp = {}
+  for k in pairs(t) do insert(tmp, k) end
+  return ipairs(tmp)
+end
+
+
+---@param stats table<string, doorbell.rule.stat>
+---@return table<string, doorbell.rule.stat>
+local function remove_empty(stats)
+  for _, key in table_keys(stats) do
+    local v = stats[key]
+    if (v.last_match == nil or v.last_match == 0)
+      and (v.match_count == nil or v.match_count == 0)
+    then
+      stats[key] = nil
+    end
+  end
   return stats
 end
 
@@ -161,7 +183,7 @@ end
 
 function _M.save()
   log.infof("saving stats data to %s", SAVE_PATH)
-  local ok, err = util.write_json_file(SAVE_PATH, get_all())
+  local ok, err = util.write_json_file(SAVE_PATH, remove_empty(get_all()))
   if not ok then
     log.err("failed writing stats to disk: ", err)
   end
