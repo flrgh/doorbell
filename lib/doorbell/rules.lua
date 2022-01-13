@@ -1,41 +1,44 @@
-local _M = {}
+local _M = {
+  _VERSION = require("doorbell.constants").version,
+}
 
-local cjson = require "cjson"
+local const   = require "doorbell.constants"
+local log     = require "doorbell.log"
+local metrics = require "doorbell.metrics"
+local ip      = require "doorbell.ip"
+local stats   = require "doorbell.rules.stats"
+local util    = require "doorbell.util"
+
+local cjson      = require "cjson"
 local ipmatcher  = require "resty.ipmatcher"
 local resty_lock = require "resty.lock"
-local const = require "doorbell.constants"
-local log = require "doorbell.log"
-local metrics = require "doorbell.metrics"
-local ip = require "doorbell.ip"
 
-local ngx     = ngx
-local re_find = ngx.re.find
-local now     = ngx.now
+local ngx         = ngx
+local re_find     = ngx.re.find
+local now         = ngx.now
 local update_time = ngx.update_time
-local timer_at = ngx.timer.at
+local timer_at    = ngx.timer.at
 
-local assert  = assert
-local encode = cjson.encode
-local decode = cjson.decode
-local max    = math.max
-local min = math.min
-local ceil   = math.ceil
-local fmt    = string.format
-local insert = table.insert
-local sort   = table.sort
-local concat = table.concat
-local pairs  = pairs
-local ipairs = ipairs
-local type   = type
-local open = io.open
+local assert       = assert
+local encode       = cjson.encode
+local decode       = cjson.decode
+local max          = math.max
+local min          = math.min
+local ceil         = math.ceil
+local fmt          = string.format
+local insert       = table.insert
+local sort         = table.sort
+local concat       = table.concat
+local pairs        = pairs
+local ipairs       = ipairs
+local type         = type
 local setmetatable = setmetatable
-local exiting = ngx.worker.exiting
+local exiting      = ngx.worker.exiting
 
 local SHM_NAME  = const.shm.rules
 local SHM       = assert(ngx.shared[SHM_NAME], "rules SHM missing")
 local META_NAME = const.shm.doorbell
 local META      = assert(ngx.shared[META_NAME], "main SHM missing")
-local STATS     = assert(ngx.shared[const.shm.stats], "stats SHM missing")
 local SAVE_PATH
 
 local cache = require("doorbell.cache").new("rules", 1000)
@@ -180,98 +183,19 @@ end
 local DENY  = const.actions.deny
 local VERSION = 0
 
-local set_match_count, inc_match_count, set_last_match, update_stats_from_shm, delete_stats
-do
-  local function tpl(s)
-    return function(...) return s:format(...) end
-  end
-
-  local match_count = tpl("rule:match_count:%s")
-  local last_match  = tpl("rule:last_match:%s")
-
-  ---@param rule doorbell.rule
-  ---@param ts? number
-  function set_match_count(rule, count, ts)
-    local expired, ttl = rule:expired(ts)
-    if expired then
-      return
-    end
-    local hash = rule.hash
-    local ok, err = STATS:safe_set(match_count(hash), count, ttl)
-    if not ok then
-      log.errf("failed setting match count for rule %s: %s", hash, err)
-    end
-
-    rule.match_count = count
-  end
-
-  ---@param rule doorbell.rule
-  ---@param ts? number
-  function inc_match_count(rule, ts)
-    local expired, ttl = rule:expired(ts)
-    if expired then
-      return
-    end
-    local hash = rule.hash
-    local new, err = STATS:incr(match_count(hash), 1, 0, ttl)
-    if new then
-      rule.match_count = new
-    else
-      log.errf("failed incrementing match count for rule %s: %s", hash, err)
-    end
-  end
-
-  ---@param rule doorbell.rule
-  ---@param match number
-  ---@param ts? number
-  function set_last_match(rule, match, ts)
-    ts = ts or now()
-    local expired, ttl = rule:expired(ts)
-    if expired then
-      return
-    end
-
-    local hash = rule.hash
-    local ok, err = STATS:safe_set(last_match(hash), match, ttl)
-
-    if not ok then
-      log.errf("failed setting last match timestamp for rule %s: %s", hash, err)
-    end
-
-    rule.last_match = match
-  end
-
-  ---@param rule doorbell.rule
-  function update_stats_from_shm(rule)
-    local hash = rule.hash
-    rule.last_match = STATS:get(last_match(hash)) or rule.last_match
-    rule.match_count = STATS:get(match_count(hash)) or rule.match_count or 0
-  end
-
-  ---@param rule doorbell.rule
-  function delete_stats(rule)
-    local hash = rule.hash
-    local ok, err = STATS:set(last_match(hash), nil)
-    if ok then
-      ok, err = STATS:set(match_count(hash), nil)
-    end
-    return ok, err
-  end
-end
-
 ---@param rule doorbell.rule
 local function delete_rule(rule)
   local ok, err = SHM:set(rule.hash, nil)
   if ok then
-    ok, err = delete_stats(rule)
+    ok, err = stats.delete(rule)
   end
   return ok, err
 end
 
 ---@param json string
----@param stats '"set"'|'"pull"'
+---@param pull_stats boolean
 ---@return doorbell.rule
-local function hydrate_rule(json, stats)
+local function hydrate_rule(json, pull_stats)
   ---@type doorbell.rule
   local rule = json
   if type(json) == "string" then
@@ -280,14 +204,8 @@ local function hydrate_rule(json, stats)
 
   setmetatable(rule, rule_mt)
 
-  if stats == "set" then
-    local t = now()
-    if rule.last_match then
-      set_last_match(rule, rule.last_match, t)
-    end
-    set_match_count(rule, rule.match_count or 0, t)
-  elseif stats == "pull" then
-    update_stats_from_shm(rule)
+  if pull_stats then
+    stats.update_from_shm(rule)
   end
 
   return rule
@@ -305,7 +223,7 @@ local function get_all_rules(include_stats)
     local value = SHM:get(key)
     if value then
       n = n + 1
-      rules[n] = hydrate_rule(value, include_stats and "pull")
+      rules[n] = hydrate_rule(value, include_stats)
     end
   end
 
@@ -325,7 +243,7 @@ local function flush_expired(premature, schedule, locked)
   local unlock = locked or lock_storage("flush-expired")
 
   SHM:flush_expired()
-  STATS:flush_expired()
+  stats.flush_expired()
 
   ---@type doorbell.rule[]
   local delete = {}
@@ -952,32 +870,19 @@ function _M.save(fname)
   local unlock = lock_storage("save")
   local version = get_version()
   local rules = get_all_rules(true)
-  local fh, err = open(fname, "w+")
 
-  if not fh then
+  local ok, err = util.write_json_file(fname, rules)
+  if not ok then
     unlock()
-    log.errf("failed opening save path (%s) for writing: %s", fname, err)
-    return false
+    log.errf("failed saving rules to %s: %s", fname, err)
+    return nil
   end
 
-  local failed = false
-  local ok
-  ok, err = fh:write(encode(rules))
-  if not ok then
-    failed = true
-    log.err("failed writing rules to disk: ", err)
-  end
-
-  ok, err = fh:close()
-  if not ok then
-    failed = true
-    log.err("failed closing file handle: ", err)
-  end
   log.noticef("saved %s rules to disk", #rules)
 
   ok, err = META:safe_set("rules:last-save", ngx.now())
   unlock()
-  return failed or version
+  return version
 end
 
 function _M.reset()
@@ -994,6 +899,7 @@ end
 
 function _M.init_agent()
   assert(timer_at(0, flush_expired, true))
+  stats.init_agent()
 
   local save
   local last = get_version()
@@ -1064,23 +970,21 @@ end
 ---@return string? error
 function _M.load(fname, set_stats)
   -- no lock: this should only run during init
-  local fh, err = open(fname, "r")
-  if not fh then
-    return nil, err
-  end
-
-  local data
-  data, err = fh:read("*a")
-  fh:close()
+  local data, err = util.read_json_file(fname)
   if not data then
     return nil, err
   end
 
   ---@type doorbell.rule[]
   local rules = {}
-  for i, rule in ipairs(decode(data)) do
-    rules[i] = hydrate_rule(rule, (set_stats and "set") or "pull")
+  for i, rule in ipairs(data) do
+    rules[i] = hydrate_rule(rule)
   end
+
+  if set_stats then
+    stats.load(rules)
+  end
+
   local count = 0
 
   local ok
@@ -1162,14 +1066,15 @@ function _M.log(ctx, start_time)
   end
 
   local time = now()
-  inc_match_count(rule, time)
-  set_last_match(rule, start_time, time)
+  stats.inc_match_count(rule, time)
+  stats.set_last_match(rule, start_time, time)
   metrics.actions:inc(1, { rule.action })
 end
 
 ---@param conf doorbell.config
 function _M.init(conf)
   SAVE_PATH = conf.save_path
+  stats.init(conf)
 
   local ok, err = _M.load(SAVE_PATH, true)
   if not ok then
