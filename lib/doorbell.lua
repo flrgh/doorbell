@@ -19,14 +19,11 @@ local safe_decode = require("cjson.safe").decode
 
 local ngx               = ngx
 local header            = ngx.header
-local now               = ngx.now
-local timer_at          = ngx.timer.at
 local say               = ngx.say
 local start_time        = ngx.req.start_time
 local get_method        = ngx.req.get_method
 local exit              = ngx.exit
 local sleep             = ngx.sleep
-local exiting           = ngx.worker.exiting
 local var               = ngx.var
 
 local HTTP_OK                    = ngx.HTTP_OK
@@ -38,7 +35,6 @@ local HTTP_BAD_REQUEST           = ngx.HTTP_BAD_REQUEST
 local HTTP_NOT_ALLOWED           = ngx.HTTP_NOT_ALLOWED
 
 local assert   = assert
-local encode   = cjson.encode
 
 ---@class doorbell.config : table
 local config
