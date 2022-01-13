@@ -11,6 +11,7 @@ RUN apk add --no-cache \
     luarocks install lua-resty-template && \
     luarocks install nginx-lua-prometheus && \
     luarocks install lua-resty-pushover && \
+    luarocks install lua-resty-jit-uuid && \
     curl \
         --fail \
         --silent \

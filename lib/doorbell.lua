@@ -327,6 +327,8 @@ end
 function _M.init_worker()
   assert(SHM, "doorbell was not initialized")
 
+  require("resty.jit-uuid").seed()
+
   if proc.type() == "privileged agent" then
     return init_agent()
   end

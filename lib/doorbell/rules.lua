@@ -12,6 +12,7 @@ local util    = require "doorbell.util"
 local cjson      = require "cjson"
 local ipmatcher  = require "resty.ipmatcher"
 local resty_lock = require "resty.lock"
+local uuid       = require("resty.jit-uuid").generate_v4
 
 local ngx         = ngx
 local re_find     = ngx.re.find
@@ -112,6 +113,7 @@ end
 local rule_mt
 do
   ---@class doorbell.rule : table
+  ---@field id         string
   ---@field action     doorbell.action
   ---@field source     doorbell.source
   ---@field hash       string
@@ -754,6 +756,7 @@ do
 
     ---@type doorbell.rule
     local rule = {
+      id          = uuid(),
       action      = opts.action,
       addr        = opts.addr,
       cidr        = opts.cidr,
@@ -996,6 +999,7 @@ function _M.load(fname, set_stats)
   local rules = {}
   for i, rule in ipairs(data) do
     rules[i] = hydrate_rule(rule)
+    rules[i].id = rules[i].id or uuid()
   end
 
   if set_stats then

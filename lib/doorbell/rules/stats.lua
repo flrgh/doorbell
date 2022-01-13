@@ -31,13 +31,13 @@ end
 local function tpl(f)
   ---@param rule string|doorbell.rule
   return function(rule)
-    local hash
+    local id
     if type(rule) == "table" then
-      hash = rule.hash
+      id = rule.id
     else
-      hash = rule
+      id = rule
     end
-    return f:format(hash)
+    return f:format(id)
   end
 end
 
@@ -180,7 +180,7 @@ function _M.load(rules)
   local time = now()
   local empty = {}
   for _, rule in ipairs(rules) do
-    local st = stats[rule.hash] or empty
+    local st = stats[rule.hash] or stats[rule.id] or empty
     _last_matched(rule, st.last_match or rule.last_match or nil, rule:ttl(time))
     _match_count(rule, st.match_count or rule.match_count or nil, rule:ttl(time))
   end
