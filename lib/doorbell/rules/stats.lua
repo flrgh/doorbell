@@ -33,7 +33,7 @@ local function tpl(f)
   return function(rule)
     local id
     if type(rule) == "table" then
-      id = rule.id
+      id = rule.hash
     else
       id = rule
     end
@@ -55,8 +55,7 @@ local function get_all()
   end
 
   for _, key in ipairs(keys) do
-    local id = key:sub(1, 36)
-    local stat = key:sub(38)
+    local id, stat = key:match("([^:]+):(.+)")
     if id and stat then
       local value = SHM:get(key)
       if value then

@@ -210,15 +210,6 @@ end
 local DENY  = const.actions.deny
 local VERSION = 0
 
----@param rule doorbell.rule
-local function delete_rule(rule)
-  local ok, err = SHM:set(rule.hash, nil)
-  if ok then
-    ok, err = stats.delete(rule)
-  end
-  return ok, err
-end
-
 ---@param json string
 ---@param pull_stats boolean
 ---@return doorbell.rule
@@ -250,35 +241,55 @@ local function save_rule(rule, inplace, stamp)
 
   local ok, err
   if inplace then
-    ok, err = HASH:safe_set(rule.hash, rule.id, ttl)
+    ok, err = HASH:safe_set(rule.id, rule.hash, ttl)
   else
-    ok, err = HASH:safe_add(rule.hash, rule.id, ttl)
+    ok, err = HASH:safe_add(rule.id, rule.hash, ttl)
   end
 
   if not ok then
     return nil, err
   end
 
-  return SHM:safe_set(rule.id, encode(rule), ttl)
+  return SHM:safe_set(rule.hash, encode(rule), ttl)
 end
+
+---@param id string
+---@return doorbell.rule?
+local function get_by_id(id)
+  local hash = HASH:get(id)
+  if not id then return end
+  return SHM:get(hash)
+end
+
+local function get(hash_or_id)
+  if #hash_or_id == 36 then
+    return get_by_id(hash_or_id)
+  end
+
+  return SHM:get(hash_or_id)
+end
+
 
 ---@param rule doorbell.rule
 ---@return boolean ok
 ---@return string? error
 local function delete_rule(rule)
-  local ok, err = SHM:set(rule.id, nil)
+  if type(rule) == "string" then
+    rule = get(rule)
+    if not rule then
+      return nil, "not found"
+    end
+  end
+
+  -- don't really care if this fails
+  stats.delete(rule)
+
+  local ok, err = SHM:set(rule.hash, nil)
   if not ok then
     return nil, err
   end
-  return HASH:set(rule.hash, nil)
-end
 
----@param hash string
----@return doorbell.rule?
-local function get_by_hash(hash)
-  local id = HASH:get(hash)
-  if not id then return end
-  return SHM:get(id)
+  return HASH:set(rule.id, nil)
 end
 
 ---@param include_stats boolean
@@ -879,10 +890,10 @@ function _M.get(id_or_hash)
 
   local len = #id_or_hash
 
-  if len == 36 then
+  if len == 32 then
     return SHM:get(id_or_hash)
-  elseif len == 32 then
-    return get_by_hash(id_or_hash)
+  elseif len == 36 then
+    return get_by_id(id_or_hash)
   end
 
   return nil, "bad rule id or hash"
@@ -1090,7 +1101,7 @@ function _M.load(fname, set_stats)
     local restore = not (rule:expired(time) or rule.source == const.sources.config)
     if restore then
       count = count + 1
-      ok, err = SHM:safe_set(rule.hash, encode(rule), rule:ttl(time))
+      ok, err = save_rule(rule, nil, time)
       if not ok then
         log.alertf("failed restoring rule %s to shm: %s", rule.hash, err)
       end
