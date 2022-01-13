@@ -2,7 +2,7 @@ local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
-local rules   = require "doorbell.rules"
+local rules   = require "doorbell.rules.manager"
 local const   = require "doorbell.constants"
 local log     = require "doorbell.log"
 local metrics = require "doorbell.metrics"
@@ -264,7 +264,7 @@ function _M.save()
     return exit(HTTP_NOT_ALLOWED)
   end
 
-  local ok, err = rules.request_save()
+  local ok, err = rules.save()
 
   ngx.status = (ok and HTTP_CREATED) or HTTP_INTERNAL_SERVER_ERROR
 

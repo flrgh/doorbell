@@ -75,7 +75,6 @@ local function table_keys(t)
   return ipairs(tmp)
 end
 
-
 ---@param stats table<string, doorbell.rule.stat>
 ---@return table<string, doorbell.rule.stat>
 local function remove_empty(stats)
@@ -182,10 +181,11 @@ function _M.flush_expired()
 end
 
 function _M.save()
-  log.infof("saving stats data to %s", SAVE_PATH)
-  local ok, err = util.write_json_file(SAVE_PATH, remove_empty(get_all()))
+  local ok, written, err = util.update_json_file(SAVE_PATH, remove_empty(get_all()))
   if not ok then
     log.err("failed writing stats to disk: ", err)
+  elseif written then
+    log.info("saved stats to ", SAVE_PATH)
   end
 end
 
