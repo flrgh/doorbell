@@ -193,11 +193,11 @@ function _M.rules_api()
   local method = get_method()
 
   if method == "GET" then
+    local list = rules.list()
     if hash then
       res = rules.get(hash)
-      log.noticef("are you fucking kidding me? %s %s", hash, res)
     else
-      res = rules.list()
+      res = list
     end
 
     if res then
