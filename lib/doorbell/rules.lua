@@ -20,6 +20,7 @@ local now         = ngx.now
 local update_time = ngx.update_time
 local timer_at    = ngx.timer.at
 local sleep       = ngx.sleep
+local exiting     = ngx.worker.exiting
 
 local assert       = assert
 local encode       = cjson.encode
@@ -35,7 +36,7 @@ local pairs        = pairs
 local ipairs       = ipairs
 local type         = type
 local setmetatable = setmetatable
-local exiting      = ngx.worker.exiting
+
 
 local SHM_NAME  = const.shm.rules
 local SHM       = assert(ngx.shared[SHM_NAME], "rules SHM missing")
@@ -44,7 +45,39 @@ local META      = assert(ngx.shared[META_NAME], "main SHM missing")
 local SAVE_PATH
 local HASH  = assert(ngx.shared[const.shm.rule_hash])
 
+local STORAGE_VERSION = 1
+
 local cache = require("doorbell.cache").new("rules", 1000)
+
+local migrate
+do
+  local migrations = {
+    {
+      version = 1,
+      migrate = function(data)
+        return {
+          ---@type doorbell.rule[]
+          rules    = data,
+          _version = 1,
+        }
+      end,
+    }
+  }
+
+  function migrate(v, data)
+    for _, m in ipairs(migrations) do
+      if m.version > v then
+        local err
+        data, err = m.migrate(data)
+        if err then
+          log.emergf("failed running migration %s: %s", m.version, err)
+          error("rules migration failed")
+        end
+      end
+    end
+    return data
+  end
+end
 
 local new_match, release_match
 do
@@ -210,6 +243,15 @@ end
 local DENY  = const.actions.deny
 local VERSION = 0
 
+---@param t table[]
+---@param fn function
+local function map(t, fn, ...)
+  for i = 1, #t do
+    t[i] = fn(t[i], ...)
+  end
+  return t
+end
+
 ---@param json string
 ---@param pull_stats boolean
 ---@return doorbell.rule
@@ -227,6 +269,21 @@ local function hydrate_rule(json, pull_stats)
   end
 
   return rule
+end
+
+---@param rule doorbell.rule
+local function dehydrate_rule(rule)
+  rule.last_match = nil
+  rule.match_count = nil
+  return rule
+end
+
+local function serialize(rules)
+  return {
+    _version = STORAGE_VERSION,
+    --rules    = map(rules, dehydrate_rule),
+    rules    = rules,
+  }
 end
 
 ---@param rule doorbell.rule
@@ -250,7 +307,14 @@ local function save_rule(rule, inplace, stamp)
     return nil, err
   end
 
-  return SHM:safe_set(rule.hash, encode(rule), ttl)
+  ok, err = SHM:safe_set(rule.hash, encode(rule), ttl)
+
+  -- delete the lookup reference if we failed on creating a new rule
+  if err and not inplace then
+    HASH:set(rule.id, nil)
+  end
+
+  return ok, err
 end
 
 ---@param id string
@@ -788,15 +852,9 @@ do
     end
 
     local conditions = 0
-    local key
     for _, cond in ipairs(CONDITIONS) do
       if opts[cond] then
         conditions = conditions + 1
-        if cond == "cidr" then
-          key = "addr"
-        else
-          key = cond
-        end
       end
     end
 
@@ -823,9 +881,8 @@ do
       created     = opts.created or time,
       deny_action = deny_action,
       expires     = expires,
-      hash        = "",
+      hash        = hash_rule(opts),
       host        = opts.host,
-      key         = key,
       method      = opts.method,
       path        = opts.path,
       source      = opts.source,
@@ -833,7 +890,6 @@ do
       ua          = opts.ua,
       comment     = opts.comment,
     }
-    rule.hash = hash_rule(rule)
 
     return hydrate_rule(rule)
   end
@@ -968,9 +1024,9 @@ end
 function _M.save(fname)
   local unlock = lock_storage("save")
   local version = get_version()
-  local rules = get_all_rules(true)
+  local rules = get_all_rules()
 
-  local ok, err = util.write_json_file(fname, rules)
+  local ok, err = util.write_json_file(fname, serialize(rules))
   if not ok then
     unlock()
     log.errf("failed saving rules to %s: %s", fname, err)
@@ -1065,9 +1121,18 @@ function _M.load(fname, set_stats)
     return nil, err
   end
 
+  local version = data._version or 0
+  if version < STORAGE_VERSION then
+    data = migrate(version, data)
+  elseif version > STORAGE_VERSION then
+    local msg = fmt("can't load rules from disk from a newer version (%s)", version)
+    log.emerg(msg)
+    error(msg)
+  end
+
   ---@type doorbell.rule[]
   local rules = {}
-  for i, rule in ipairs(data) do
+  for i, rule in ipairs(data.rules) do
     rules[i] = hydrate_rule(rule)
     rules[i].id = rules[i].id or uuid()
   end
