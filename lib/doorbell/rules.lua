@@ -892,7 +892,7 @@ end
 
 --- reload the rule matching function from shared memory
 function _M.reload()
-  SHM:flush_expired()
+  SHM:flush_expired(0)
   return reload()
 end
 
@@ -988,10 +988,6 @@ function _M.load(fname, set_stats)
   local count = 0
 
   local ok
-  ok, err = SHM:flush_all()
-  if not ok then
-    log.alert("failed calling shm:flush_all(), zombie rules may exist: ", err)
-  end
   ok, err = SHM:flush_expired()
   if not ok then
     log.alert("failed calling shm:flush_expired(), zombie rules may exist: ", err)
