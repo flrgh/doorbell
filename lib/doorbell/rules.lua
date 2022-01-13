@@ -1062,7 +1062,7 @@ function _M.log(ctx, start_time)
   end
 
   local time = now()
-  stats.inc_match_count(rule, time)
+  stats.inc_match_count(rule, 1, time)
   stats.set_last_match(rule, start_time, time)
   metrics.actions:inc(1, { rule.action })
 end
@@ -1088,7 +1088,6 @@ function _M.init(conf)
     rule.source = "config"
     assert(_M.upsert(rule, true))
   end
-
 end
 
 ---@diagnostic disable-next-line

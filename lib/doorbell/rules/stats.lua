@@ -104,14 +104,15 @@ end
 
 
 ---@param rule doorbell.rule
+---@param value? number
 ---@param ts? number
-function _M.inc_match_count(rule, ts)
+function _M.inc_match_count(rule, value, ts)
   local expired, ttl = rule:expired(ts)
   if expired then
     return
   end
 
-  local new, err = SHM:incr(match_count(rule), 1, 0, ttl)
+  local new, err = SHM:incr(match_count(rule), value or 1, 0, ttl)
   if new then
     need_save(1)
     rule.match_count = new
@@ -175,8 +176,8 @@ function _M.load(rules)
   for _, rule in ipairs(rules) do
     local st = stats[rule.hash]
     if st then
-      _last_matched(rule, st.last_match, rule:ttl(time))
-      _match_count(rule, st.match_count, rule:ttl(time))
+      _last_matched(rule, st.last_match or rule.last_match or nil, rule:ttl(time))
+      _match_count(rule, st.match_count or rule.match_count or nil, rule:ttl(time))
     end
   end
 end
