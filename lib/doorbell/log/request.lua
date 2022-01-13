@@ -1,15 +1,16 @@
-local _M = {}
+local _M = {
+  _VERSION = require("doorbell.constants").version,
+}
 
 local log = require "doorbell.log"
 
-local sem = require "ngx.semaphore"
-local encode = require("cjson.safe").new().encode
-local open = io.open
-local fmt = string.format
-local insert = table.insert
-local concat = table.concat
+local sem      = require "ngx.semaphore"
+local encode   = require("cjson.safe").new().encode
+local open     = io.open
+local fmt      = string.format
+local concat   = table.concat
 local timer_at = ngx.timer.at
-local exiting = ngx.worker.exiting
+local exiting  = ngx.worker.exiting
 
 ---@type ngx.semaphore
 local SEM

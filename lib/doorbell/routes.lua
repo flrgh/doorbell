@@ -2,11 +2,13 @@ local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
+local util = require "doorbell.util"
+
 local byte     = string.byte
 local re_match = ngx.re.match
+local re_find  = ngx.re.find
 local assert   = assert
 local type     = type
-local resty_re = require "resty.core.regex"
 
 local TILDE = string.byte("~")
 
@@ -14,15 +16,18 @@ local function is_regex(path)
   return byte(path, 1) == TILDE
 end
 
----@type table<string, doorbell.route>
-local plain = {}
-
----@type doorbell.route_list
-local regex = { n = 0 }
-
----@class doorbell.route_list : table
----@field [1] string
----@field [2] doorbell.route
+---@param re string
+---@return boolean ok
+---@return string? err
+local function validate_regex(re)
+  -- strip the '~' prefix
+  re = re:sub(2)
+  local _, _, err = re_find(".", re, "oj")
+  if err then
+    return nil, err
+  end
+  return re
+end
 
 ---@class doorbell.route : table
 ---@field path            string
@@ -32,7 +37,16 @@ local regex = { n = 0 }
 ---@field allow_untrusted boolean
 ---@field run             fun(ctx:table)
 
----@class doorbell.route_match : table
+---@class doorbell.route_list : table
+---@field [1] string
+---@field [2] doorbell.route
+
+---@type table<string, doorbell.route>
+local plain = {}
+
+---@type doorbell.route_list
+local regex = { n = 0 }
+
 
 ---@param path string
 ---@param route doorbell.route
@@ -41,13 +55,20 @@ function _M.add(path, route)
   assert(type(route) == "table", "route must be a table")
 
   if is_regex(path) then
+    local re, err = validate_regex(path)
+    if not re then
+      util.errorf("invalid route path regex (%q): %s", path, err)
+    end
+
     local n = regex.n + 1
-    regex[n] = { path, route }
+    regex[n] = { re, route }
     regex.n = n
   else
     plain[path] = route
   end
 end
+
+---@class doorbell.route_match : table
 
 ---@type doorbell.route_match
 local match_t = {}
@@ -62,9 +83,12 @@ function _M.match(path)
   for i = 1, regex.n do
     local item = regex[i]
     local re = item[1]
-    local match, err = re_match(path, re, "oj", nil, match_t)
+    local match = re_match(path, re, "oj", nil, match_t)
+    if match then
+      match_t = {}
+      return item[2], match
+    end
   end
-
 end
 
 return _M

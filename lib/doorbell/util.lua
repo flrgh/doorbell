@@ -51,8 +51,7 @@ _M.read_file = read_file
 ---@return boolean ok
 ---@return string? error
 local function write_file(fname, contents)
-  local fh
-  fh, err = open(fname, "w+")
+  local fh, err = open(fname, "w+")
   if not fh then
     return nil, err
   end
@@ -60,6 +59,10 @@ local function write_file(fname, contents)
   local bytes
   bytes, err = fh:write(contents)
   fh:close()
+
+  if err then
+    return nil, err
+  end
 
   return bytes
 end
@@ -90,12 +93,12 @@ local function update_file(fname, contents)
     return true, false
   end
 
-  local ok, werr = write_file(fname, contents)
+  local ok, err = write_file(fname, contents)
   if ok then
     return true, true
   end
 
-  return nil, nil, werr
+  return nil, nil, err
 end
 
 --- Read and unserialize json data from a file.
