@@ -125,7 +125,7 @@ end
 ---@param last_match number
 ---@param ts? number
 function _M.set_last_match(rule, last_match, ts)
-  local ok, err _last_matched(rule, last_match, rule:ttl(ts))
+  local ok, err = _last_matched(rule, last_match, rule:ttl(ts))
 
   if ok then
     need_save(1)
