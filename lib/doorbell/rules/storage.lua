@@ -3,7 +3,7 @@ local _M = {
 }
 
 local util = require "doorbell.util"
-local rules = require "doobell.rules"
+local rules = require "doorbell.rules"
 
 local ipairs = ipairs
 

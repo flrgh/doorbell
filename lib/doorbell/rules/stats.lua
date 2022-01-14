@@ -164,7 +164,7 @@ end
 
 ---@param rule doorbell.rule
 function _M.update_from_shm(rule)
-  rule.last_match = _last_matched(rule) or rule.last_match
+  rule.last_match = _last_matched(rule) or rule.last_match or 0
   rule.match_count = _match_count(rule) or rule.match_count or 0
 end
 
@@ -239,6 +239,10 @@ end
 
 function _M.init_agent()
   assert(timer_at(0, saver, 30))
+end
+
+function _M.list()
+  return get_all()
 end
 
 return _M

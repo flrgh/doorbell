@@ -10,28 +10,24 @@ local stats   = require "doorbell.rules.stats"
 local util    = require "doorbell.util"
 local storage = require "doorbell.rules.storage"
 local rules   = require "doorbell.rules"
+local matcher = require "doorbell.rules.matcher"
 
 local cjson      = require "cjson"
-local ipmatcher  = require "resty.ipmatcher"
 local resty_lock = require "resty.lock"
 local uuid       = require("resty.jit-uuid").generate_v4
 
 local ngx         = ngx
-local re_find     = ngx.re.find
 local now         = ngx.now
-local update_time = ngx.update_time
 local timer_at    = ngx.timer.at
 local sleep       = ngx.sleep
 local exiting     = ngx.worker.exiting
 
 local assert       = assert
 local encode       = cjson.encode
-local max          = math.max
 local min          = math.min
 local ceil         = math.ceil
 local fmt          = string.format
 local insert       = table.insert
-local sort         = table.sort
 local pairs        = pairs
 local ipairs       = ipairs
 local type         = type
@@ -45,30 +41,9 @@ local SAVE_PATH
 local HASH  = assert(ngx.shared[const.shm.rule_hash])
 
 
+local EMPTY = {}
+
 local cache = require("doorbell.cache").new("rules", 1000)
-
-local new_match, release_match
-do
-  local tb = require "tablepool"
-  local fetch = tb.fetch
-  local release = tb.release
-  local pool = "doorbell.rule.match"
-
-  local size = 5
-  local narr, nrec = size, size + 3
-
-  function new_match()
-    local m = fetch(pool, narr, nrec)
-    m.conditions = 0
-    m.n = 0
-    m.terminate = false
-    return m
-  end
-
-  function release_match(m)
-    release(pool, m)
-  end
-end
 
 local function need_save(x)
   local key = "rules:need-save"
@@ -93,6 +68,9 @@ local function last_saved(x)
   return META:get(key) or 0
 end
 
+local function inc_version()
+  return META:incr("rules:version", 1, 0)
+end
 
 local function errorf(...)
   error(fmt(...))
@@ -103,8 +81,15 @@ local LOCK_OPTS = {
   timeout = 5,
 }
 
+
+local function noop() end
+
 ---@nodiscard
-local function lock_storage(action)
+local function lock_storage(action, locked)
+  if locked then
+    return noop
+  end
+
   local lock, err = resty_lock:new(META_NAME, LOCK_OPTS)
   if not lock then
     errorf("failed creating storage lock (action = %s): %s", action, err or "unknown")
@@ -146,17 +131,17 @@ end
 local VERSION = 0
 
 ---@param rule doorbell.rule
----@param inplace boolean
+---@param overwrite boolean
 ---@return boolean ok
 ---@return string? error
-local function save_rule(rule, inplace, stamp)
+local function save_rule(rule, overwrite, stamp)
   local exp, ttl = rule:expired(stamp)
   if exp then
     return nil, "expired"
   end
 
   local ok, err
-  if inplace then
+  if overwrite then
     ok, err = HASH:safe_set(rule.id, rule.hash, ttl)
   else
     ok, err = HASH:safe_add(rule.id, rule.hash, ttl)
@@ -166,14 +151,14 @@ local function save_rule(rule, inplace, stamp)
     return nil, err
   end
 
-  if inplace then
+  if overwrite then
     ok, err = SHM:safe_set(rule.hash, encode(rule), ttl)
   else
     ok, err = SHM:safe_add(rule.hash, encode(rule), ttl)
   end
 
   -- delete the lookup reference if we failed on creating a new rule
-  if err and not inplace then
+  if err and not overwrite then
     HASH:set(rule.id, nil)
   end
 
@@ -186,7 +171,9 @@ local function get_hash_by_id(id)
   return HASH:get(id)
 end
 
-local function get(hash_or_id)
+---@param hash_or_id string
+---@param include_stats boolean
+local function get(hash_or_id, include_stats)
   local hash
 
   if rules.is_id(hash_or_id) then
@@ -202,32 +189,45 @@ local function get(hash_or_id)
 
   local rule = SHM:get(hash)
   if rule then
-    return rules.hydrate(rule, true)
+    return rules.hydrate(rule, include_stats)
   end
 end
 
 
 ---@param rule doorbell.rule
+---@param locked boolean
 ---@return boolean ok
 ---@return string? error
-local function delete_rule(rule)
+local function delete_rule(rule, locked)
   if type(rule) == "string" then
-    rule = get(rule)
-    if not rule then
-      return nil, "not found"
-    end
+    return delete_rule(get(rule), locked)
+
+  elseif type(rule) == "table" then
+    rule = get(rule.hash)
   end
+
+  if not rule then
+    return nil, "not found"
+  end
+
+  local unlock = lock_storage("delete-rule", locked)
 
   -- don't really care if this fails
   stats.delete(rule)
 
   local ok, err = SHM:set(rule.hash, nil)
   if not ok then
+    unlock()
     return nil, err
   end
 
-  return HASH:set(rule.id, nil)
+  ok, err = HASH:set(rule.id, nil)
+  inc_version()
+  unlock()
+
+  return ok, err
 end
+
 
 ---@param include_stats boolean
 ---@return doorbell.rule[]
@@ -239,17 +239,22 @@ local function get_all_rules(include_stats)
   for i = 1, #keys do
     local key = keys[i]
     local value = SHM:get(key)
-    if value then
+    local rule = value and rules.hydrate(value, include_stats)
+    if rule then
       n = n + 1
-      list[n] = rules.hydrate(value, include_stats)
+      list[n] = rule
     end
   end
 
   return list
 end
 
-local function inc_version()
-  return META:incr("rules:version", 1, 0)
+local check_match
+
+local function rebuild_matcher()
+  local match = matcher.new(get_all_rules())
+  cache:flush_all()
+  check_match = match
 end
 
 --- flush any expired rules from shared memory
@@ -258,7 +263,7 @@ local function flush_expired(premature, schedule, locked)
     return
   end
 
-  local unlock = locked or lock_storage("flush-expired")
+  local unlock = lock_storage("flush-expired", locked)
 
   SHM:flush_expired()
   stats.flush_expired()
@@ -278,7 +283,7 @@ local function flush_expired(premature, schedule, locked)
 
   if #delete == 0 then
     log.debug("no expired rules to delete")
-    if not locked then unlock() end
+    unlock()
     return
   end
 
@@ -293,7 +298,7 @@ local function flush_expired(premature, schedule, locked)
   end
 
   need_save(1)
-  if not locked then unlock() end
+  unlock()
   log.debugf("removed %s expired rules", count)
 
   if schedule then
@@ -301,249 +306,6 @@ local function flush_expired(premature, schedule, locked)
   end
 end
 
-
----@alias doorbell.rule.criteria
----| '"addr"'
----| '"cidr"'
----| '"path(plain)"'
----| '"path(regex)"'
----| '"host"'
----| '"ua(plain)"'
----| '"ua(regex)"'
----| '"method"'
----| '"country"'
-
-local CRITERIA = {
-  addr       = "addr",
-  cidr       = "cidr",
-  path_plain = "path(plain)",
-  path_regex = "path(regex)",
-  host       = "host",
-  ua_plain   = "ua(plain)",
-  ua_regex   = "ua(regex)",
-  method     = "method",
-  country    = "country",
-}
-
-local cmp_rule = rules.compare
-
-local check_match
-
-local function rebuild_matcher()
-  local criteria = {}
-
-  local max_possible_conditions = 0
-
-  do
-    flush_expired(false, false, true)
-
-    local list = get_all_rules()
-
-    update_time()
-    local time = now()
-
-    ---@param rule doorbell.rule
-    ---@param match doorbell.rule.criteria
-    ---@param value string
-    local function add_criteria(rule, match, value)
-      if rule:expired(time) then
-        log.warn("skipping expired rule: ", rule.hash)
-        return
-      end
-
-      max_possible_conditions = max(max_possible_conditions, rule.conditions)
-
-      criteria[match] = criteria[match] or {}
-      criteria[match][value] = criteria[match][value] or { n = 0 }
-
-      insert(criteria[match][value], rule)
-      criteria[match][value].n = criteria[match][value].n + 1
-    end
-
-    for i = 1, #list do
-      ---@type doorbell.rule
-      local r = rules[i]
-
-      if r.addr then
-        add_criteria(r, CRITERIA.addr, r.addr)
-      end
-
-      if r.method then
-        add_criteria(r, CRITERIA.method, r.method)
-      end
-
-      if r.path then
-        if rules.is_regex(r.path) then
-          add_criteria(r, CRITERIA.path_regex, rules.regex(r.path))
-        else
-          add_criteria(r, CRITERIA.path_plain, r.path)
-        end
-      end
-
-      if r.host then
-        add_criteria(r, CRITERIA.host, r.host)
-      end
-
-      if r.cidr then
-        add_criteria(r, CRITERIA.cidr, r.cidr)
-      end
-
-      if r.ua then
-        if rules.is_regex(r.ua) then
-          add_criteria(r, CRITERIA.ua_regex, rules.regex(r.ua))
-        else
-          add_criteria(r, CRITERIA.ua_plain, r.ua)
-        end
-      end
-
-      if r.country then
-        add_criteria(r, CRITERIA.country, r.country)
-      end
-    end
-  end
-
-  local empty = {}
-
-  local paths_plain = criteria[CRITERIA.path_plain] or empty
-  local paths_regex = { n = 0 }
-
-  for re, rs in pairs(criteria[CRITERIA.path_regex] or {}) do
-    insert(paths_regex, {re, rs})
-    paths_regex.n = (paths_regex.n or 0) + 1
-  end
-
-  local hosts   = criteria[CRITERIA.host]  or empty
-  local methods = criteria[CRITERIA.method] or empty
-  local countries = criteria[CRITERIA.country] or empty
-
-
-  local addrs = criteria[CRITERIA.addr]  or empty
-  local cidrs = assert(ipmatcher.new_with_value(criteria[CRITERIA.cidr] or {}))
-
-
-  local uas_plain = criteria[CRITERIA.ua_plain] or empty
-  local uas_regex = { n = 0 }
-
-  for re, rs in pairs(criteria[CRITERIA.ua_regex] or {}) do
-    insert(uas_regex, {re, rs})
-    uas_regex.n = (uas_regex.n or 0) + 1
-  end
-
-
-  ---@param t table
-  ---@param value string
-  local function regex_match(t, value)
-    for i = 1, t.n do
-      local item = t[i]
-      local re = item[1]
-      if re_find(value, re, "oj") then
-        return item[2]
-      end
-    end
-  end
-
-  ---@param match doorbell.rule[]
-  ---@param matched doorbell.rule[]
-  local function update_match(match, matched)
-    if match.terminate then return end
-    if not matched then return end
-
-    for i = 1, matched.n do
-      if match.terminate then return end
-
-      local rule = matched[i]
-      local conditions = rule.conditions
-      local terminate = rule.terminate
-
-      if terminate or conditions >= match.conditions then
-        local hash = rule.hash
-        local count = (match[hash] or 0) + 1
-        match[hash] = count
-
-        -- if all of the match conditions for this rule have been met, add it to
-        -- the array-like part of the match table
-        if count == conditions then
-          local n = match.n
-
-          if terminate then
-            match.terminate = true
-          end
-
-          -- if our rule has met more conditions than any other, we can clear out
-          -- prior matches
-          if terminate or count > match.conditions then
-            match.conditions = count
-            match[1] = rule
-            for j = 2, n do
-              match[j] = nil
-            end
-            match.n = 1
-
-          -- otherwise, just append the rule to the match table
-          elseif count == match.conditions then
-            n = n + 1
-            match[n] = rule
-            match.n = n
-          end
-        end
-      end
-    end
-  end
-
-  cache:flush_all()
-
-  ---@param req doorbell.request
-  ---@return doorbell.rule?
-  check_match = function(req)
-    local addr   = assert(req.addr, "missing request addr")
-    local path   = assert(req.path, "missing request path")
-    local host   = assert(req.host, "missing request host")
-    local method = assert(req.method, "missing request method")
-    local ua     = req.ua or ""
-    local country = req.country
-
-    ---@type doorbell.rule[]
-    local match = new_match()
-
-    update_match(match, addrs[addr])
-    update_match(match, paths_plain[path])
-    update_match(match, methods[method])
-    update_match(match, hosts[host])
-    update_match(match, uas_plain[ua])
-
-    if country then
-      update_match(match, countries[country])
-    end
-
-    if not match.terminate then
-      -- plain/exact matches trump regex or cidr lookups
-      --
-      -- loop through each match whose conditions are met and check to see if
-      -- we've matched the path, ua, or addr already
-      --
-      -- first, see if we have a match with the maximal number of conditions met
-      if match.conditions < max_possible_conditions then
-        update_match(match, cidrs:match(addr))
-        if not match.terminate then
-          update_match(match, regex_match(paths_regex, path))
-        end
-        if not match.terminate then
-          update_match(match, regex_match(uas_regex, ua))
-        end
-      end
-    end
-
-    if match.n > 1 then
-      sort(match, cmp_rule)
-    end
-
-    local res = match[1]
-    release_match(match)
-    return res
-  end
-
-  return check_match
-end
 
 ---@return number
 local function get_version()
@@ -619,27 +381,29 @@ end
 ---@param overwrite boolean
 ---@return doorbell.rule? rule
 ---@return string? error
-local function create(opts, nobuild, overwrite)
+local function create(opts, nobuild, overwrite, locked)
   local rule, err = rules.new(opts)
   if not rule then
     return nil, err
   end
 
   local act = overwrite and "set-rule" or "add-rule"
-  local unlock = lock_storage(act)
-  local ok, shm_err = save_rule(rule, overwrite)
-  if not ok then
+  local unlock = lock_storage(act, locked)
+  local saved
+  saved, err = save_rule(rule, overwrite)
+  if not saved then
     unlock()
     if err == "exists" then
       return nil, err
     end
-    errorf("failed adding/updating rule: %s", shm_err)
+    errorf("failed adding/updating rule: %s", err)
   end
 
   need_save(1)
 
-  ok, err = inc_version()
-  if not ok then
+  local inc
+  inc, err = inc_version()
+  if not inc then
     unlock()
     errorf("failed incrementing version: %s", err)
   end
@@ -650,28 +414,30 @@ local function create(opts, nobuild, overwrite)
 end
 
 
+---@param id_or_hash string
+---@param include_stats boolean
 ---@return doorbell.rule?
-function _M.get(id_or_hash)
+function _M.get(id_or_hash, include_stats)
   if type(id_or_hash) ~= "string" then
     return nil, "input must be a string"
   end
-  return get(id_or_hash)
+  return get(id_or_hash, include_stats)
 end
 
 --- add a rule
 ---@param  opts    table
 ---@return doorbell.rule? rule
 ---@return string? error
-function _M.add(opts, nobuild)
-  return create(opts, nobuild, false)
+function _M.add(opts, nobuild, locked)
+  return create(opts, nobuild, false, locked)
 end
 
 --- create or update a rule
 ---@param  opts    table
 ---@return doorbell.rule? rule
 ---@return string? error
-function _M.upsert(opts, nobuild)
-  return create(opts, nobuild, true)
+function _M.upsert(opts, nobuild, locked)
+  return create(opts, nobuild, true, locked)
 end
 
 --- get a matching rule for a request
@@ -712,14 +478,16 @@ end
 _M.delete = delete_rule
 
 --- retrieve a list of all current rules
+---@param include_stats boolean
 ---@return doorbell.rule[]
-function _M.list()
-  return get_all_rules(true)
+function _M.list(include_stats)
+  return get_all_rules(include_stats)
 end
 
 function _M.reset()
   SHM:flush_all()
   assert(SHM:flush_expired(0))
+  return reload()
 end
 
 --- reload the rule matching function from shared memory
@@ -889,11 +657,6 @@ function _M.init(conf)
     rule.source = "config"
     assert(_M.upsert(rule, true))
   end
-end
-
----@diagnostic disable-next-line
-if _G._TEST then
-  _M._rebuild_matcher = rebuild_matcher
 end
 
 return _M
