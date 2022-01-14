@@ -3,6 +3,7 @@ local _M = {
 }
 
 local log = require "doorbell.log"
+local ip = require "doorbell.ip"
 
 local pushover = require "resty.pushover"
 local encode = require("cjson.safe").encode
@@ -35,13 +36,17 @@ function _M.send(req, url)
     req.uri
   )
 
+  local country = ip.get_country_name(req.country) or "Unknown"
+
   local message = fmt(
     [[
       IP address: %s
+      Origin: %s
       User-Agent: %s
       Request: %s
     ]],
     req.addr,
+    country,
     req.ua or "<NONE>",
     req_str
   )

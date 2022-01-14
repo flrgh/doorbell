@@ -86,10 +86,15 @@ function _M.new(ctx, headers)
 
   r.ua      = headers["user-agent"]
 
-  local country, err = get_country(addr)
-  r.country = country
-  ctx.country_code = country
-  ctx.geoip_error = err
+  local code, name_or_err = get_country(addr)
+  r.country = code
+  ctx.country_code = code
+
+  if code then
+    ctx.country_name = name_or_err
+  else
+    ctx.geoip_error = name_or_err
+  end
 
   return r
 end

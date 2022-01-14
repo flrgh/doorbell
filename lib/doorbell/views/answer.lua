@@ -3,6 +3,7 @@ local log = require "doorbell.log"
 local const = require "doorbell.constants"
 local auth = require "doorbell.auth"
 local metrics = require "doorbell.metrics"
+local ip = require "doorbell.ip"
 
 local var = ngx.var
 local header = ngx.header
@@ -16,10 +17,12 @@ local PERIODS = const.periods
 
 ---@param req doorbell.request
 local function render_form(tpl, req, errors, current)
+  local country = ip.get_country_name(req.country) or req.country or "Unknown"
+
   return tpl({
     req = {
-      { "addr",   req.addr    },
-      { "country", req.country },
+      { "addr",         req.addr   },
+      { "country",      country    },
       { "user-agent",   req.ua     },
       { "host",         req.host   },
       { "method",       req.method },

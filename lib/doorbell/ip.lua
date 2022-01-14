@@ -4,6 +4,7 @@ local _M = {
 
 local log = require "doorbell.log"
 local cache = require "doorbell.cache"
+local util = require "doorbell.util"
 
 local ipmatcher = require "resty.ipmatcher"
 
@@ -14,6 +15,9 @@ local HTTP_FORBIDDEN = ngx.HTTP_FORBIDDEN
 
 ---@type resty.ipmatcher
 local trusted
+
+---@type table<string, string>
+local country_names
 
 local geoip
 
@@ -61,9 +65,15 @@ function _M.geoip_enabled()
   return (geoip and true) or false
 end
 
+---@param code string
+---@return string?
+function _M.get_country_name(code)
+  return code and country_names[code]
+end
+
 ---@param addr string
----@return string? country
----@return string? error
+---@return string? country_code
+---@return string? country_name_or_error
 function _M.get_country(addr)
   if not geoip then return nil, "geoip not enabled" end
 
@@ -71,15 +81,17 @@ function _M.get_country(addr)
 
   local country = cache:get("geoip", addr)
 
-  if country ~= nil then
-    return country or nil
+  if country == false then
+    return nil, nil
+  elseif country then
+    return country, country_names[country]
   end
 
   local err
   country, err = lookup(addr)
   if country then
     cache:set("geoip", addr, country)
-    return country
+    return country, country_names[country]
   end
 
   if err == "failed to find entry" or err == nil then
@@ -99,6 +111,13 @@ function _M.init(opts)
       log.alertf("failed loading geoip database file (%s): %s", opts.geoip_db, err)
     end
     geoip = db
+
+    local fname = opts.asset_path .. "/data/country-codes-to-names.json"
+    country_names, err = util.read_json_file(fname)
+    if not country_names then
+      log.errf("failed loading country code map from %s: %s", fname, err)
+      country_names = {}
+    end
   end
 
   trusted = assert(ipmatcher.new(opts.trusted))
