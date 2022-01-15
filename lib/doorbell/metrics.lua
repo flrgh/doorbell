@@ -51,9 +51,19 @@ function _M.init(conf)
     enabled = not conf.metrics.disable
   end
 
-  if not enabled then
-    return
+  if enabled then
+    require("doorbell.routes").add("/metrics", {
+      allow_untrusted = false,
+      description     = "prometheus metrics endpoint",
+      log_enabled     = false,
+      metrics_enabled = false,
+      run             = _M.collect,
+    })
   end
+end
+
+function _M.init_worker()
+  if not enabled then return end
 
   prometheus = require("prometheus").init(
     const.shm.metrics,
@@ -67,17 +77,6 @@ function _M.init(conf)
 
   metric_errors = assert(prometheus.registry[prometheus.error_metric_name])
 
-  require("doorbell.routes").add("/metrics", {
-    allow_untrusted = false,
-    description     = "prometheus metrics endpoint",
-    log_enabled     = false,
-    metrics_enabled = false,
-    run             = _M.collect,
-  })
-end
-
-function _M.init_worker()
-  if not enabled then return end
   assert(timer_at(0, run_hooks))
 end
 

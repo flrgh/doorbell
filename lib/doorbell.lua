@@ -248,6 +248,7 @@ local function init_worker()
   rules.init_worker()
   request.init_worker()
   cache.init_worker()
+  notify.init_worker()
 end
 
 local function init_agent()

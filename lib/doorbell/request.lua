@@ -186,15 +186,6 @@ function _M.init_worker()
   if LOG then
     logger.init_worker()
   end
-end
-
----@param opts doorbell.config
-function _M.init(opts)
-  if opts.log_path == "/dev/null" then
-    LOG = false
-  else
-    logger.init(opts)
-  end
 
   local metrics = require "doorbell.metrics"
   if metrics.enabled() then
@@ -211,6 +202,15 @@ function _M.init(opts)
         { "country" }
       )
     end
+  end
+end
+
+---@param opts doorbell.config
+function _M.init(opts)
+  if opts.log_path == "/dev/null" then
+    LOG = false
+  else
+    logger.init(opts)
   end
 end
 

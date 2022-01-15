@@ -63,14 +63,6 @@ function _M.init(conf)
 
   _M.strategy = strat
 
-  local metrics = require "doorbell.metrics"
-  if metrics.enabled() then
-    counter = metrics.prometheus:counter(
-      "notifications_total",
-      "notifications for authorization requests (status = sent/failed/snoozed/answered)",
-      { "status" }
-    )
-  end
 end
 
 function _M.send(req, token)
@@ -108,6 +100,17 @@ function _M.inc(status)
   end
 
   metric:inc(1, STATUS[status])
+end
+
+function _M.init_worker()
+  local metrics = require "doorbell.metrics"
+  if metrics.enabled() then
+    counter = metrics.prometheus:counter(
+      "notifications_total",
+      "notifications for authorization requests (status = sent/failed/snoozed/answered)",
+      { "status" }
+    )
+  end
 end
 
 return _M

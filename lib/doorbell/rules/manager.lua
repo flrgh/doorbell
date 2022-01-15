@@ -599,35 +599,50 @@ function _M.version()
 end
 
 function _M.init_worker()
-  if ngx.worker.id() ~= 0 then
-    return
-  end
+  if metrics.enabled() then
+    rules_total = metrics.prometheus:gauge(
+      "rules_total",
+      "number of rules",
+      { "action", "source" }
+    )
 
-  metrics.add_hook(function()
-    -- rule counts
-    do
-      local counts = {
-        allow = {
-          config = 0,
-          user   = 0,
-        },
-        deny = {
-          config = 0,
-          user =  0,
+    rule_actions = metrics.prometheus:counter(
+      "rule_actions",
+      "actions taken by rules",
+      { "action" }
+    )
+
+
+    if ngx.worker.id() ~= 0 then
+      return
+    end
+
+    metrics.add_hook(function()
+      -- rule counts
+      do
+        local counts = {
+          allow = {
+            config = 0,
+            user   = 0,
+          },
+          deny = {
+            config = 0,
+            user =  0,
+          }
         }
-      }
 
-      for _, rule in ipairs(get_all_rules()) do
-        counts[rule.action][rule.source] = counts[rule.action][rule.source] + 1
-      end
+        for _, rule in ipairs(get_all_rules()) do
+          counts[rule.action][rule.source] = counts[rule.action][rule.source] + 1
+        end
 
-      for action, sources in pairs(counts) do
-        for source, num in pairs(sources) do
-          rules_total:set(num, {action, source})
+        for action, sources in pairs(counts) do
+          for source, num in pairs(sources) do
+            rules_total:set(num, {action, source})
+          end
         end
       end
-    end
-  end)
+    end)
+  end
 end
 
 ---@param ctx doorbell.ctx
@@ -665,20 +680,6 @@ function _M.init(conf)
     rule.action = "deny"
     rule.source = "config"
     assert(_M.upsert(rule, true))
-  end
-
-  if metrics.enabled() then
-    rules_total = metrics.prometheus:gauge(
-      "rules_total",
-      "number of rules",
-      { "action", "source" }
-    )
-
-    rule_actions = metrics.prometheus:counter(
-      "rule_actions",
-      "actions taken by rules",
-      { "action" }
-    )
   end
 end
 
