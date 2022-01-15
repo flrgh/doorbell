@@ -116,4 +116,26 @@ describe("matching", function()
     req.addr = "10.0.1.9"
     assert.is_nil(match(req))
   end)
+
+  it("can match based on country code", function()
+    add {
+      { comment = "a", country = "US" },
+      { comment = "b", country = "DE" },
+    }
+
+    req.country = "US"
+    assert.equals("a", match(req).comment)
+
+    req.country = "DE"
+    assert.equals("b", match(req).comment)
+
+    req.country = nil
+    assert.is_nil(match(req))
+
+    req.country = false
+    assert.is_nil(match(req))
+
+    req.country = ""
+    assert.is_nil(match(req))
+  end)
 end)

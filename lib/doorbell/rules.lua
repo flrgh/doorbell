@@ -327,6 +327,7 @@ function _M.new(opts)
     terminate   = opts.terminate,
     ua          = opts.ua,
     comment     = opts.comment,
+    country     = opts.country,
   }
 
   return hydrate(rule)
