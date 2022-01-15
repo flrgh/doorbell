@@ -2,7 +2,7 @@ local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
-local get_country = require("doorbell.ip").get_country
+local ip = require "doorbell.ip"
 local logger = require "doorbell.log.request"
 
 local tb = require "tablepool"
@@ -18,6 +18,7 @@ local get_method        = ngx.req.get_method
 local get_uri_args      = ngx.req.get_uri_args
 local exiting           = ngx.worker.exiting
 local tonumber = tonumber
+local get_country = ip.get_country
 
 local pool    = "doorbell.request"
 local narr    = 0
@@ -30,6 +31,9 @@ local LOG = true
 
 ---@type prometheus.counter
 local counter
+---@type prometheus.counter
+local countries
+
 
 ---@class doorbell.request : table
 ---@field addr     string
@@ -124,6 +128,10 @@ end
 function _M.log(ctx)
   if counter and not ctx.no_metrics then
     counter:inc(1, { ngx.status })
+
+    if countries and ctx.country_code then
+      countries:inc(1, { ctx.country_code })
+    end
   end
 
   if LOG == false or ctx.no_log then
@@ -195,6 +203,14 @@ function _M.init(opts)
       "total number of incoming requests",
       { "status" }
     )
+
+    if ip.geoip_enabled() then
+      countries = metrics.prometheus:counter(
+        "request_by_country",
+        "total number of incoming requests, by origin country code",
+        { "country" }
+      )
+    end
   end
 end
 
