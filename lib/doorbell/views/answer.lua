@@ -1,4 +1,4 @@
-local rules   = require "doorbell.rules"
+local rules   = require "doorbell.rules.manager"
 local log     = require "doorbell.log"
 local const   = require "doorbell.constants"
 local auth    = require "doorbell.auth"

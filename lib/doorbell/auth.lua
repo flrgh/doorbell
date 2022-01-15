@@ -4,7 +4,7 @@ local _M = {
 
 local const   = require "doorbell.constants"
 local log     = require "doorbell.log"
-local rules   = require "doorbell.rules"
+local rules   = require "doorbell.rules.manager"
 local notify  = require "doorbell.notify"
 
 local resty_lock = require "resty.lock"

@@ -1,4 +1,4 @@
-local rules = require "doorbell.rules"
+local rules = require "doorbell.rules.manager"
 
 local date = os.date
 local header = ngx.header
