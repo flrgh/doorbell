@@ -1,9 +1,9 @@
-local rules = require "doorbell.rules"
-local log = require "doorbell.log"
-local const = require "doorbell.constants"
-local auth = require "doorbell.auth"
-local metrics = require "doorbell.metrics"
-local ip = require "doorbell.ip"
+local rules   = require "doorbell.rules"
+local log     = require "doorbell.log"
+local const   = require "doorbell.constants"
+local auth    = require "doorbell.auth"
+local ip      = require "doorbell.ip"
+local notify  = require "doorbell.notify"
 
 local var = ngx.var
 local header = ngx.header
@@ -145,7 +145,7 @@ return function(ctx)
 
   assert(rules.add(rule))
 
-  metrics.notify:inc(1, {"answered"})
+  notify.inc("answered")
 
   auth.set_pending(req.addr, false)
 

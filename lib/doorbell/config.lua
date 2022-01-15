@@ -19,6 +19,7 @@ local NOT_REQUIRED = {}
 ---@field notify     doorbell.notify.config
 ---@field save_path  string
 ---@field trusted    string[]
+---@field metrics    doorbell.metrics.config
 local config = {
   allow      = NOT_REQUIRED,
   asset_path = "/opt/doorbell/assets",
@@ -31,6 +32,7 @@ local config = {
   notify     = REQUIRED,
   save_path  = prefix .. "/rules.json",
   trusted    = REQUIRED,
+  metrics    = NOT_REQUIRED
 }
 
 ---@param opts doorbell.config

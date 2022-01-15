@@ -3,12 +3,23 @@ local _M = {
 }
 
 local log = require "doorbell.log"
+local util = require "doorbell.util"
 
 local utctime = ngx.utctime
 
 local STRATEGIES = {
   pushover = true,
 }
+
+local STATUS = {
+  failed   = {"failed"},
+  snoozed  = {"snoozed"},
+  sent     = {"send"},
+  answered = {"answered"},
+}
+
+---@type prometheus.counter
+local metric
 
 ---@class doorbell.notify.period : table
 ---@field from integer
@@ -31,9 +42,18 @@ local strategy
 function _M.init(conf)
   local notify = assert(conf.notify, "notify missing")
   local strat = assert(notify.strategy, "notify.strategy missing")
-  assert(STRATEGIES[strat], "unsupported notify.strategy: " .. strat)
+  if STRATEGIES[strat] then
+    log.info("using builtin notify strategy: ", strat)
+    strategy = require("doorbell.notify.strategies." .. strat)
+  else
+    log.info("using custom notify strategy: ", strat)
+    local ok
+    ok, strategy = pcall(require, strat)
+    if not ok then
+      util.errorf("failed loading custom notify strategy %s: %s", strat, strategy)
+    end
+  end
 
-  strategy = require("doorbell.notify.strategies." .. strat)
   strategy.init(notify.config)
 
   periods = conf.notify.periods
@@ -42,6 +62,15 @@ function _M.init(conf)
   end
 
   _M.strategy = strat
+
+  local metrics = require "doorbell.metrics"
+  if metrics.enabled() then
+    counter = metrics.prometheus:counter(
+      "notifications_total",
+      "notifications for authorization requests (status = sent/failed/snoozed/answered)",
+      { "status" }
+    )
+  end
 end
 
 function _M.send(req, token)
@@ -65,6 +94,20 @@ function _M.in_notify_period()
   end
 
   return false
+end
+
+---@param status '"send"'|'"failed"'|'"snoozed"'|'"answered"'
+function _M.inc(status)
+  if not STATUS[status] then
+    log.err("tried to increment unknown notify status: ", status)
+    return
+  end
+
+  if not metric then
+    return
+  end
+
+  metric:inc(1, STATUS[status])
 end
 
 return _M

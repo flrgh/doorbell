@@ -20,6 +20,12 @@ local lrucache = require "resty.lrucache"
 
 local tostring = tostring
 
+---@type prometheus.counter
+local cache_lookups
+
+---@type prometheus.gauge
+local cache_entries
+
 ---@type table<doorbell.cache, string>
 local registry = {}
 
@@ -88,8 +94,22 @@ function _M.new(name, size)
   return self
 end
 
----@param opts doorbell.init.opts
+---@param opts doorbell.config
 function _M.init(opts)
+  if metrics.enabled() then
+    cache_lookups = metrics.prometheus:counter(
+      "cache_lookups",
+      "LRU cache hit/miss counts",
+      { "name", "status" }
+    )
+
+    cache_entries = metrics.prometheus:gauge(
+      "cache_entries",
+      "number of items in the LRU cache(s)",
+      { "name" }
+    )
+  end
+
   _M.lru = assert(lrucache.new(opts.cache_size or 1000))
   setmetatable(_M, cache_mt)
   _M.hit, _M.miss, _M.expire = 0, 0, 0
@@ -98,22 +118,25 @@ end
 
 function _M.init_worker()
   metrics.add_hook(function()
+    if ngx.worker.id() == 0 then
+      cache_entries:reset()
+    end
+
     for c, name in pairs(registry) do
       local hit, miss, expire = c.hit, c.miss, c.expire
       c.hit, c.miss, c.expire = 0, 0, 0
-      metrics.cache_lookups:inc(hit, { name, "hit" })
-      metrics.cache_lookups:inc(miss, { name, "miss" })
-      metrics.cache_lookups:inc(expire, { name, "expire" })
-      metrics.cache_entries:set(c.lru:count(), { name })
+      cache_lookups:inc(hit,    { name, "hit"    })
+      cache_lookups:inc(miss,   { name, "miss"   })
+      cache_lookups:inc(expire, { name, "expire" })
+      cache_entries:inc(c.lru:count(), { name })
     end
 
-      local hit, miss, expire = _M.hit, _M.miss, _M.expire
-      _M.hit, _M.miss, _M.expire = 0, 0, 0
-      metrics.cache_lookups:inc(hit, { "main", "hit" })
-      metrics.cache_lookups:inc(miss, { "main", "miss" })
-      metrics.cache_lookups:inc(expire, { "main", "expire" })
-      metrics.cache_entries:set(_M.lru:count(), { "main" })
-
+    local hit, miss, expire = _M.hit, _M.miss, _M.expire
+    _M.hit, _M.miss, _M.expire = 0, 0, 0
+    cache_lookups:inc(hit,    { "main", "hit"    })
+    cache_lookups:inc(miss,   { "main", "miss"   })
+    cache_lookups:inc(expire, { "main", "expire" })
+    cache_entries:inc(_M.lru:count(), { "main" })
   end)
 end
 

@@ -41,6 +41,11 @@ local SAVE_PATH
 local HASH  = assert(ngx.shared[const.shm.rule_hash])
 
 
+---@type prometheus.counter
+local rule_actions
+---@type prometheus.gauge
+local rules_total
+
 local EMPTY = {}
 
 local cache = require("doorbell.cache").new("rules", 1000)
@@ -594,6 +599,10 @@ function _M.version()
 end
 
 function _M.init_worker()
+  if ngx.worker.id() ~= 0 then
+    return
+  end
+
   metrics.add_hook(function()
     -- rule counts
     do
@@ -614,7 +623,7 @@ function _M.init_worker()
 
       for action, sources in pairs(counts) do
         for source, num in pairs(sources) do
-          metrics.rules:set(num, {action, source})
+          rules_total:set(num, {action, source})
         end
       end
     end
@@ -633,7 +642,7 @@ function _M.log(ctx, start_time)
   local time = now()
   stats.inc_match_count(rule, 1, time)
   stats.set_last_match(rule, start_time, time)
-  metrics.actions:inc(1, { rule.action })
+  rule_actions:inc(1, { rule.action })
 end
 
 ---@param conf doorbell.config
@@ -656,6 +665,20 @@ function _M.init(conf)
     rule.action = "deny"
     rule.source = "config"
     assert(_M.upsert(rule, true))
+  end
+
+  if metrics.enabled() then
+    rules_total = metrics.prometheus:gauge(
+      "rules_total",
+      "number of rules",
+      { "action", "source" }
+    )
+
+    rule_actions = metrics.prometheus:counter(
+      "rule_actions",
+      "actions taken by rules",
+      { "action" }
+    )
   end
 end
 

@@ -2,11 +2,10 @@ local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
-local const = require "doorbell.constants"
-local log = require "doorbell.log"
-local metrics = require "doorbell.metrics"
-local rules = require "doorbell.rules"
-local notify = require "doorbell.notify"
+local const   = require "doorbell.constants"
+local log     = require "doorbell.log"
+local rules   = require "doorbell.rules"
+local notify  = require "doorbell.notify"
 
 local resty_lock = require "resty.lock"
 local random     = require "resty.random"
@@ -188,11 +187,11 @@ function _M.request(req)
   if not sent then
     log.err("failed sending auth request: ", err)
     lock:unlock()
-    metrics.notify:inc(1, {"failed"})
+    notify.inc("failed")
     return false
   end
 
-  metrics.notify:inc(1, {"sent"})
+  notify.inc("sent")
   set_pending(addr, true)
   lock:unlock()
   return true

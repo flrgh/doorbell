@@ -28,6 +28,9 @@ local release = tb.release
 local WORKER_ID, WORKER_PID
 local LOG = true
 
+---@type prometheus.counter
+local counter
+
 ---@class doorbell.request : table
 ---@field addr     string
 ---@field scheme   string
@@ -119,6 +122,10 @@ end
 
 ---@param ctx doorbell.ctx
 function _M.log(ctx)
+  if counter and not ctx.no_metrics then
+    counter:inc(1, { ngx.status })
+  end
+
   if LOG == false or ctx.no_log then
     return
   end
@@ -179,6 +186,15 @@ function _M.init(opts)
     LOG = false
   else
     logger.init(opts)
+  end
+
+  local metrics = require "doorbell.metrics"
+  if metrics.enabled() then
+    counter = metrics.prometheus:counter(
+      "requests_total",
+      "total number of incoming requests",
+      { "status" }
+    )
   end
 end
 

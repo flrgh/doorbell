@@ -88,7 +88,7 @@ local HANDLERS = {
       end
     else
       log.notice("not sending request outside of notify hours for ", req.addr)
-      metrics.notify:inc(1, {"snoozed"})
+      notify.inc("snoozed")
     end
     return exit(HTTP_UNAUTHORIZED)
   end,
@@ -111,8 +111,8 @@ local HANDLERS = {
 function _M.init(opts)
   config = require("doorbell.config").new(opts)
 
+  metrics.init(config)
   cache.init(config)
-
   ip.init(config)
   views.init(config)
   notify.init(config)
@@ -244,7 +244,7 @@ function _M.list_html()
 end
 
 local function init_worker()
-  metrics.init_worker(5)
+  metrics.init_worker()
   rules.init_worker()
   request.init_worker()
   cache.init_worker()
@@ -365,7 +365,6 @@ function _M.log()
   local start = start_time()
 
   if not ctx.no_metrics then
-    metrics.requests:inc(1, {ngx.status})
     rules.log(ctx, start)
   end
 
