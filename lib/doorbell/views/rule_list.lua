@@ -10,7 +10,7 @@ end
 ---@type doorbell.view
 ---@param ctx doorbell.ctx
 return function(ctx)
-  local list = rules.list()
+  local list = rules.list(true)
 
   table.sort(list, function(a, b)
     return a.created > b.created

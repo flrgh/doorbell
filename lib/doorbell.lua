@@ -193,7 +193,7 @@ function _M.rules_api()
   local method = get_method()
 
   if method == "GET" then
-    local list = rules.list()
+    local list = rules.list(true)
     if hash then
       res = rules.get(hash)
     else
