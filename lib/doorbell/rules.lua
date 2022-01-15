@@ -4,6 +4,7 @@ local _M = {
 
 local const = require "doorbell.constants"
 local stats = require "doorbell.rules.stats"
+local ip    = require "doorbell.ip"
 
 local cjson = require "cjson"
 
@@ -287,6 +288,12 @@ function _M.new(opts)
 
   if opts.action == const.actions.allow and opts.deny_action then
     err("`deny_action` cannot be used when `action` is '" .. const.actions.allow .. "'")
+  end
+
+  if opts.country and type(opts.country) == "string" then
+    if not ip.get_country_name(opts.country) then
+      err("`country` must be a valid, two letter country code")
+    end
   end
 
   local conditions = 0

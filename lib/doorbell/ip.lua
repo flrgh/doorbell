@@ -17,7 +17,7 @@ local HTTP_FORBIDDEN = ngx.HTTP_FORBIDDEN
 local trusted
 
 ---@type table<string, string>
-local country_names
+local country_names = require "doorbell.ip.countries"
 
 local geoip
 
@@ -111,13 +111,6 @@ function _M.init(opts)
       log.alertf("failed loading geoip database file (%s): %s", opts.geoip_db, err)
     end
     geoip = db
-
-    local fname = opts.asset_path .. "/data/country-codes-to-names.json"
-    country_names, err = util.read_json_file(fname)
-    if not country_names then
-      log.errf("failed loading country code map from %s: %s", fname, err)
-      country_names = {}
-    end
   end
 
   trusted = assert(ipmatcher.new(opts.trusted))

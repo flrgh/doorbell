@@ -192,6 +192,13 @@ describe("doorbell.rules", function()
         plain = true,
       },
 
+      {
+        desc = "country must be a valid country code",
+        input = { action = "allow", country = "NOPE" },
+        expect = "`country` must be a valid, two letter country code",
+        plain = true,
+      },
+
     }
 
     for _, case in ipairs(validation) do
