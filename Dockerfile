@@ -19,6 +19,11 @@ RUN apk add --no-cache \
         --url https://raw.githubusercontent.com/spacewander/luafilesystem/0.3.0/lfs_ffi.lua
 
 
-COPY ./lib/ /usr/local/openresty/lualib/
-COPY ./nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
-COPY ./assets/ /opt/doorbell/assets/
+ARG DOORBELL_PREFIX=/usr/local/doorbell
+ENV DOORBELL_PREFIX=${DOORBELL_PREFIX}
+
+COPY ./lib ${DOORBELL_PREFIX}/
+COPY ./assets ${DOORBELL_PREFIX}/
+COPY ./nginx.conf ${DOORBELL_PREFIX}/
+
+COPY entrypoint.sh /entrypoint.sh

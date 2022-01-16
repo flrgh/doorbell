@@ -1,0 +1,63 @@
+{
+  "base_url": "${DOORBELL_BASE_URL}",
+  "save_path": "${DOORBELL_SAVE_PATH}",
+  "log_path": "${DOORBELL_LOG_PATH}",
+  "geoip_db": "${DOORBELL_GEOIP_DATABASE}",
+  "trusted": [
+    "127.0.0.0/8",
+    "10.0.0.1/16"
+  ],
+  "allow": [
+    {
+      "comment": "allow localhost",
+      "cidr": "127.0.0.0/8",
+      "terminate": true
+    },
+    {
+      "comment": "allow local network",
+      "cidr": "10.0.0.1/16",
+      "terminate": true
+    },
+    {
+      "comment": "let's encrypt http challenge endpoint",
+      "path": "~^/\\.well-known/acme-challenge/.+"
+    }
+  ],
+  "deny": [
+    {
+      "comment": "stop annoying WP scanning",
+      "path": "~/wp-login\\.php$|/wp-admin/",
+      "terminate": true
+    },
+    {
+      "comment": "stop trying to scrape my shit, Slack",
+      "ua": "~Slackbot"
+    },
+    {
+      "comment": "annoying survey/census bots",
+      "ua": "~NetSystemsResearch|NetcraftSurveyAgent|scaninfo@expanseinc\\.com|CensysInspect",
+      "terminate": true
+    },
+    {
+      "comment": "empty user-agent",
+      "ua": ""
+    }
+  ],
+  "notify": {
+    "strategy": "pushover",
+    "config": {
+      "token": "${PUSHOVER_TOKEN}",
+      "user_key": "${PUSHOVER_USER_KEY}"
+    },
+    "periods": [
+      {
+        "from": 15,
+        "to": 24
+      },
+      {
+        "from": 0,
+        "to": 7
+      }
+    ]
+  }
+}

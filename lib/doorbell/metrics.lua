@@ -53,11 +53,15 @@ function _M.init(conf)
 
   if enabled then
     require("doorbell.routes").add("/metrics", {
-      allow_untrusted = false,
       description     = "prometheus metrics endpoint",
+      allow_untrusted = false,
       log_enabled     = false,
       metrics_enabled = false,
-      run             = _M.collect,
+      GET             = function()
+        if enabled and prometheus then
+          prometheus:collect()
+        end
+      end,
     })
   end
 end
@@ -83,14 +87,6 @@ end
 ---@return boolean
 function _M.enabled()
   return enabled and prometheus ~= nil
-end
-
-function _M.collect()
-  if not prometheus then
-    return
-  end
-
-  prometheus:collect()
 end
 
 ---@param fn function

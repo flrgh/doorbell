@@ -29,13 +29,20 @@ local function validate_regex(re)
   return re
 end
 
+---@alias doorbell.route.handler fun(ctx:table, match:table)
+
 ---@class doorbell.route : table
 ---@field path            string
 ---@field description     string
 ---@field metrics_enabled boolean
 ---@field log_enabled     boolean
 ---@field allow_untrusted boolean
----@field run             fun(ctx:table)
+---@field content_type    string
+---@field GET             doorbell.route.handler
+---@field POST            doorbell.route.handler
+---@field DELETE          doorbell.route.handler
+---@field PUT             doorbell.route.handler
+---@field PATCH           doorbell.route.handler
 
 ---@class doorbell.route_list : table
 ---@field [1] string
@@ -46,7 +53,6 @@ local plain = {}
 
 ---@type doorbell.route_list
 local regex = { n = 0 }
-
 
 ---@param path string
 ---@param route doorbell.route
@@ -90,5 +96,11 @@ function _M.match(path)
     end
   end
 end
+
+setmetatable(_M, {
+  __newindex = function(_, path, route)
+    _M.add(path, route)
+  end,
+})
 
 return _M
