@@ -20,8 +20,7 @@ local re_find = ngx.re.find
 local pairs   = pairs
 local sort    = table.sort
 
-local SHM_NAME = const.shm.doorbell
-local SHM      = assert(ngx.shared[SHM_NAME], "missing shm " .. SHM_NAME)
+local LOCK_SHM = const.shm.locks
 
 local TILDE = string.byte("~")
 
@@ -257,8 +256,7 @@ function _M.table_keys(t, sorted)
 end
 
 ---@class doorbell.lock : resty.lock
----@field _ns string
----@field _key string
+---@field _name string
 ---@field _action string
 ---@field unlock fun(self:doorbell.lock, ...: any):any
 ---@field _unlock fun(self:resty.lock)
@@ -270,9 +268,8 @@ local function _unlock(lock, ...)
   local ok, err = lock:_unlock()
   if not ok then
     log.errf(
-      "failed unlocking lock %s:%s (action = %s): %s",
-      lock._ns,
-      lock._key,
+      "failed unlocking lock %s (action = %s): %s",
+      lock._name,
       lock._action,
       err
     )
@@ -286,24 +283,22 @@ end
 ---@param opts resty.lock.opts
 ---@return doorbell.lock
 function _M.lock(ns, key, action, opts)
-  local lock, err = resty_lock:new(SHM_NAME, opts)
+  local lock, err = resty_lock:new(LOCK_SHM, opts)
   if not lock then
-    log.errf("failed to create lock for action %s: %s", action, err)
+    log.errf("failed to create lock (action = %s): %s", action, err)
     return nil, err
   end
 
-  local name = "lock:" .. ns .. ":" .. key
+  local name = ns .. ":" .. key
 
   local elapsed
   elapsed, err = lock:lock(name)
   if not elapsed then
-    log.errf("failed to acquire lock of %s:%s for action %s: %s", ns, key, action, err)
+    log.errf("failed to acquire lock of %s (action = %s): %s", name, action, err)
     return nil, err
   end
 
-  lock._ns = ns
-  lock._key = key
-  lock._action = action
+  lock._name = name
   lock._unlock = lock.unlock
   lock.unlock = _unlock
   return lock

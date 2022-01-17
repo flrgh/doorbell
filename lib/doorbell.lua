@@ -283,6 +283,7 @@ end
 
 function _M.run()
   assert(SHM, "doorbell was not initialized")
+  header.server = "doorbell"
 
   local path = var.uri:gsub("?.*", "")
   local route, match = routes.match(path)
