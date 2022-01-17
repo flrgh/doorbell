@@ -2,7 +2,10 @@ local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
+local const   = require "doorbell.constants"
+local log     = require "doorbell.log"
 local cjson = require "cjson.safe"
+local resty_lock = require "resty.lock"
 
 local encode  = cjson.encode
 local decode  = cjson.decode
@@ -16,6 +19,9 @@ local md5     = ngx.md5
 local re_find = ngx.re.find
 local pairs   = pairs
 local sort    = table.sort
+
+local SHM_NAME = const.shm.doorbell
+local SHM      = assert(ngx.shared[SHM_NAME], "missing shm " .. SHM_NAME)
 
 local TILDE = string.byte("~")
 
@@ -249,5 +255,59 @@ function _M.table_keys(t, sorted)
   end
   return keys
 end
+
+---@class doorbell.lock : resty.lock
+---@field _ns string
+---@field _key string
+---@field _action string
+---@field unlock fun(self:doorbell.lock, ...: any):any
+---@field _unlock fun(self:resty.lock)
+
+---@param lock doorbell.lock
+---@param ... any
+---@return any
+local function _unlock(lock, ...)
+  local ok, err = lock:_unlock()
+  if not ok then
+    log.errf(
+      "failed unlocking lock %s:%s (action = %s): %s",
+      lock._ns,
+      lock._key,
+      lock._action,
+      err
+    )
+  end
+
+  return ...
+end
+
+---@param ns string
+---@param key string
+---@param opts resty.lock.opts
+---@return doorbell.lock
+function _M.lock(ns, key, action, opts)
+  local lock, err = resty_lock:new(SHM_NAME, opts)
+  if not lock then
+    log.errf("failed to create lock for action %s: %s", action, err)
+    return nil, err
+  end
+
+  local name = "lock:" .. ns .. ":" .. key
+
+  local elapsed
+  elapsed, err = lock:lock(name)
+  if not elapsed then
+    log.errf("failed to acquire lock of %s:%s for action %s: %s", ns, key, action, err)
+    return nil, err
+  end
+
+  lock._ns = ns
+  lock._key = key
+  lock._action = action
+  lock._unlock = lock.unlock
+  lock.unlock = _unlock
+  return lock
+end
+
 
 return _M

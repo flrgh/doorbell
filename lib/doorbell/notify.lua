@@ -40,8 +40,14 @@ local strategy
 
 ---@param conf doorbell.config
 function _M.init(conf)
-  local notify = assert(conf.notify, "notify missing")
-  local strat = assert(notify.strategy, "notify.strategy missing")
+  local notify = conf.notify
+  local strat = notify and notify.strategy or "none"
+
+  if strat == "none" then
+    log.warn("no configured notify strategy--notifications will be disabled")
+    return
+  end
+
   if STRATEGIES[strat] then
     log.info("using builtin notify strategy: ", strat)
     strategy = require("doorbell.notify.strategies." .. strat)
@@ -62,7 +68,6 @@ function _M.init(conf)
   end
 
   _M.strategy = strat
-
 end
 
 function _M.send(req, token)
@@ -90,6 +95,8 @@ end
 
 ---@param status '"send"'|'"failed"'|'"snoozed"'|'"answered"'
 function _M.inc(status)
+  if not strategy then return end
+
   if not STATUS[status] then
     log.err("tried to increment unknown notify status: ", status)
     return
@@ -103,6 +110,8 @@ function _M.inc(status)
 end
 
 function _M.init_worker()
+  if not strategy then return end
+
   local metrics = require "doorbell.metrics"
   if metrics.enabled() then
     counter = metrics.prometheus:counter(
@@ -111,6 +120,10 @@ function _M.init_worker()
       { "status" }
     )
   end
+end
+
+function _M.enabled()
+  return strategy ~= nil
 end
 
 return _M

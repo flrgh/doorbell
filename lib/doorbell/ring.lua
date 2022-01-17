@@ -8,7 +8,6 @@ local _M = {
 
 local log     = require "doorbell.log"
 local const   = require "doorbell.constants"
-local notify  = require "doorbell.notify"
 local auth    = require "doorbell.auth"
 local request = require "doorbell.request"
 local config  = require "doorbell.config"
@@ -44,15 +43,10 @@ local HANDLERS = {
   end,
 
   [STATES.none] = function(req)
-    if notify.in_notify_period() then
-      log.notice("requesting access for ", req.addr)
-      if auth.request(req) and auth.await(req) then
-        log.notice("access approved for ", req.addr)
-        return exit(HTTP_OK)
-      end
-    else
-      log.notice("not sending request outside of notify hours for ", req.addr)
-      notify.inc("snoozed")
+    log.notice("requesting access for ", req.addr)
+    if auth.request(req) and auth.await(req) then
+      log.notice("access approved for ", req.addr)
+      return exit(HTTP_OK)
     end
     return exit(HTTP_UNAUTHORIZED)
   end,

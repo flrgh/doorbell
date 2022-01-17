@@ -207,12 +207,12 @@ local function init_core_routes()
     allow_untrusted = false,
     content_type    = "application/json",
     GET             = function(_, match)
-      local rule = rules.get(match.rule_hash)
+      local rule = rules.get(match.hash)
       return send(rule and ngx.HTTP_OK or ngx.HTTP_NOT_FOUND, rule)
     end,
 
     PATCH          = function(_, match)
-      local rule = rules.get(match.rule_hash)
+      local rule = rules.get(match.hash)
       if not rule then
         return send(404, { error = "rule not found" })
       end
@@ -241,8 +241,6 @@ end
 function _M.init()
   config.init()
 
-  init_core_routes()
-
   metrics.init(config)
   cache.init(config)
   ip.init(config)
@@ -251,6 +249,8 @@ function _M.init()
   auth.init(config)
   rules.init(config)
   request.init(config)
+
+  init_core_routes()
 
   assert(proc.enable_privileged_agent(10))
 

@@ -6,8 +6,8 @@ local const   = require "doorbell.constants"
 local log     = require "doorbell.log"
 local rules   = require "doorbell.rules.manager"
 local notify  = require "doorbell.notify"
+local util    = require "doorbell.util"
 
-local resty_lock = require "resty.lock"
 local random     = require "resty.random"
 local str        = require "resty.string"
 local cjson      = require "cjson"
@@ -20,8 +20,8 @@ local sleep = ngx.sleep
 
 
 local TTL_PENDING = const.ttl.pending
-local SHM_NAME = const.shm.doorbell
-local SHM = assert(ngx.shared[SHM_NAME], "missing shm " .. SHM_NAME)
+local SHM_NAME    = const.shm.doorbell
+local SHM         = assert(ngx.shared[SHM_NAME], "missing shm " .. SHM_NAME)
 local WAIT_TIME   = const.wait_time
 local STATES      = const.states
 
@@ -39,7 +39,7 @@ _M.is_pending = is_pending
 local function set_pending(addr, pending)
   local key = "pending:" .. addr
   if not pending then
-    assert(SHM:delete(key))
+    assert(SHM:set(key, nil))
   else
     assert(SHM:safe_set(key, true, TTL_PENDING))
   end
@@ -66,27 +66,6 @@ local function get_state(req, ctx)
   return STATES.none
 end
 _M.get_state = get_state
-
-
----@param addr string
----@return resty.lock? lock
----@return string? error
-local function lock_addr(addr)
-  local lock, err = resty_lock:new(SHM_NAME)
-  if not lock then
-    log.err("failed to create lock: ", err)
-    return nil, err
-  end
-
-  local elapsed
-  elapsed, err = lock:lock("lock:" .. addr)
-  if not elapsed then
-    log.err("failed to lock auth state for ", addr)
-    return nil, err
-  end
-
-  return lock
-end
 
 
 ---@param req doorbell.request
@@ -145,7 +124,7 @@ end
 ---@return boolean
 function _M.request(req)
   local addr = req.addr
-  local lock, err = lock_addr(addr)
+  local lock, err = util.lock("addr", addr, "auth-request")
   if not lock then
     log.errf("failed acquiring addr lock for %s: %s", addr, err)
     return false
@@ -153,29 +132,38 @@ function _M.request(req)
 
   if is_pending(addr) then
     log.notice("access for ", addr, " is already waiting on a pending request")
-    lock:unlock()
-    return false
+    return lock:unlock(false)
   else
     local rule = rules.match(req)
     local state = (rule and rule.action)
 
     if state == STATES.allow then
       log.debug("acccess for ", addr, " was allowed before requesting it")
-      lock:unlock()
-      return true
+      return lock:unlock(true)
 
     elseif state == STATES.deny then
       log.notice("access was denied for ", addr, " before requesting it")
-      lock:unlock()
-      return false
+      return lock:unlock(false)
     end
   end
   local token
   token, err = generate_request_token(req)
   if not token then
     log.errf("failed creating auth request token for %s: %s", addr, err)
-    lock:unlock()
-    return false
+    return lock:unlock(false)
+  end
+
+  set_pending(addr, true)
+
+  if not notify.enabled() then
+    return lock:unlock(false)
+  end
+
+  if not notify.in_notify_period() then
+    log.notice("not sending request outside of notify hours for ", req.addr)
+    notify.inc("snoozed")
+
+    return lock:unlock(false)
   end
 
   local url = fmt("%s/answer?t=%s", base_url, token)
@@ -186,15 +174,12 @@ function _M.request(req)
 
   if not sent then
     log.err("failed sending auth request: ", err)
-    lock:unlock()
     notify.inc("failed")
-    return false
+  else
+    notify.inc("sent")
   end
 
-  notify.inc("sent")
-  set_pending(addr, true)
-  lock:unlock()
-  return true
+  return lock:unlock(sent and true)
 end
 
 ---@param conf doorbell.config

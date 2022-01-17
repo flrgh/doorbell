@@ -94,7 +94,7 @@ function _M.match(path)
     if match then
       match_t = {}
       local route = item[2]
-      cache:set("path", { route = route, match = match })
+      cache:set("path", path, { route = route, match = match })
       return route, match
     end
   end

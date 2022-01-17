@@ -22,8 +22,12 @@ RUN apk add --no-cache \
 ARG DOORBELL_PREFIX=/usr/local/doorbell
 ENV DOORBELL_PREFIX=${DOORBELL_PREFIX}
 
-COPY ./lib ${DOORBELL_PREFIX}/
-COPY ./assets ${DOORBELL_PREFIX}/
-COPY ./nginx.conf ${DOORBELL_PREFIX}/
+COPY ./lib ${DOORBELL_PREFIX}/lib
+COPY ./assets ${DOORBELL_PREFIX}/assets
+COPY ./nginx.template.conf ${DOORBELL_PREFIX}/
 
 COPY entrypoint.sh /entrypoint.sh
+COPY ./config.json /etc/doorbell/config.json
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["start"]

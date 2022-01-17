@@ -18,6 +18,7 @@ local _M = {
 }
 
 local util = require "doorbell.util"
+local log  = require "doorbell.log"
 
 local prefix = ngx.config.prefix()
 local getenv = os.getenv
@@ -64,14 +65,14 @@ local NOT_REQUIRED = {}
 ---@type doorbell.config
 local defaults = {
   allow      = NOT_REQUIRED,
-  asset_path = "/opt/doorbell/assets",
+  asset_path = prefix .. "/assets/",
   base_url   = REQUIRED,
   cache_size = 1000,
   deny       = NOT_REQUIRED,
   geoip_db   = NOT_REQUIRED,
   host       = NOT_REQUIRED,
-  log_path   = prefix .. "/request.json.log",
-  notify     = REQUIRED,
+  log_path   = prefix .. "/logs/request.json.log",
+  notify     = NOT_REQUIRED,
   save_path  = prefix .. "/rules.json",
   trusted    = REQUIRED,
   metrics    = NOT_REQUIRED
@@ -85,7 +86,9 @@ function _M.init()
     util.errorf("failed loading config (%s): %s", fname, err)
   end
 
-  for name in iter_keys(data) do
+  replace_env(data)
+
+  for name in iter_keys(defaults) do
     local default = defaults[name]
     local user    = data[name]
 
@@ -95,6 +98,8 @@ function _M.init()
       util.errorf("config.%s is required", name)
     elseif default == NOT_REQUIRED then
       _M[name] = nil
+    else
+      _M[name] = default
     end
   end
 
@@ -105,6 +110,7 @@ function _M.init()
     end
     _M.host = m.host:lower()
   end
+
 end
 
 if _G._TEST then

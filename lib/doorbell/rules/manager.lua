@@ -95,21 +95,14 @@ local function lock_storage(action, locked)
     return noop
   end
 
-  local lock, err = resty_lock:new(META_NAME, LOCK_OPTS)
+  local lock, err = util.lock("rules", "storage", action)
+
   if not lock then
     errorf("failed creating storage lock (action = %s): %s", action, err or "unknown")
   end
-  local elapsed
-  elapsed, err = lock:lock("lock:rules")
-  if not elapsed then
-    errorf("failed locking storage (action = %s): %s", action, err)
-  end
 
-  return function()
-    local unlocked, uerr = lock:unlock()
-    if not unlocked then
-      log.errf("failed unlocking storage (action = %s): %s", action, uerr)
-    end
+  return function(...)
+    return lock:unlock(...)
   end
 end
 
@@ -222,15 +215,13 @@ local function delete_rule(rule, locked)
 
   local ok, err = SHM:set(rule.hash, nil)
   if not ok then
-    unlock()
-    return nil, err
+    return unlock(nil, err)
   end
 
   ok, err = HASH:set(rule.id, nil)
   inc_version()
-  unlock()
 
-  return ok, err
+  return unlock(ok, err)
 end
 
 
@@ -288,8 +279,7 @@ local function flush_expired(premature, schedule, locked)
 
   if #delete == 0 then
     log.debug("no expired rules to delete")
-    unlock()
-    return
+    return unlock()
   end
 
   local count = #delete
@@ -337,9 +327,8 @@ local function save(fname)
 
   local ok, written, err = util.update_json_file(fname, storage.serialize(list))
   if not ok then
-    unlock()
     log.errf("failed saving rules to %s: %s", fname, err)
-    return nil
+    return unlock()
   end
 
   if written then
@@ -348,8 +337,7 @@ local function save(fname)
 
   last_saved(now())
 
-  unlock()
-  return version
+  return unlock(version)
 end
 
 local function saver(premature)
@@ -414,8 +402,7 @@ local function create(opts, nobuild, overwrite, locked)
   end
 
   if not nobuild then reload() end
-  unlock()
-  return rule
+  return unlock(rule)
 end
 
 
