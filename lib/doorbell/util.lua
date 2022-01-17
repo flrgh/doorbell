@@ -9,9 +9,15 @@ local decode  = cjson.decode
 local open    = io.open
 local type    = type
 local fmt     = string.format
+local byte    = string.byte
 local utctime = ngx.utctime
 local error   = error
 local md5     = ngx.md5
+local re_find = ngx.re.find
+local pairs   = pairs
+local sort    = table.sort
+
+local TILDE = string.byte("~")
 
 ---@param t table
 ---@return string? encoded
@@ -24,7 +30,6 @@ local function encode_table(t)
   end
   return encode(t)
 end
-
 
 --- Read the contents of a file.
 ---@param fname string
@@ -211,7 +216,38 @@ function _M.filter(t, fn, ...)
   return t
 end
 
+function _M.is_regex(path)
+  return byte(path, 1) == TILDE
+end
 
+---@param re string
+---@return boolean ok
+---@return string? err
+function _M.validate_regex(re)
+  -- strip the '~' prefix
+  re = re:sub(2)
+  local _, _, err = re_find(".", re, "oj")
+  if err then
+    return nil, err
+  end
+  return re
+end
 
+---@param t table<string, any>
+---@param sorted boolean
+---@return string[]
+function _M.table_keys(t, sorted)
+  local keys = {}
+  local n = 0
+  for k in pairs(t) do
+    n = n + 1
+    keys[n] = k
+  end
+
+  if sorted then
+    sort(keys)
+  end
+  return keys
+end
 
 return _M

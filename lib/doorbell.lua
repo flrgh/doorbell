@@ -13,51 +13,27 @@ local views   = require "doorbell.views"
 local notify  = require "doorbell.notify"
 local cache   = require "doorbell.cache"
 local config  = require "doorbell.config"
-local routes = require "doorbell.routes"
+local routes  = require "doorbell.routes"
+local http    = require "doorbell.http"
+local util    = require "doorbell.util"
 
-local cjson      = require "cjson"
 local proc       = require "ngx.process"
 local safe_decode = require("cjson.safe").decode
 
-local ngx               = ngx
-local header            = ngx.header
-local say               = ngx.say
-local start_time        = ngx.req.start_time
-local get_method        = ngx.req.get_method
-local exit              = ngx.exit
-local sleep             = ngx.sleep
-local var               = ngx.var
-
-local HTTP_OK                    = ngx.HTTP_OK
-local HTTP_FORBIDDEN             = ngx.HTTP_FORBIDDEN
-local HTTP_UNAUTHORIZED          = ngx.HTTP_UNAUTHORIZED
-local HTTP_INTERNAL_SERVER_ERROR = ngx.HTTP_INTERNAL_SERVER_ERROR
-local HTTP_CREATED               = ngx.HTTP_CREATED
-local HTTP_BAD_REQUEST           = ngx.HTTP_BAD_REQUEST
-local HTTP_NOT_ALLOWED           = ngx.HTTP_NOT_ALLOWED
-
-local assert   = assert
-
-local TARPIT_INTERVAL = const.periods.minute * 5
+local ngx        = ngx
+local header     = ngx.header
+local start_time = ngx.req.start_time
+local get_method = ngx.req.get_method
+local var        = ngx.var
+local assert     = assert
+local shared     = ngx.shared
+local send       = http.send
 
 ---@type string
 local SHM_NAME = const.shm.doorbell
 ---@type ngx.shared.DICT
 local SHM = assert(ngx.shared[SHM_NAME], "missing shm " .. SHM_NAME)
 
-
----@param status ngx.http.status_code
----@param body string|table|nil
-local function respond(status, body)
-  if type(body) == "table" then
-    body = cjson.encode(body)
-  end
-  ngx.status = status
-  ngx.say(body)
-  return ngx.exit(status)
-end
-
-local STATES = const.states
 
 ---@class doorbell.ctx : table
 ---@field rule            doorbell.rule
@@ -72,209 +48,101 @@ local STATES = const.states
 ---@field template        fun(env:table):string
 ---@field route           doorbell.route
 
----@alias doorbell.handler fun(req:doorbell.request, ctx:doorbell.ctx)
-
----@type table<doorbell.auth_state, doorbell.handler>
-local HANDLERS = {
-  [STATES.allow] = function(req)
-    log.debugf("ALLOW %s => %s %s://%s%s", req.addr, req.method, req.scheme, req.host, req.uri)
-    return exit(HTTP_OK)
-  end,
-
-  [STATES.deny] = function(req, ctx)
-    log.notice("denying access for ", req.addr)
-    if ctx.rule.deny_action == const.deny_actions.tarpit then
-      log.debugf("tarpit %s for %s seconds", req.addr, TARPIT_INTERVAL)
-      sleep(TARPIT_INTERVAL)
-    end
-    return exit(HTTP_FORBIDDEN)
-  end,
-
-  [STATES.none] = function(req)
-    if notify.in_notify_period() then
-      log.notice("requesting access for ", req.addr)
-      if auth.request(req) and auth.await(req) then
-        log.notice("access approved for ", req.addr)
-        return exit(HTTP_OK)
-      end
-    else
-      log.notice("not sending request outside of notify hours for ", req.addr)
-      notify.inc("snoozed")
-    end
-    return exit(HTTP_UNAUTHORIZED)
-  end,
-
-  [STATES.pending] = function(req)
-    log.notice("awaiting access for ", req.addr)
-    if auth.await(req) then
-      return exit(HTTP_OK)
-    end
-    return exit(HTTP_UNAUTHORIZED)
-  end,
-
-  [STATES.error] = function(req)
-    log.err("something went wrong while checking auth for ", req.addr)
-    return exit(HTTP_INTERNAL_SERVER_ERROR)
-  end,
-}
-
-local function get_json_request_body()
-  ngx.req.read_body()
-  local body, err = ngx.req.get_body_data()
-  if not body then
-    local fname = ngx.req.get_body_file()
-    if fname then
-      local fh
-      fh, err = io.open(fname, "r")
-      if fh then
-        body, err = fh:read("*a")
-        fh:close()
-      end
-    end
-  end
-
-  if body and body ~= "" then
-    local json, jerr = safe_decode(body)
-    if jerr then
-      return nil, err
-    elseif json ~= nil then
-      return json
-    end
-  end
-
-  return nil, err
-end
-
 
 local function init_core_routes()
-  routes["/ring"] = {
-    description     = "ring ring",
-    log_enabled     = true,
-    metrics_enabled = true,
-    allow_untrusted = false,
-    GET = function(ctx)
-      local req, err = request.new(ctx)
-      if not req then
-        log.alert("failed building request: ", err)
-        return exit(HTTP_BAD_REQUEST)
-      end
-
-      if req.host == config.host and req.path == "/answer" then
-        log.debugf("allowing request to %s/answer endpoint", config.host)
-        return exit(HTTP_OK)
-      end
-
-      local state = auth.get_state(req, ctx)
-
-      return HANDLERS[state](req, ctx)
-    end
-  }
+  routes["/ring"] = require("doorbell.ring")
 
   routes["/answer"] = {
     description     = "who is it?",
     log_enabled     = true,
     metrics_enabled = true,
-    allow_untrusted = false,
     GET             = views.answer,
     POST            = views.answer,
   }
 
   routes["/reload"] = {
-    description = "reload from disk",
-    log_enabled = false,
+    description     = "reload from disk",
     metrics_enabled = false,
-    allow_untrusted = false,
+    content_type    = "text/plain",
     POST = function()
-      header["content-type"] = "text/plain"
       local ok, err = rules.load(config.save_path, false)
       if ok then
-        say("success")
-        return exit(HTTP_CREATED)
+        return send(201, "success")
       end
       log.err("failed reloading rules from disk: ", err)
-      say("failure")
-      exit(HTTP_INTERNAL_SERVER_ERROR)
+      return send(500, "failure")
     end
   }
 
   routes["/save"] = {
     description     = "save to disk",
-    log_enabled     = false,
     metrics_enabled = false,
-    allow_untrusted = false,
+    content_type    = "text/plain",
     POST            = function()
-
       local ok, err = rules.save()
-
-      ngx.status = (ok and HTTP_CREATED) or HTTP_INTERNAL_SERVER_ERROR
-
-      header["content-type"] = "text/plain"
-
-      if err then
+      if not ok then
         log.err("failed saving rules to disk: ", err)
-        say("failure")
-      else
-        say("success")
+        return send(500, "failure")
+      end
+      return send(201, "success")
+    end
+  }
+
+  routes["/shm"] = {
+    description = "shm zone list",
+    metrics_enabled = false,
+    content_type    = "application/json",
+    GET = function()
+      return send(200, util.table_keys(shared, true))
+    end,
+  }
+
+  routes["~^/shm/(?<name>[^/]+)/?$"] = {
+    description = "shm key list",
+    metrics_enabled = false,
+    content_type    = "application/json",
+    GET = function(_, match)
+      local name = match.name
+      local shm = shared[name]
+      if not shm then
+        return send(404, { error = "ngx.shared[" .. name .. "] not found" })
       end
 
-      return exit(0)
+      return send(200, shm:get_keys(0))
     end
   }
 
   routes["~^/shm/(?<zone>[^/]+)?(/(?<key>.+))?"] = {
-    description     = "save to disk",
-    log_enabled     = false,
+    description     = "shm key",
     metrics_enabled = false,
     allow_untrusted = false,
+    content_type    = "application/json",
     GET = function(_, match)
       local zone, key = match.zone, match.key
-      log.debugf("zone: %s, key: %s", zone, key)
-      if key == "" then
-        key = nil
-      end
-      if zone == "" then
-        zone = nil
+
+      local shm = shared[zone]
+      if not shm then
+        return send(404, { error = "ngx.shared[" .. zone .. "] does not exist" })
       end
 
-      local res, err
-      if not zone then
-        res = {}
-        for name in pairs(ngx.shared) do
-          table.insert(res, name)
-        end
-      elseif not key then
-        local shm = ngx.shared[zone]
-        if shm then
-          res, err = shm:get_keys(0)
-        end
-      else
-        local shm = ngx.shared[zone]
-        if shm then
-          res, err = shm:get(key)
-          if res ~= nil then
-            local json, jerr = safe_decode(res)
-            if jerr == nil then
-              res = json
-            end
-          end
-        end
+      local v = shm:get(key)
+      if v == nil then
+        return send(404, { error = "shm key " .. key .. "does not exist" })
       end
 
-      ngx.status = (res ~= nil and 200) or 404
-      header["content-type"] = "application/json"
-      if res == nil then
-        res = err
+      local decoded = safe_decode(v)
+      if not decoded then
+        return send(200, v)
       end
-      ngx.say(cjson.encode(res))
-      ngx.exit(0)
+
+      return send(200, decoded)
     end
   }
 
   routes["/notify/test"] = {
     description     = "send a test notification",
-    log_enabled     = false,
     metrics_enabled = false,
-    allow_untrusted = false,
+    content_type    = "application/json",
     POST            = function()
       local req = {
         addr    = "178.45.6.125",
@@ -286,6 +154,7 @@ local function init_core_routes()
         method  = "GET",
         path    = "/wikindex.php",
       }
+
       local token = "TEST"
 
       local ok, err, res = notify.send(req, token)
@@ -297,17 +166,12 @@ local function init_core_routes()
         response = res,
       }
 
-      local status = ok and HTTP_OK or HTTP_INTERNAL_SERVER_ERROR
-      ngx.status = status
-      header["content-type"] = "application/json"
-      ngx.print(cjson.encode(response))
-      exit(0)
+      send((ok and 200) or 500, response)
     end,
   }
 
   routes["/rules.html"] = {
     description     = "rules list, in html",
-    log_enabled     = false,
     metrics_enabled = false,
     allow_untrusted = false,
     content_type    = "text/html",
@@ -316,47 +180,60 @@ local function init_core_routes()
 
   routes["/rules"] = {
     description     = "rules API",
-    log_enabled     = false,
     metrics_enabled = false,
     allow_untrusted = false,
     content_type    = "application/json",
     GET             = function()
-      return respond(ngx.HTTP_OK, rules.list(true))
+      return send(200, rules.list(true))
     end,
 
     POST = function()
-      local status, res
-      local json, err = get_json_request_body()
-      if not json then
-        status = HTTP_BAD_REQUEST
-        res = { error = "failed reading request body json: " .. tostring(err or "unknown") }
+      local json = http.get_json_request_body()
 
-      else
-        local rule, rerr = rules.add(json)
-        if not rule then
-          status = HTTP_BAD_REQUEST
-          res = { error = "failed adding rule: " .. tostring(rerr or "unknown") }
-
-        else
-          res = rule
-          status = ngx.HTTP_CREATED
-        end
+      local rule, rerr = rules.add(json)
+      if not rule then
+        return send(200, {
+          error = "failed adding rule: " .. tostring(rerr or "unknown")
+        })
       end
 
-      return respond(status, res)
+      return send(201, rule)
     end
   }
 
   routes["~^/rules/(?<hash>[a-z0-9-]+)$"] = {
     description     = "rules API",
-    log_enabled     = false,
     metrics_enabled = false,
     allow_untrusted = false,
     content_type    = "application/json",
     GET             = function(_, match)
       local rule = rules.get(match.rule_hash)
-      return respond(rule and ngx.HTTP_OK or ngx.HTTP_NOT_FOUND, rule)
+      return send(rule and ngx.HTTP_OK or ngx.HTTP_NOT_FOUND, rule)
     end,
+
+    PATCH          = function(_, match)
+      local rule = rules.get(match.rule_hash)
+      if not rule then
+        return send(404, { error = "rule not found" })
+      end
+
+      local json = http.get_json_request_body()
+      local updated, err = rules.upsert(json)
+      if not updated then
+        return send(400, { error = err })
+      end
+
+      return send(201, updated)
+    end,
+
+    DELETE = function(_, match)
+      local ok, err = rules.delete(match.hash)
+      if not ok then
+        return send(400, { error = err })
+      end
+
+      return send(204)
+    end
   }
 
 end
@@ -405,10 +282,12 @@ function _M.init_worker()
 end
 
 function _M.run()
+  assert(SHM, "doorbell was not initialized")
+
   local path = var.uri:gsub("?.*", "")
   local route, match = routes.match(path)
   if not route then
-    respond(ngx.HTTP_NOT_ALLOWED)
+    return send(405)
   end
 
   ---@type doorbell.ctx
@@ -419,6 +298,15 @@ function _M.run()
     header["content-type"] = route.content_type
   end
 
+  if route.log_enabled == false then
+    var.doorbell_log = 0
+    request.no_log(ctx)
+  end
+
+  if route.metrics_enabled == false then
+    request.no_metrics(ctx)
+  end
+
   if not route.allow_untrusted then
     ip.require_trusted(ctx)
   end
@@ -426,7 +314,7 @@ function _M.run()
   local method = get_method()
   local handler = route[method] or route["*"]
   if not handler then
-    respond(ngx.HTTP_NOT_ALLOWED)
+    send(405)
   end
 
   return handler(ctx, match)

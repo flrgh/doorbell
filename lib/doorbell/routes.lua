@@ -4,30 +4,11 @@ local _M = {
 
 local util = require "doorbell.util"
 
-local byte     = string.byte
+local cache = require("doorbell.cache").new("routes", 1000)
+
 local re_match = ngx.re.match
-local re_find  = ngx.re.find
 local assert   = assert
 local type     = type
-
-local TILDE = string.byte("~")
-
-local function is_regex(path)
-  return byte(path, 1) == TILDE
-end
-
----@param re string
----@return boolean ok
----@return string? err
-local function validate_regex(re)
-  -- strip the '~' prefix
-  re = re:sub(2)
-  local _, _, err = re_find(".", re, "oj")
-  if err then
-    return nil, err
-  end
-  return re
-end
 
 ---@alias doorbell.route.handler fun(ctx:table, match:table)
 
@@ -60,8 +41,8 @@ function _M.add(path, route)
   assert(type(path) == "string", "path must be a string")
   assert(type(route) == "table", "route must be a table")
 
-  if is_regex(path) then
-    local re, err = validate_regex(path)
+  if util.is_regex(path) then
+    local re, err = util.validate_regex(path)
     if not re then
       util.errorf("invalid route path regex (%q): %s", path, err)
     end
@@ -69,9 +50,24 @@ function _M.add(path, route)
     local n = regex.n + 1
     regex[n] = { re, route }
     regex.n = n
+
+    -- we only cache regex route matches, so this only needs to be flushed
+    -- when adding a regex route
+    cache:flush_all()
+
   else
+    -- normalize and match both `/route` and `/route/`
+    path = path:gsub("/+$", "")
+
+    if plain[path] then
+      local other = plain[path]
+      util.errorf("route for %q already exists (%s)", path, other.description)
+    end
+
     plain[path] = route
+    plain[path .. "/"] = route
   end
+
 end
 
 ---@class doorbell.route_match : table
@@ -86,13 +82,20 @@ function _M.match(path)
   local r = plain[path]
   if r then return r end
 
+  local cached = cache:get("path", path)
+  if cached then
+    return cached.route, cached.match
+  end
+
   for i = 1, regex.n do
     local item = regex[i]
     local re = item[1]
     local match = re_match(path, re, "oj", nil, match_t)
     if match then
       match_t = {}
-      return item[2], match
+      local route = item[2]
+      cache:set("path", { route = route, match = match })
+      return route, match
     end
   end
 end
