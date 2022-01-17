@@ -1,13 +1,12 @@
 local errlog = require "ngx.errlog"
+
 local sys_level = errlog.get_sys_filter_level()
-local raw_log = errlog.raw_log
-
-local fmt = string.format
-local tostring = tostring
-local select = select
-local rep = string.rep
-
-local rawset = rawset
+local raw_log   = errlog.raw_log
+local fmt       = string.format
+local rep       = string.rep
+local tostring  = tostring
+local select    = select
+local rawset    = rawset
 
 local function noop() end
 
