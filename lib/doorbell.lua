@@ -239,6 +239,12 @@ local function init_core_routes()
 end
 
 function _M.init()
+  for _, shm in pairs(const.shm) do
+    if not ngx.shared[shm] then
+      util.errorf("fatal: ngx.shared.%s is missing", shm)
+    end
+  end
+
   config.init()
 
   metrics.init(config)

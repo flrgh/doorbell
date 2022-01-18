@@ -44,3 +44,4 @@ servroot
 
 conf
 assets/*.mmdb
+test/

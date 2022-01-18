@@ -649,7 +649,7 @@ end
 
 ---@param conf doorbell.config
 function _M.init(conf)
-  SAVE_PATH = conf.save_path
+  SAVE_PATH = util.join(conf.state_path, "rules.json")
   stats.init(conf)
 
   local ok, err = _M.load(SAVE_PATH, true)

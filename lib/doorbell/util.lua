@@ -19,6 +19,9 @@ local md5     = ngx.md5
 local re_find = ngx.re.find
 local pairs   = pairs
 local sort    = table.sort
+local select  = select
+local insert  = table.insert
+local concat  = table.concat
 
 local LOCK_SHM = const.shm.locks
 
@@ -304,5 +307,27 @@ function _M.lock(ns, key, action, opts)
   return lock
 end
 
+
+local buf = {}
+
+---@param ... string
+---@return string
+function _M.join(...)
+  local n = select("#", ...)
+  for i = 1, n do
+    elem = select(i, ...)
+
+    if i == 1 then
+      elem = elem:gsub("^//+", "/")
+    else
+      elem = elem:gsub("^/+", "")
+    end
+
+    elem = elem:gsub("/+$", "")
+    insert(buf, i, elem)
+  end
+
+  return concat(buf, "/", 1, n)
+end
 
 return _M

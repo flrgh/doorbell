@@ -86,18 +86,12 @@ const.ttl = {
 
 -- ngx.shared shm names
 const.shm = {
-  -- primary storage
-  doorbell = "main",
-  -- storage for doorbell rules
-  rules    = "rules",
-  -- storage for prometheus metrics
-  metrics  = "metrics",
-  -- storage statistics
-  stats    = "stats",
-
-  rule_hash = "rules_hash",
-
-  locks = "locks",
+  doorbell  = "doorbell",        -- primary storage
+  rules     = "rules",       -- doorbell rules
+  rule_hash = "rules_hash",  -- rules hash secondary lookups
+  stats     = "stats",       -- rule statistics
+  metrics   = "metrics",     -- prometheus metrics
+  locks     = "locks",       -- locks
 }
 
 return const

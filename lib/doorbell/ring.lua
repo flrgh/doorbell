@@ -4,6 +4,7 @@ local _M = {
   log_enabled     = true,
   metrics_enabled = true,
   allow_untrusted = false,
+  content_type    = "text/plain",
 }
 
 local log     = require "doorbell.log"

@@ -3,6 +3,7 @@ local _M = {
 }
 
 local log = require "doorbell.log"
+local util = require "doorbell.util"
 
 local sem      = require "ngx.semaphore"
 local encode   = require("cjson.safe").new().encode
@@ -138,7 +139,7 @@ local function log_writer(premature)
 
   local fh, err = open(PATH, "a+")
   if not fh then
-    log.alertf("failed opeaning log path (%s): %s", PATH, err)
+    log.alertf("failed opening log path (%s): %s", PATH, err)
     ENTRIES = nil
     return
   end
@@ -193,7 +194,7 @@ end
 
 ---@param conf doorbell.config
 function _M.init(conf)
-  PATH = conf.log_path
+  PATH = util.join(conf.log_path, "doorbell.json.log")
   ENTRIES = { n = 0 }
 end
 

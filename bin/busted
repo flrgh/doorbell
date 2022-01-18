@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-exec resty \
+exec -a busted \
+    resty \
     -I ./lib \
     --http-include "./spec/fixtures/busted.nginx.http.conf" \
-    -l "spec.busted-runner"
+    ./spec/busted "$@"

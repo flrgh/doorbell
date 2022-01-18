@@ -9,7 +9,7 @@
 ---@field host       string
 ---@field log_path   string
 ---@field notify     doorbell.notify.config
----@field save_path  string
+---@field state_path string
 ---@field trusted    string[]
 ---@field metrics    doorbell.metrics.config
 ---
@@ -65,21 +65,21 @@ local NOT_REQUIRED = {}
 ---@type doorbell.config
 local defaults = {
   allow      = NOT_REQUIRED,
-  asset_path = prefix .. "/assets/",
+  asset_path = util.join(prefix, "assets"),
   base_url   = REQUIRED,
   cache_size = 1000,
   deny       = NOT_REQUIRED,
   geoip_db   = NOT_REQUIRED,
   host       = NOT_REQUIRED,
-  log_path   = prefix .. "/logs/request.json.log",
+  log_path   = util.join(prefix, "logs"),
   notify     = NOT_REQUIRED,
-  save_path  = prefix .. "/rules.json",
+  state_path = util.join(prefix, "state"),
   trusted    = REQUIRED,
   metrics    = NOT_REQUIRED
 }
 
 function _M.init()
-  local fname = getenv("DOORBELL_CONFIG") or "/etc/doorbell/config.json"
+  local fname = getenv("DOORBELL_CONFIG") or util.join(prefix, "config.json")
 
   local data, err = util.read_json_file(fname)
   if not data then

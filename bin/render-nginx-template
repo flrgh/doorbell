@@ -1,0 +1,5 @@
+#!/usr/bin/env luajit
+
+local nginx = require "doorbell.nginx"
+
+nginx.render(io.stdin, io.stdout)
