@@ -22,7 +22,7 @@ RUN apk add --no-cache \
 ARG DOORBELL_PREFIX=/usr/local/doorbell
 ENV DOORBELL_PREFIX=${DOORBELL_PREFIX}
 
-COPY ./lib/ /usr/local/openresty/lualib/
+COPY ./lib/ ${DOORBELL_PREFIX}/lib/
 COPY ./bin/render-nginx-template ${DOORBELL_PREFIX}/bin/
 COPY ./assets/ ${DOORBELL_PREFIX}/assets/
 COPY ./entrypoint.sh /entrypoint.sh

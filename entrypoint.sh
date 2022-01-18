@@ -2,9 +2,13 @@
 
 set -euo pipefail
 
+DOORBELL_PREFIX=${DOORBELL_PREFIX:-/usr/local/doorbell}
+
 for var in ${!DOORBELL_*}; do
     export "$var"
 done
+
+export LUA_PATH="${DOORBELL_PREFIX}/lib/?.lua;${DOORBELL_PREFIX}/lib/?/init.lua;${LUA_PATH:-};"
 
 if [[ ${1:-} = start ]]; then
     mkdir -p "$DOORBELL_PREFIX/logs"

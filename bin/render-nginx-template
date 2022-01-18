@@ -1,4 +1,4 @@
-#!/usr/bin/env luajit
+#!/usr/bin/env resty
 
 local nginx = require "doorbell.nginx"
 
