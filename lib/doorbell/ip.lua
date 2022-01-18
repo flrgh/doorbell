@@ -31,15 +31,17 @@ local function lookup(addr)
   return geoip:lookup_value(addr, "country", "iso_code")
 end
 
-_M.private = ipmatcher.new({
+_M.private_cidrs = {
   "10.0.0.0/8",
   "172.16.0.0/12",
   "192.168.0.0/16",
-})
+}
 
-_M.localhost = ipmatcher.new({
-  "127.0.0.0/8",
-})
+_M.private = ipmatcher.new(_M.private_cidrs)
+
+_M.localhost_cidr = "127.0.0.0/8"
+
+_M.localhost = ipmatcher.new({_M.localhost_cidr})
 
 ---@param ctx doorbell.ctx
 function _M.require_trusted(ctx)
@@ -113,7 +115,14 @@ function _M.init(opts)
     geoip = db
   end
 
-  trusted = assert(ipmatcher.new(opts.trusted))
+  local trusted_cidrs = opts.trusted
+  if trusted_cidrs then
+    trusted = assert(ipmatcher.new(trusted_cidrs))
+  else
+    log.warnf("using default trusted IP range (%s)", _M.localhost_cidr)
+    trusted = _M.localhost
+  end
+
 end
 
 return _M

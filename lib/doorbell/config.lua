@@ -74,7 +74,7 @@ local defaults = {
   log_path   = util.join(prefix, "logs"),
   notify     = NOT_REQUIRED,
   state_path = util.join(prefix, "state"),
-  trusted    = REQUIRED,
+  trusted    = NOT_REQUIRED,
   metrics    = NOT_REQUIRED
 }
 
