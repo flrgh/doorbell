@@ -3,6 +3,9 @@ local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
+local SHM = ngx.shared[require("doorbell.constants").shm.doorbell]
+local metric_fmt = "cache:worker(%s):lru(%s):count"
+
 ---@class doorbell.cache
 ---@field lru resty.lrucache
 ---@field hit number
@@ -19,6 +22,7 @@ local debugf = require("doorbell.log").debugf
 local lrucache = require "resty.lrucache"
 
 local tostring = tostring
+local pairs = pairs
 
 ---@type prometheus.counter
 local cache_lookups
@@ -77,6 +81,18 @@ function cache:flush_all()
   self.lru:flush_all()
 end
 
+function cache:metrics_handler()
+  local hit, miss, expire = self.hit, self.miss, self.expire
+  self.hit, self.miss, self.expire = 0, 0, 0
+  local name = self.name
+
+  cache_lookups:inc(hit,    { name, "hit"    })
+  cache_lookups:inc(miss,   { name, "miss"   })
+  cache_lookups:inc(expire, { name, "expire" })
+
+  SHM:safe_set(metric_fmt:format(ngx.worker.id(), name), self.lru:count())
+end
+
 ---@param name string
 ---@param size integer
 ---@return doorbell.cache
@@ -87,6 +103,7 @@ function _M.new(name, size)
       hit    = 0,
       miss   = 0,
       expire = 0,
+      name   = name,
     },
     cache_mt
   )
@@ -99,11 +116,13 @@ function _M.init(opts)
   _M.lru = assert(lrucache.new(opts.cache_size or 1000))
   setmetatable(_M, cache_mt)
   _M.hit, _M.miss, _M.expire = 0, 0, 0
+  _M.name = "main"
   return _M
 end
 
 function _M.init_worker()
   if metrics.enabled() then
+
     cache_lookups = metrics.prometheus:counter(
       "cache_lookups",
       "LRU cache hit/miss counts",
@@ -117,26 +136,30 @@ function _M.init_worker()
     )
 
     metrics.add_hook(function()
-      if ngx.worker.id() == 0 then
-        cache_entries:reset()
+      for c in pairs(registry) do
+        c:metrics_handler()
       end
-
-      for c, name in pairs(registry) do
-        local hit, miss, expire = c.hit, c.miss, c.expire
-        c.hit, c.miss, c.expire = 0, 0, 0
-        cache_lookups:inc(hit,    { name, "hit"    })
-        cache_lookups:inc(miss,   { name, "miss"   })
-        cache_lookups:inc(expire, { name, "expire" })
-        cache_entries:inc(c.lru:count(), { name })
-      end
-
-      local hit, miss, expire = _M.hit, _M.miss, _M.expire
-      _M.hit, _M.miss, _M.expire = 0, 0, 0
-      cache_lookups:inc(hit,    { "main", "hit"    })
-      cache_lookups:inc(miss,   { "main", "miss"   })
-      cache_lookups:inc(expire, { "main", "expire" })
-      cache_entries:inc(_M.lru:count(), { "main" })
+      _M:metrics_handler()
     end)
+
+    -- The cache entries metric is a sum of all worker counts. Workers don't
+    -- set it directly--instead they record their individual count in shared
+    -- memory, and a single worker sums them up and sets the actual prometheus
+    -- metric.
+    if ngx.worker.id() == 0 then
+      local workers = ngx.worker.count()
+
+      metrics.add_hook(function()
+        for _, name in pairs(registry) do
+          local count = 0
+          for id = 0, workers - 1 do
+            count = count + (SHM:get(metric_fmt:format(id, name)) or 0)
+          end
+          cache_entries:set(count, { name })
+        end
+      end)
+    end
+
   end
 end
 
