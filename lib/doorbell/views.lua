@@ -20,9 +20,7 @@ local lfs = require "lfs_ffi"
 function _M.init(conf)
   local path = conf.asset_path
 
-  local resty_template = require("resty.template").new({
-    root = path,
-  })
+  local rt = require("resty.template").new({ root = path })
 
   for item in lfs.dir(path) do
     if item:find("%.template%.html$") then
@@ -33,7 +31,7 @@ function _M.init(conf)
         error("failed loading view submodule " .. name .. ": " .. mod)
       end
 
-      local tpl, err = resty_template.compile(item)
+      local tpl, err = rt.compile(item)
       if not tpl then
         error("failed loading " .. name .. " template: " .. err)
       end

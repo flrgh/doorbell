@@ -13,7 +13,6 @@ local rules   = require "doorbell.rules"
 local matcher = require "doorbell.rules.matcher"
 
 local cjson      = require "cjson"
-local resty_lock = require "resty.lock"
 local uuid       = require("resty.jit-uuid").generate_v4
 
 local ngx         = ngx
@@ -21,6 +20,7 @@ local now         = ngx.now
 local timer_at    = ngx.timer.at
 local sleep       = ngx.sleep
 local exiting     = ngx.worker.exiting
+local get_phase   = ngx.get_phase
 
 local assert       = assert
 local encode       = cjson.encode
@@ -40,13 +40,12 @@ local META      = assert(ngx.shared[META_NAME], "main SHM missing")
 local SAVE_PATH
 local HASH  = assert(ngx.shared[const.shm.rule_hash])
 
+local errorf = util.errorf
 
 ---@type prometheus.counter
 local rule_actions
 ---@type prometheus.gauge
 local rules_total
-
-local EMPTY = {}
 
 local cache = require("doorbell.cache").new("rules", 1000)
 
@@ -77,17 +76,9 @@ local function inc_version()
   return META:incr("rules:version", 1, 0)
 end
 
-local function errorf(...)
-  error(fmt(...))
+local function noop(...)
+  return ...
 end
-
-local LOCK_OPTS = {
-  exptime = 30,
-  timeout = 5,
-}
-
-
-local function noop() end
 
 ---@nodiscard
 local function lock_storage(action, locked)
@@ -523,14 +514,20 @@ function _M.save(timeout)
 end
 
 --- reload rules from disk
----@param fname string
+---@param dir string
 ---@return boolean ok
 ---@return string? error
-function _M.load(fname, set_stats)
-  -- no lock: this should only run during init
+function _M.load(dir, set_stats)
+  local fname = util.join(dir, "rules.json")
+
+  -- don't attempt to acquire a lock if we're in init
+  local locked = get_phase() == "init"
+
+  local unlock = lock_storage("load-from-disk", locked)
+
   local data, err = util.read_json_file(fname)
   if not data then
-    return nil, err
+    return unlock(nil, err)
   end
 
   data = storage.migrate(data)
@@ -576,7 +573,7 @@ function _M.load(fname, set_stats)
 
   log.noticef("restored %s rules from disk", count)
 
-  return true
+  return unlock(true)
 end
 
 --- get the current data store version

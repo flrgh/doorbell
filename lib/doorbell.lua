@@ -65,7 +65,7 @@ local function init_core_routes()
     metrics_enabled = false,
     content_type    = "text/plain",
     POST = function()
-      local ok, err = rules.load(config.save_path, false)
+      local ok, err = rules.load(config.state_path, false)
       if ok then
         return send(201, "success")
       end
@@ -234,6 +234,13 @@ local function init_core_routes()
 
       return send(204)
     end
+  }
+
+  routes["/favicon.ico"] = {
+    description     = "stop asking me about this, browsers",
+    metrics_enabled = false,
+    log_enabled     = false,
+    GET             = function() return send(404) end,
   }
 
 end
