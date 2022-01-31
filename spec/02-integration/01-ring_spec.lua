@@ -1,119 +1,19 @@
-local nginx = require "doorbell.nginx"
-local util = require "doorbell.util"
+local test = require "spec.testing"
 
-local pl_dir = require "pl.dir"
-local pl_util = require "pl.utils"
 local http = require "resty.http"
 
-local join = util.join
-local fmt = string.format
+local join = test.util.join
 
 local ROOT = os.getenv("PWD")
-
-local function exec(cmd, ...)
-  local args = pl_util.quote_arg({ ... })
-  cmd = cmd .. " " .. args
-  return pl_util.executeex(cmd)
-end
-
----@param prefix string
----@param conf doorbell.config
-local function prepare(prefix, conf)
-  pl_dir.makepath(prefix)
-  pl_dir.makepath(join(conf.log_path))
-  pl_dir.makepath(join(conf.state_path))
-  nginx.render(
-    join(ROOT, "assets", "nginx.template.conf"),
-    join(prefix, "nginx.conf"),
-    {
-       -- at the moment this populates the lua package path, so it needs to be
-       -- relative to the repository root
-      prefix = ROOT,
-      daemon = "on",
-    }
-  )
-  util.write_json_file(
-    join(prefix, "config.json"),
-    conf
-  )
-end
-
-local function format_cmd_result(cmd, code, stdout, stderr)
-  return fmt(
-    "command: %q\ncode: %s\nstdout: %s\nstderr: %s\n",
-    table.concat(cmd, " "),
-    code,
-    stdout,
-    stderr
-  )
-end
-
-local function exec_nginx(prefix, ...)
-  local cmd = {
-    "nginx",
-    "-p", prefix,
-    "-c", join(prefix, "nginx.conf"),
-  }
-
-  for i = 1, select("#", ...) do
-    local elem = select(i, ...)
-    table.insert(cmd, elem)
-  end
-
-  local ok, code, stdout, stderr = exec(unpack(cmd))
-  assert.truthy(ok, format_cmd_result(cmd, code, stdout, stderr))
-  assert.equals(0, code, format_cmd_result(cmd, code, stdout, stderr))
-end
-
-local function conf_test(prefix)
-  return exec_nginx(prefix, "-t")
-end
-
-local function start(prefix)
-  return exec_nginx(prefix)
-end
-
-local function stop(prefix)
-  return exec_nginx(prefix, "-s", "stop")
-end
-
-local function restart(prefix)
-  assert(stop(prefix))
-  assert(start(prefix))
-end
-
-local function reload(prefix)
-  return exec_nginx(prefix, "-s", "reload")
-end
-
-local function update_config(prefix, config)
-  util.write_json_file(
-    join(prefix, "config.json"),
-    config
-  )
-  restart(prefix)
-end
-
-local headers_mt = {
-  __index = function(self, name)
-    name = name:lower():gsub("_", "-")
-    return rawget(self, name)
-  end,
-
-  __newindex = function(self, name, value)
-    name = name:lower():gsub("_", "-")
-    return rawset(self, name, value)
-  end,
-}
-
 
 describe("doorbell", function()
   local prefix = os.getenv("DOORBELL_PREFIX") or join(ROOT, "test")
 
   local client
+  local nginx
 
   lazy_setup(function()
-    prepare(prefix, {
+    nginx = test.nginx(prefix, {
       base_url = "http://127.0.0.1/",
       trusted = { "127.0.0.1/32" },
       asset_path = join(ROOT, "assets"),
@@ -129,8 +29,8 @@ describe("doorbell", function()
         { ua     = "deny" },
       },
     })
-    conf_test(prefix)
-    start(prefix)
+    nginx:conf_test()
+    nginx:start()
 
     client = assert(http.new())
   end)
@@ -139,7 +39,7 @@ describe("doorbell", function()
     if client then
       client:close()
     end
-    stop(prefix)
+    nginx:stop()
   end)
 
   describe("/ring", function()
@@ -187,7 +87,7 @@ describe("doorbell", function()
     end
 
     before_each(function()
-      headers = setmetatable({}, headers_mt)
+      headers = test.headers()
       path = "/ring"
       method = "GET"
       host = "127.0.0.1"
