@@ -13,16 +13,7 @@ local fmt = string.format
 
 local ROOT = os.getenv("PWD")
 
-local function await(timeout, fn, ...)
-  local step = 0.05
-  while not fn(...) do
-    if timeout < 0 then
-      error("timed out waiting for function to return truth-y")
-    end
-    ngx.sleep(step)
-    timeout = timeout - step
-  end
-end
+local await = require "spec.testing.await"
 
 local function exec(cmd, ...)
   local args = pl_util.quote_arg({ ... })
@@ -90,7 +81,9 @@ end
 function nginx:start()
   self:exec()
   local pidfile = join(self.prefix, "logs", "nginx.pid")
-  await(1, pl_path.exists, pidfile)
+  if not await(1, pl_path.exists, pidfile) then
+    error("timed out waiting for NGINX pid file (" .. pidfile .. ") to exist")
+  end
 
   self.pid = assert(pl_util.readfile(pidfile))
 end
@@ -100,9 +93,10 @@ function nginx:stop()
 
   local proc = join("/proc", tostring(self.pid))
 
-  await(5, function()
-    return not pl_path.exists(proc)
-  end)
+  if not await.falsy(5, pl_path.exists, proc) then
+    error("timed out waiting for NGINX " .. proc .. " to go away")
+  end
+
   return true
 end
 
