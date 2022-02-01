@@ -1,13 +1,12 @@
 local test = require "spec.testing"
+local const = require "spec.testing.constants"
+local join = require("spec.testing.fs").join
 
 local http = require "resty.http"
 
-local join = test.util.join
-
-local ROOT = os.getenv("PWD")
 
 describe("doorbell", function()
-  local prefix = os.getenv("DOORBELL_PREFIX") or join(ROOT, "test")
+  local prefix = os.getenv("DOORBELL_PREFIX") or join(const.ROOT_DIR, "test")
 
   local client
   local nginx
@@ -16,7 +15,7 @@ describe("doorbell", function()
     nginx = test.nginx(prefix, {
       base_url = "http://127.0.0.1/",
       trusted = { "127.0.0.1/32" },
-      asset_path = join(ROOT, "assets"),
+      asset_path = const.ASSET_DIR,
       state_path = join(prefix, "state"),
       log_path   = join(prefix, "logs"),
       metrics    = {

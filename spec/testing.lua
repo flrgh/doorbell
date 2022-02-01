@@ -1,6 +1,8 @@
 local _M = {}
 
 local util = require "doorbell.util"
+local const = require "spec.testing.constants"
+
 
 local headers_mt = {
   __index = function(self, name)
@@ -27,5 +29,7 @@ end
 function _M.nginx(prefix, conf)
   return require("spec.testing.nginx").new(prefix, conf)
 end
+
+_M.ROOT_DIR = const.ROOT_DIR
 
 return _M

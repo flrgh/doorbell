@@ -1,43 +1,36 @@
 local _M = {}
 
-local util = require "doorbell.util"
 local render = require("doorbell.nginx").render
 
-local pl_dir = require "pl.dir"
-local pl_util = require "pl.utils"
-local pl_path = require "pl.path"
-local assert = require "luassert"
-
-local join = util.join
-local fmt = string.format
-
-local ROOT = os.getenv("PWD")
-
+local const = require "spec.testing.constants"
+local fs = require "spec.testing.fs"
+local exec = require "spec.testing.exec"
 local await = require "spec.testing.await"
 
-local function exec(cmd, ...)
-  local args = pl_util.quote_arg({ ... })
-  cmd = cmd .. " " .. args
-  return pl_util.executeex(cmd)
-end
+local assert = require "luassert"
+
+local join = fs.join
+local fmt = string.format
+
+local TEMPLATE_PATH = join(const.ASSET_DIR, "nginx.template.conf")
 
 ---@param prefix string
 ---@param conf doorbell.config
 local function prepare(prefix, conf)
-  pl_dir.makepath(prefix)
-  pl_dir.makepath(join(conf.log_path))
-  pl_dir.makepath(join(conf.state_path))
+  fs.mkdir(prefix)
+  fs.mkdir(conf.log_path)
+  fs.mkdir(conf.state_path)
   render(
-    join(ROOT, "assets", "nginx.template.conf"),
+    TEMPLATE_PATH,
     join(prefix, "nginx.conf"),
     {
        -- at the moment this populates the lua package path, so it needs to be
        -- relative to the repository root
-      prefix = ROOT,
+      prefix = const.ROOT_DIR,
       daemon = "on",
     }
   )
-  util.write_json_file(
+  fs.write_json_file(
     join(prefix, "config.json"),
     conf
   )
@@ -81,11 +74,11 @@ end
 function nginx:start()
   self:exec()
   local pidfile = join(self.prefix, "logs", "nginx.pid")
-  if not await(1, pl_path.exists, pidfile) then
+  if not await(1, fs.exists, pidfile) then
     error("timed out waiting for NGINX pid file (" .. pidfile .. ") to exist")
   end
 
-  self.pid = assert(pl_util.readfile(pidfile))
+  self.pid = fs.file_contents(pidfile)
 end
 
 function nginx:stop()
@@ -93,7 +86,7 @@ function nginx:stop()
 
   local proc = join("/proc", tostring(self.pid))
 
-  if not await.falsy(5, pl_path.exists, proc) then
+  if not await.falsy(5, fs.exists, proc) then
     error("timed out waiting for NGINX " .. proc .. " to go away")
   end
 
@@ -110,7 +103,7 @@ function nginx:reload()
 end
 
 function nginx:update_config(config)
-  util.write_json_file(
+  fs.write_json_file(
     join(self.prefix, "config.json"),
     config
   )
