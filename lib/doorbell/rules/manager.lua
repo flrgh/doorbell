@@ -641,7 +641,9 @@ function _M.log(ctx, start_time)
   local time = now()
   stats.inc_match_count(rule, 1, time)
   stats.set_last_match(rule, start_time, time)
-  rule_actions:inc(1, { rule.action })
+  if rule_actions then
+    rule_actions:inc(1, { rule.action })
+  end
 end
 
 ---@param conf doorbell.config
@@ -649,7 +651,7 @@ function _M.init(conf)
   SAVE_PATH = util.join(conf.state_path, "rules.json")
   stats.init(conf)
 
-  local ok, err = _M.load(SAVE_PATH, true)
+  local ok, err = _M.load(conf.state_path, true)
   if not ok then
     log.alert("failed loading rules from disk: ", err)
   end

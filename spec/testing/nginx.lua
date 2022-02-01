@@ -18,8 +18,8 @@ local TEMPLATE_PATH = join(const.ASSET_DIR, "nginx.template.conf")
 ---@param conf doorbell.config
 local function prepare(prefix, conf)
   fs.mkdir(prefix)
-  fs.mkdir(conf.log_path)
-  fs.mkdir(conf.state_path)
+  fs.reset_dir(conf.log_path)
+  fs.reset_dir(conf.state_path)
   render(
     TEMPLATE_PATH,
     join(prefix, "nginx.conf"),

@@ -2,26 +2,14 @@ local _M = {}
 
 local util = require "doorbell.util"
 local const = require "spec.testing.constants"
+local config = require "spec.testing.config"
+local client = require "spec.testing.client"
 
-
-local headers_mt = {
-  __index = function(self, name)
-    name = name:lower():gsub("_", "-")
-    return rawget(self, name)
-  end,
-
-  __newindex = function(self, name, value)
-    name = name:lower():gsub("_", "-")
-    return rawset(self, name, value)
-  end,
-}
 
 ---@module 'doorbell.util'
 _M.util = util
 
-function _M.headers(t)
-  return setmetatable(t or {}, headers_mt)
-end
+_M.headers = client.headers
 
 ---@param prefix string
 ---@param conf doorbell.config
@@ -29,6 +17,10 @@ end
 function _M.nginx(prefix, conf)
   return require("spec.testing.nginx").new(prefix, conf)
 end
+
+_M.config = config.new
+
+_M.client = client.new
 
 _M.ROOT_DIR = const.ROOT_DIR
 
