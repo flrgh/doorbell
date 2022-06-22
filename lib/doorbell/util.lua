@@ -316,7 +316,7 @@ local buf = {}
 function _M.join(...)
   local n = select("#", ...)
   for i = 1, n do
-    elem = select(i, ...)
+    local elem = select(i, ...)
 
     if i == 1 then
       elem = elem:gsub("^//+", "/")

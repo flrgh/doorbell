@@ -4,7 +4,6 @@ local _M = {
 
 local log = require "doorbell.log"
 local cache = require "doorbell.cache"
-local util = require "doorbell.util"
 
 local ipmatcher = require "resty.ipmatcher"
 

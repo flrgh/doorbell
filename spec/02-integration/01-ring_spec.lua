@@ -1,8 +1,6 @@
 local test = require "spec.testing"
 local join = require("spec.testing.fs").join
 
-local http = require "resty.http"
-
 describe("doorbell", function()
   local prefix = os.getenv("DOORBELL_PREFIX") or join(test.ROOT_DIR, "test")
 

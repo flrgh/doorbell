@@ -18,7 +18,6 @@ local _M = {
 }
 
 local util = require "doorbell.util"
-local log  = require "doorbell.log"
 
 local prefix = ngx.config.prefix()
 local getenv = os.getenv

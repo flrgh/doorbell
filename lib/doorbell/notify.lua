@@ -114,7 +114,7 @@ function _M.init_worker()
 
   local metrics = require "doorbell.metrics"
   if metrics.enabled() then
-    counter = metrics.prometheus:counter(
+    metric = metrics.prometheus:counter(
       "notifications_total",
       "notifications for authorization requests (status = sent/failed/snoozed/answered)",
       { "status" }
