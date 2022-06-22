@@ -283,7 +283,8 @@ end
 
 ---@param ns string
 ---@param key string
----@param opts resty.lock.opts
+---@param action string
+---@param opts? resty.lock.opts
 ---@return doorbell.lock
 function _M.lock(ns, key, action, opts)
   local lock, err = resty_lock:new(LOCK_SHM, opts)

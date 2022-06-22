@@ -2,7 +2,7 @@ local const = {}
 
 const.version = "0.1.0"
 
----@alias doorbell.action '"allow"'|'"deny"'
+---@alias doorbell.action "allow"|"deny"
 
 --- lookup table of valid authorization rule actions
 const.actions = {
@@ -10,7 +10,7 @@ const.actions = {
   deny  = "deny",
 }
 
----@alias doorbell.source '"config"'|'"user"'
+---@alias doorbell.source "config"|"user"
 
 
 --- lookup table of valid doorbell rule sources
@@ -19,7 +19,7 @@ const.sources = {
   user   = "user",
 }
 
----@alias doorbell.deny_action '"exit"'|'"tarpit"'
+---@alias doorbell.deny_action "exit"|"tarpit"
 
 -- lookup table of possible rule deny methods
 const.deny_actions = {
@@ -28,11 +28,11 @@ const.deny_actions = {
 }
 
 ---@alias doorbell.auth_state
----| '"allow"'   # allowed
----| '"deny"'    # explicitly denied
----| '"pending"' # awaiting approval
----| '"none"'    # never seen this IP before
----| '"error"'   # something's wrong
+---| "allow"   # allowed
+---| "deny"    # explicitly denied
+---| "pending" # awaiting approval
+---| "none"    # never seen this IP before
+---| "error"   # something's wrong
 
 --- lookup table of valid authorization states
 const.states = {
@@ -59,7 +59,7 @@ do
   }
 end
 
----@alias doorbell.scope '"global"'|'"host"'|'"url"'
+---@alias doorbell.scope "global"|"host"|"url"
 
 --- lookup table of valid rule scopes
 const.scopes = {
@@ -68,7 +68,7 @@ const.scopes = {
   url    = "url",
 }
 
----@alias doorbell.subject '"addr"'|'"ua"'
+---@alias doorbell.subject "addr"|"ua"
 
 --- lookup table of valid rule subjects
 const.subjects = {

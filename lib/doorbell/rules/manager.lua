@@ -161,7 +161,7 @@ local function get_hash_by_id(id)
 end
 
 ---@param hash_or_id string
----@param include_stats boolean
+---@param include_stats? boolean
 local function get(hash_or_id, include_stats)
   local hash
 
@@ -184,7 +184,7 @@ end
 
 
 ---@param rule doorbell.rule
----@param locked boolean
+---@param locked? boolean
 ---@return boolean ok
 ---@return string? error
 local function delete_rule(rule, locked)
@@ -216,7 +216,7 @@ local function delete_rule(rule, locked)
 end
 
 
----@param include_stats boolean
+---@param include_stats? boolean
 ---@return doorbell.rule[]
 local function get_all_rules(include_stats)
   local list = {}
@@ -398,7 +398,7 @@ end
 
 
 ---@param id_or_hash string
----@param include_stats boolean
+---@param include_stats? boolean
 ---@return doorbell.rule?
 function _M.get(id_or_hash, include_stats)
   if type(id_or_hash) ~= "string" then
@@ -461,7 +461,7 @@ end
 _M.delete = delete_rule
 
 --- retrieve a list of all current rules
----@param include_stats boolean
+---@param include_stats? boolean
 ---@return doorbell.rule[]
 function _M.list(include_stats)
   return get_all_rules(include_stats)
@@ -515,6 +515,7 @@ end
 
 --- reload rules from disk
 ---@param dir string
+---@param set_stats? boolean
 ---@return boolean ok
 ---@return string? error
 function _M.load(dir, set_stats)

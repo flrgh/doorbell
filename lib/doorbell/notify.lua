@@ -26,7 +26,7 @@ local metric
 ---@field to integer
 
 ---@class doorbell.notify.config : table
----@field strategy '"pushover"'
+---@field strategy "pushover"
 ---@field periods doorbell.notify.period[]
 ---@field config table|resty.pushover.client.opts
 
@@ -93,7 +93,7 @@ function _M.in_notify_period()
   return false
 end
 
----@param status '"send"'|'"failed"'|'"snoozed"'|'"answered"'
+---@param status "send"|"failed"|"snoozed"|"answered"
 function _M.inc(status)
   if not strategy then return end
 

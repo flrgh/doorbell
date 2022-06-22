@@ -145,7 +145,7 @@ do
 end
 
 ---@param json string
----@param pull_stats boolean
+---@param pull_stats? boolean
 ---@return doorbell.rule
 local function hydrate(json, pull_stats)
   ---@type doorbell.rule

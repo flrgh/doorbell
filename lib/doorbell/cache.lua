@@ -7,6 +7,7 @@ local SHM = ngx.shared[require("doorbell.constants").shm.doorbell]
 local metric_fmt = "cache:worker(%s):lru(%s):count"
 
 ---@class doorbell.cache
+---@field name string
 ---@field lru resty.lrucache
 ---@field hit number
 ---@field miss number
