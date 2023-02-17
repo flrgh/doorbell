@@ -10,7 +10,7 @@ local encode = require("cjson.safe").encode
 
 local fmt = string.format
 
----@param type resty.pushover.client.opts
+---@type resty.pushover.client.opts
 local config
 
 ---@param conf resty.pushover.client.opts

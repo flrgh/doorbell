@@ -67,6 +67,8 @@ end
 
 _M.send = send
 
+_M.get_request_body = get_request_body
+
 ---@return table
 function _M.get_json_request_body()
   local body = get_request_body()

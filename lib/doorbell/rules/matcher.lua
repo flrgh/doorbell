@@ -27,7 +27,20 @@ do
   local size = 5
   local narr, nrec = size, size + 3
 
-  ---@return doorbell.rule[]
+  --- The match table is a sequence of doorbell rules.
+  ---
+  ---@class doorbell.match : table
+  ---
+  ---@field conditions integer
+  ---@field terminate  boolean
+  ---@field n          integer
+  ---
+  ---@field [integer]  doorbell.rule
+  ---
+  ---@field [string]   integer # condition match count per rule
+
+
+  ---@return doorbell.match
   function new_match()
     local m = fetch(pool, narr, nrec)
     m.conditions = 0
@@ -43,15 +56,15 @@ do
 end
 
 ---@alias doorbell.rule.criteria
----| '"addr"'
----| '"cidr"'
----| '"path(plain)"'
----| '"path(regex)"'
----| '"host"'
----| '"ua(plain)"'
----| '"ua(regex)"'
----| '"method"'
----| '"country"'
+---| "addr"
+---| "cidr"
+---| "path(plain)"
+---| "path(regex)"
+---| "host"
+---| "ua(plain)"
+---| "ua(regex)"
+---| "method"
+---| "country"
 
 local CRITERIA = {
   addr       = "addr",
@@ -175,7 +188,7 @@ function _M.new(list)
     end
   end
 
-  ---@param match doorbell.rule[]
+  ---@param match doorbell.match
   ---@param matched doorbell.rule[]
   local function update_match(match, matched)
     if match.terminate then return end

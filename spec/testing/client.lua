@@ -29,11 +29,17 @@ function _M.headers(t)
 end
 
 
----@class spec.testing.client
----@field httpc resty.http.httpc
----@field request resty.http.request_params
----@field response resty.http.response
----@field err string
+---@class spec.testing.client : table
+---
+---@field httpc        resty.http.client
+---@field request      resty.http.request_params
+---@field response     resty.http.response
+---@field err          string
+---@field host         string
+---@field port         integer
+---@field scheme       "http"|"https"
+---@field headers      table<string,string>
+---@field need_connect boolean
 local client = {}
 client.__index = client
 
@@ -104,8 +110,10 @@ function client:send()
   return self.response
 end
 
-function client:parse_uri(uri)
-  return self.httpc:parse_uri(uri)
+---@param uri string
+---@param query_in_path? boolean
+function client:parse_uri(uri, query_in_path)
+  return self.httpc:parse_uri(uri, query_in_path)
 end
 
 function client:add_x_forwarded_headers(addr, meth, req)

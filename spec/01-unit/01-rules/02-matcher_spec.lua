@@ -105,6 +105,15 @@ describe("matching", function()
     assert.equals("a", match(req).comment)
   end)
 
+  it("can match based on Host header", function()
+    add {
+      { comment = "test", host = "host.test" },
+    }
+
+    req.host = "host.test"
+    assert.equals("test", match(req).comment)
+  end)
+
   it("can match based on CIDR", function()
     add {
       { comment = "a", cidr = "10.0.0.0/24" },

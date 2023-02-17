@@ -426,7 +426,7 @@ end
 --- get a matching rule for a request
 ---@param  req            doorbell.request
 ---@return doorbell.rule? rule
----@return boolean        cache_hit
+---@return boolean?        cache_hit
 function _M.match(req)
   local version = get_version()
   if not check_match or version ~= VERSION then
