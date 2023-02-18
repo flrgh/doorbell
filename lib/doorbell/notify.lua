@@ -70,8 +70,13 @@ function _M.init(conf)
   _M.strategy = strat
 end
 
-function _M.send(req, token)
-  return strategy.send(req, token)
+---@param  req               doorbell.request
+---@param  url               string
+---@return boolean?          ok
+---@return string?           err
+---@return string|table|nil? res
+function _M.send(req, url)
+  return strategy.send(req, url)
 end
 
 ---@return boolean
@@ -93,7 +98,7 @@ function _M.in_notify_period()
   return false
 end
 
----@param status "send"|"failed"|"snoozed"|"answered"
+---@param status "sent"|"failed"|"snoozed"|"answered"
 function _M.inc(status)
   if not strategy then return end
 

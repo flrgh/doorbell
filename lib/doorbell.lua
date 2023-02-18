@@ -1,6 +1,10 @@
+setmetatable(_G, nil)
+pcall(require, "luarocks.loader")
+
 local _M = {
   _VERSION = require("doorbell.constants").version,
 }
+
 
 local rules   = require "doorbell.rules.manager"
 local const   = require "doorbell.constants"
@@ -16,6 +20,7 @@ local config  = require "doorbell.config"
 local routes  = require "doorbell.routes"
 local http    = require "doorbell.http"
 local util    = require "doorbell.util"
+local ota     = require "doorbell.ota"
 
 local proc       = require "ngx.process"
 local safe_decode = require("cjson.safe").decode
@@ -262,6 +267,7 @@ function _M.init()
   auth.init(config)
   rules.init(config)
   request.init(config)
+  ota.init(config)
 
   init_core_routes()
 
@@ -280,6 +286,7 @@ end
 
 local function init_agent()
   rules.init_agent()
+  ota.init_agent()
 end
 
 function _M.init_worker()

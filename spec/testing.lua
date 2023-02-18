@@ -4,6 +4,7 @@ local util = require "doorbell.util"
 local const = require "spec.testing.constants"
 local config = require "spec.testing.config"
 local client = require "spec.testing.client"
+local await = require "spec.testing.await"
 
 
 ---@module 'doorbell.util'
@@ -23,5 +24,18 @@ _M.config = config.new
 _M.client = client.new
 
 _M.ROOT_DIR = const.ROOT_DIR
+
+_M.constants = const
+
+
+_M.await = {
+  truthy = function(fn, timeout, step, msg)
+    assert(await.truthy(timeout, step, fn), msg or "timeout reached")
+  end,
+
+  falsy = function(fn, timeout, step, msg)
+    assert(await.falsy(timeout, step, fn), msg or "timeout reached")
+  end,
+}
 
 return _M

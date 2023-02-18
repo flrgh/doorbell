@@ -16,6 +16,35 @@ end
 
 local EMPTY = {}
 
+
+---@param ... string
+---@return string
+function _M.lua_path(...)
+  local path = {}
+  for i = 1, select("#", ...) do
+    local p = select(i, ...)
+    p = p:gsub("/+$", "")
+    table.insert(path, p .. "/?.lua")
+    table.insert(path, p .. "/?/init.lua")
+  end
+
+  return table.concat(path, ";")
+end
+
+---@param ... string
+---@return string
+function _M.lua_cpath(...)
+  local path = {}
+  for i = 1, select("#", ...) do
+    local p = select(i, ...)
+    p = p:gsub("/+$", "")
+    table.insert(path, p .. "/?.so")
+  end
+
+  return table.concat(path, ";")
+end
+
+
 ---@param input string|file*
 ---@param output string|file*
 ---@param env? table

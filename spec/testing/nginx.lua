@@ -1,6 +1,7 @@
 local _M = {}
 
 local render = require("doorbell.nginx").render
+local lua_path = require("doorbell.nginx").lua_path
 
 local const = require "spec.testing.constants"
 local fs = require "spec.testing.fs"
@@ -12,7 +13,7 @@ local assert = require "luassert"
 local join = fs.join
 local fmt = string.format
 
-local TEMPLATE_PATH = join(const.ASSET_DIR, "nginx.template.conf")
+local TEMPLATE_PATH = join(const.FIXTURES_DIR, "busted.nginx.conf")
 
 ---@param prefix string
 ---@param conf doorbell.config
@@ -28,6 +29,8 @@ local function prepare(prefix, conf)
        -- relative to the repository root
       prefix = const.ROOT_DIR,
       daemon = "on",
+      test_fixtures_dir = const.FIXTURES_DIR,
+      worker_processes = 1,
     }
   )
   fs.write_json_file(
@@ -37,9 +40,11 @@ local function prepare(prefix, conf)
 end
 
 local function format_cmd_result(cmd, code, stdout, stderr)
+  local env = table.remove(cmd)
   return fmt(
-    "command: %q\ncode: %s\nstdout: %s\nstderr: %s\n",
+    "\ncommand: %q\nenv:%s\ncode: %s\nstdout: %s\nstderr: %s\n",
     table.concat(cmd, " "),
+    require("cjson").encode(env),
     code,
     stdout,
     stderr
@@ -47,6 +52,12 @@ local function format_cmd_result(cmd, code, stdout, stderr)
 end
 
 ---@class spec.testing.nginx
+---
+---@field prefix string
+---
+---@field config doorbell.config
+---
+---@field pid string
 local nginx = {}
 
 function nginx:exec(...)
@@ -57,10 +68,25 @@ function nginx:exec(...)
     "-c", join(prefix, "nginx.conf"),
   }
 
+  local env
+
   for i = 1, select("#", ...) do
     local elem = select(i, ...)
-    table.insert(cmd, elem)
+    if type (elem) == "table" then
+      env = elem
+    else
+      table.insert(cmd, elem)
+    end
   end
+
+  env = env or {}
+  env.LUA_PATH = env.LUA_PATH or lua_path(const.ROOT_DIR)
+  if os.getenv("LUA_PATH") then
+    env.LUA_PATH = env.LUA_PATH .. ";" .. os.getenv("LUA_PATH")
+  end
+  env.LUA_PATH = env.LUA_PATH .. ";;"
+
+  table.insert(cmd, env)
 
   local ok, code, stdout, stderr = exec(unpack(cmd))
   assert.truthy(ok, format_cmd_result(cmd, code, stdout, stderr))
@@ -74,7 +100,7 @@ end
 function nginx:start()
   self:exec()
   local pidfile = join(self.prefix, "logs", "nginx.pid")
-  if not await(1, fs.exists, pidfile) then
+  if not await(5, 0.1, fs.exists, pidfile) then
     error("timed out waiting for NGINX pid file (" .. pidfile .. ") to exist")
   end
 
@@ -86,7 +112,7 @@ function nginx:stop()
 
   local proc = join("/proc", tostring(self.pid))
 
-  if not await.falsy(5, fs.exists, proc) then
+  if not await.falsy(5, 0.1, fs.exists, proc) then
     error("timed out waiting for NGINX " .. proc .. " to go away")
   end
 

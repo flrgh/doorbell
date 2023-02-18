@@ -12,7 +12,7 @@
 ---@field state_path string
 ---@field trusted    string[]
 ---@field metrics    doorbell.metrics.config
----
+---@field ota?       doorbell.ota.config
 local _M = {
   _VERSION = require("doorbell.constants").version,
 }
@@ -74,7 +74,8 @@ local defaults = {
   notify     = NOT_REQUIRED,
   state_path = util.join(prefix, "state"),
   trusted    = NOT_REQUIRED,
-  metrics    = NOT_REQUIRED
+  metrics    = NOT_REQUIRED,
+  ota        = NOT_REQUIRED,
 }
 
 function _M.init()

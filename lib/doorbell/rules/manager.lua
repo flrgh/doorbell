@@ -654,18 +654,18 @@ function _M.init(conf)
 
   local ok, err = _M.load(conf.state_path, true)
   if not ok then
-    log.alert("failed loading rules from disk: ", err)
+    log.warn("failed loading rules from disk: ", err)
   end
 
   for _, rule in ipairs(conf.allow or {}) do
-    rule.action = "allow"
-    rule.source = "config"
+    rule.action = const.actions.allow
+    rule.source = const.sources.config
     assert(_M.upsert(rule, true))
   end
 
   for _, rule in ipairs(conf.deny or {}) do
-    rule.action = "deny"
-    rule.source = "config"
+    rule.action = const.actions.deny
+    rule.source = const.sources.config
     assert(_M.upsert(rule, true))
   end
 end

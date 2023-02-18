@@ -10,13 +10,14 @@ const.actions = {
   deny  = "deny",
 }
 
----@alias doorbell.source "config"|"user"
+---@alias doorbell.source "config"|"user"|"ota"
 
 
 --- lookup table of valid doorbell rule sources
 const.sources = {
   config = "config",
   user   = "user",
+  ota    = "ota",
 }
 
 ---@alias doorbell.deny_action "exit"|"tarpit"

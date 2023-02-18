@@ -85,7 +85,7 @@ end
 
 
 ---@param token string
----@return doorbell.request req
+---@return doorbell.request? req
 ---@return string? error
 function _M.get_token_address(token)
   local key = "token:" .. token

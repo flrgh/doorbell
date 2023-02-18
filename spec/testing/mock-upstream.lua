@@ -7,7 +7,7 @@ local http  = require "doorbell.http"
 local uuid  = require("resty.jit-uuid").generate_v4
 local resty_http = require "resty.http"
 
-local SHM = assert(ngx.shared.mock, "mock shm is not defined")
+local SHM = ngx.shared.mock
 local EMPTY = {}
 
 local BASE_URL = ("http://127.0.0.1:%s"):format(require("spec.testing.constants").MOCK_UPSTREAM_PORT)
@@ -65,7 +65,7 @@ end
 ---
 ---@field status       ngx.http.status_code
 ---@field body         string|nil
----@field json         table|
+---@field json         table|nil
 ---@field headers      table<string,string>|nil
 ---@field delay        number|nil
 
@@ -114,7 +114,7 @@ local function validate(r)
     return nil, "invalid response body"
   end
 
-  if r.response.json ~= nil and type(r.response.json) ~= "number" then
+  if r.response.json ~= nil and type(r.response.json) ~= "table" then
     return nil, "invalid response json"
   end
 
@@ -197,6 +197,8 @@ local function matches(req, route)
 end
 
 function mock.serve()
+  assert(SHM, "mock shm is not defined")
+
   local req = get_request()
   ngx.ctx.request = req
   local routes = store.get("routes") or {}
@@ -232,6 +234,8 @@ end
 
 
 function mock.prepare()
+  assert(SHM, "mock shm is not defined")
+
   if ngx.req.get_method() ~= "POST" then
     return respond(405, { error = "only POST is allowed" })
   end
@@ -256,12 +260,16 @@ end
 
 
 function mock.reset()
+  assert(SHM, "mock shm is not defined")
+
   SHM:flush_all()
   respond(200, { message = "ok" })
 end
 
 
 function mock.get_last()
+  assert(SHM, "mock shm is not defined")
+
   local last = store.pop("requests")
   if last then
     return respond(200, last)
@@ -271,6 +279,8 @@ end
 
 
 function mock.log()
+  assert(SHM, "mock shm is not defined")
+
   local req = ngx.ctx.request
   if req then
     store.push("requests", req)

@@ -61,7 +61,7 @@ _M.read_file = read_file
 
 ---@param fname string
 ---@param contents string
----@return boolean ok
+---@return boolean? ok
 ---@return string? error
 local function write_file(fname, contents)
   local fh, err = open(fname, "w+")
@@ -73,11 +73,11 @@ local function write_file(fname, contents)
   bytes, err = fh:write(contents)
   fh:close()
 
-  if err then
+  if not bytes then
     return nil, err
   end
 
-  return bytes
+  return true
 end
 
 ---@param fname string

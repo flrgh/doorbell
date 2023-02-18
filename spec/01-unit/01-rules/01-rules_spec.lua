@@ -174,7 +174,7 @@ describe("doorbell.rules", function()
       {
         desc = "source must be one of config/user",
         input = { source = "nope" },
-        expect = 'invalid `source` (expected: "config"|"user", got: "nope")',
+        expect = 'invalid `source` (expected: "config"|"ota"|"user", got: "nope")',
         plain = true,
       },
 
