@@ -71,6 +71,7 @@ local function apply(payload)
     end
   end
 
+  assert(manager.save())
   manager.reload()
 
   return true

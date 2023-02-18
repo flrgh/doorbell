@@ -15,7 +15,7 @@ describe("OTA updates", function()
       headers = {
         ["X-foo-header"] = "bar",
       },
-      interval = 1,
+      interval = 0.1,
     }
 
     conf.deny = { { ua = "~.*" } }

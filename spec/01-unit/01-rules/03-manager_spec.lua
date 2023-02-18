@@ -266,4 +266,16 @@ describe("doorbell.rules.manager", function()
       assert.falsy(cached)
     end)
   end)
+
+  describe("reset()", function()
+  end)
+
+  describe("reload()", function()
+  end)
+
+  describe("save()", function()
+  end)
+
+  describe("version()", function()
+  end)
 end)

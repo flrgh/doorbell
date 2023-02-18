@@ -120,8 +120,8 @@ end
 local VERSION = 0
 
 ---@param rule doorbell.rule
----@param overwrite boolean
----@return boolean ok
+---@param overwrite? boolean
+---@return boolean? ok
 ---@return string? error
 local function save_rule(rule, overwrite, stamp)
   local exp, ttl = rule:expired(stamp)
@@ -400,6 +400,7 @@ end
 ---@param id_or_hash string
 ---@param include_stats? boolean
 ---@return doorbell.rule?
+---@return string? error
 function _M.get(id_or_hash, include_stats)
   if type(id_or_hash) ~= "string" then
     return nil, "input must be a string"
@@ -487,7 +488,7 @@ function _M.init_agent()
 end
 
 ---@param timeout? number
----@return boolean ok
+---@return boolean? ok
 ---@return string? error
 function _M.save(timeout)
   local before = last_saved()
