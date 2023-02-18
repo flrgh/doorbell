@@ -11,6 +11,7 @@ local util    = require "doorbell.util"
 local storage = require "doorbell.rules.storage"
 local rules   = require "doorbell.rules"
 local matcher = require "doorbell.rules.matcher"
+local shm = require "doorbell.rules.shm"
 
 local cjson      = require "cjson"
 local uuid       = require("resty.jit-uuid").generate_v4
@@ -74,14 +75,11 @@ end
 ---@field version integer
 ---
 ---@field rules doorbell.rule[]
----
----@field lock doorbell.lock
 local trx = {}
 trx.__index = trx
 
 function trx:get(rule)
 end
-
 
 
 function _M.new()
