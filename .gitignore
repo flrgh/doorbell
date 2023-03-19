@@ -45,3 +45,7 @@ servroot
 conf
 assets/*.mmdb
 test/
+/luarocks
+/lua
+/lua_modules
+/.luarocks
