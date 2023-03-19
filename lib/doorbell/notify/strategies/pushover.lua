@@ -1,12 +1,21 @@
+---@type doorbell.notify.strategy
 local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
 local log = require "doorbell.log"
 local ip = require "doorbell.ip"
+local notify = require "doorbell.notify"
 
 local pushover = require "resty.pushover"
 local encode = require("cjson.safe").encode
+
+local level_to_priority = {
+  [notify.level.debug] = pushover.priority.lowest,
+  [notify.level.info] = pushover.priority.normal,
+  [notify.level.error] = pushover.priority.high,
+  [notify.level.alert] = pushover.priority.highest,
+}
 
 local fmt = string.format
 
@@ -22,7 +31,7 @@ end
 
 ---@param req doorbell.request
 ---@param url string
-function _M.send(req, url)
+function _M.ring(req, url)
   local po, err = pushover.new(config)
   if not po then
     return nil, "failed creating pushover client: " .. err
@@ -59,6 +68,31 @@ function _M.send(req, url)
     url       = url,
     url_title = "approve or deny",
   })
+
+  if res then
+    log.debug("pushover notify response: ", encode(res))
+  end
+
+  return sent, err, res
+end
+
+
+function _M.send(msg)
+  local po, err = pushover.new(config)
+  if not po then
+    return nil, "failed creating pushover client: " .. err
+  end
+
+  msg = {
+    title     = msg.title,
+    message   = msg.message,
+    url       = msg.link,
+    url_title = msg.link_title,
+    priority = assert(level_to_priority[msg.level], "invalid notify level"),
+  }
+
+  local sent, res
+  sent, res = po:notify(msg)
 
   if res then
     log.debug("pushover notify response: ", encode(res))

@@ -151,7 +151,7 @@ end
 ---@param last_match number
 ---@param ts? number
 function _M.set_last_match(rule, last_match, ts)
-  local ok, err = _last_matched(rule, last_match, rule:ttl(ts))
+  local ok, err = _last_matched(rule, last_match, rule:remaining_ttl(ts))
 
   if ok then
     need_save(1)
@@ -203,8 +203,8 @@ function _M.load(rules)
   local empty = {}
   for _, rule in ipairs(rules) do
     local st = stats[rule.hash] or stats[rule.id] or empty
-    _last_matched(rule, st.last_match or rule.last_match or nil, rule:ttl(time))
-    _match_count(rule, st.match_count or rule.match_count or nil, rule:ttl(time))
+    _last_matched(rule, st.last_match or rule.last_match or nil, rule:remaining_ttl(time))
+    _match_count(rule, st.match_count or rule.match_count or nil, rule:remaining_ttl(time))
   end
 end
 

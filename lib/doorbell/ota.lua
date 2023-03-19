@@ -10,14 +10,11 @@ local const = require "doorbell.constants"
 local rules = require "doorbell.rules"
 local log = require "doorbell.log"
 local util = require "doorbell.util"
+local transaction = require "doorbell.rules.transaction"
+local notify = require "doorbell.notify"
+local fmt = string.format
 
 local DEFAULT_INTERVAL = 60
-
----@param rule doorbell.rule
----@return boolean
-local function is_ota(rule)
-  return rule.source == const.sources.ota
-end
 
 ---@class doorbell.ota.config : table
 ---
@@ -40,38 +37,39 @@ local function apply(payload)
     return false
   end
 
-  for i = 1, #payload do
-    local rule = payload[i]
+  local trx, err = transaction.new()
+  if not trx then
+    log.errf("failed to start transaction for OTA updates: %s", err)
+    return false
+  end
+
+  trx:delete_where({ source = const.sources.ota })
+
+  local ok
+
+  local n = #payload
+  for i, rule in ipairs(payload) do
     rule.source = const.sources.ota
-    local _, err = rules.new(rule)
-
-    if err then
-      log.errf("received invalid rule from OTA: %s", err)
-      return false
+    rule, err = rules.new(rule)
+    if not rule then
+      trx:abort()
+      log.errf("failed to create rule from OTA payload %s/%s: %s", i, n, err)
     end
-  end
 
-  -- TODO: atomicity
-
-  local remove = util.filter(manager.list(), is_ota)
-
-  for _,  rule in ipairs(remove) do
-    local ok, err = manager.delete(rule)
+    ok, err = trx:insert(rule)
     if not ok then
-      log.errf("failed to remove old OTA rule %q: %s", rule.hash, err)
+      trx:abort()
+      log.errf("failed to insert new OTA rule %s/%s: %s", i, n, err)
       return false
     end
   end
 
-  for _, rule in ipairs(payload) do
-    local ok, err = manager.add(rule, true)
-    if not ok then
-      log.errf("failed to add new OTA rule %q: %s", rule.hash, err)
-      return false
-    end
+  ok, err = trx:commit()
+  if not ok then
+    log.errf("failed to commit OTA transaction: %s", err)
+    return false
   end
 
-  assert(manager.save())
   manager.reload()
 
   return true
@@ -141,7 +139,9 @@ local function update(premature)
     return
   end
 
-  log.noticef("updated %s OTA rules from %s", #json, config.url)
+  local n = #json
+
+  log.noticef("updated %s OTA rules from %s", n, config.url)
 
   if res.headers.etag then
     state.etag = res.headers.etag
@@ -149,6 +149,12 @@ local function update(premature)
   elseif res.headers["last_modified"] then
     state.last_modified = res.headers["last_modified"]
   end
+
+  notify.send({
+    title = "Updated OTA rules",
+    message = fmt([[Updated %s OTA rules from `%s`]], n, config.url),
+    level = notify.level.info,
+  })
 end
 
 

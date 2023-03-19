@@ -309,7 +309,7 @@ describe("doorbell.rules", function()
       end)
     end)
 
-    describe("ttl()", function()
+    describe("remaining_ttl()", function()
       local rule
 
       before_each(function()
@@ -318,24 +318,24 @@ describe("doorbell.rules", function()
 
       it("returns the ttl for a rule", function()
         rule.expires = ngx.now() + 5
-        assert.near(5, rule:ttl(), 1)
+        assert.near(5, rule:remaining_ttl(), 1)
 
         rule.expires = ngx.now() - 5
-        assert.near(-5, rule:ttl(), 1)
+        assert.near(-5, rule:remaining_ttl(), 1)
       end)
 
       it("can use a caller-supplied timestamp", function()
         rule.expires = ngx.now() + 5
-        assert.near(-5, rule:ttl(ngx.now() + 10), 1)
+        assert.near(-5, rule:remaining_ttl(ngx.now() + 10), 1)
 
         rule.expires = ngx.now() - 5
-        assert.near(5, rule:ttl(ngx.now() - 10), 1)
+        assert.near(5, rule:remaining_ttl(ngx.now() - 10), 1)
       end)
 
       it("returns -1 when ttl is >= 0 or < 1", function()
         local now = ngx.now()
         rule.expires = now + 10
-        assert.equals(-1, rule:ttl(now + 9.99))
+        assert.equals(-1, rule:remaining_ttl(now + 9.99))
       end)
     end)
   end)

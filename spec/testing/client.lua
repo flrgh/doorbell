@@ -57,6 +57,8 @@ end
 function client:send()
   self.response = nil
 
+  self.httpc:set_timeout(self.timeout or 5000)
+
   if self.need_connect then
     local ok, err = self.httpc:connect({
       host   = self.host,

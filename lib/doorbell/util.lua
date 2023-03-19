@@ -93,8 +93,8 @@ end
 
 ---@param fname string
 ---@param contents string
----@return boolean ok
----@return boolean written
+---@return boolean? ok
+---@return boolean? written
 ---@return string? error
 local function update_file(fname, contents)
   -- not checking for errors here; if we couldn't read/checksum the existing
@@ -138,7 +138,7 @@ end
 ---
 ---@param fname string
 ---@param json table
----@return boolean ok
+---@return boolean? ok
 ---@return string? error
 function _M.write_json_file(fname, json)
   local encoded, err = encode_table(json)
@@ -151,8 +151,8 @@ end
 
 ---@param fname string
 ---@param json table
----@return boolean ok
----@return boolean written
+---@return boolean? ok
+---@return boolean? written
 ---@return string? error
 function _M.update_json_file(fname, json)
   local encoded, err = encode_table(json)
@@ -180,7 +180,7 @@ end
 ---@param  f     string  a format string
 ---@param  ...   any     arguments passed to string.format
 function _M.errorf(f, ...)
-  error(fmt(f, ...))
+  error(fmt(f, ...), 2)
 end
 
 --- Apply a function to all values in an array-like table.

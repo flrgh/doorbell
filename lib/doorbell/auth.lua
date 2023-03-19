@@ -170,7 +170,7 @@ function _M.request(req)
   log.debug("approve/deny link: ", url)
 
   local sent
-  sent, err = notify.send(req, url)
+  sent, err = notify.ring(req, url)
 
   if not sent then
     log.err("failed sending auth request: ", err)

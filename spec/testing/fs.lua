@@ -25,6 +25,22 @@ function fs.write_json_file(path, data)
   assert(pl_util.writefile(path, cjson.encode(data)))
 end
 
+function fs.append_raw(path, data)
+  local fh = assert(io.open(path, "a+"))
+  assert(fh:write(data))
+  fh:flush()
+  fh:close()
+end
+
+function fs.append(path, line)
+  fs.append_raw(path, line .. "\n")
+end
+
+function fs.append_json(path, data)
+  fs.append_raw(path, cjson.encode(data) .. "\n")
+end
+
+
 fs.join = pl_path.join
 
 function fs.rm(fname, if_exists)

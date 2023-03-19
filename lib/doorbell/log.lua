@@ -7,6 +7,53 @@ local rep       = string.rep
 local tostring  = tostring
 local select    = select
 local rawset    = rawset
+local stdout    = io.stdout
+local stderr    = io.stderr
+
+
+local levels_by_name = {
+  debug  = ngx.DEBUG,
+  info   = ngx.INFO,
+  notice = ngx.NOTICE,
+  warn   = ngx.WARN,
+  err    = ngx.ERR,
+  crit   = ngx.CRIT,
+  alert  = ngx.ALERT,
+  emerg  = ngx.EMERG,
+}
+
+local levels_by_num = {}
+do
+  for name, num in pairs(levels_by_name) do
+    levels_by_num[num] = name
+  end
+  levels_by_num[ngx.ERR] = "error"
+end
+
+if ngx.config.is_console then
+  local update_time = ngx.update_time
+  local utctime = ngx.utctime
+
+  ---@return string
+  local function errlog_timestamp()
+    update_time()
+    --    1234567890123456789
+    local yyyy_mm_dd_hh_mm_ss = utctime()
+
+    return yyyy_mm_dd_hh_mm_ss:sub(1, 4)
+      .. "/" .. yyyy_mm_dd_hh_mm_ss:sub(6, 7)
+      .. "/" .. yyyy_mm_dd_hh_mm_ss:sub(9)
+  end
+
+  raw_log = function(lvl, msg)
+    local ts = errlog_timestamp()
+
+    lvl = levels_by_num[lvl] or "info"
+
+    stderr:write(fmt("%s [%s] %s\n", ts, lvl, msg))
+    stderr:flush()
+  end
+end
 
 local function noop() end
 
@@ -74,22 +121,39 @@ local log = setmetatable({}, {
 })
 
 do
-  local levels = {
-    debug  = ngx.DEBUG,
-    info   = ngx.INFO,
-    notice = ngx.NOTICE,
-    warn   = ngx.WARN,
-    err    = ngx.ERR,
-    crit   = ngx.CRIT,
-    alert  = ngx.ALERT,
-    emerg  = ngx.EMERG,
-  }
-  for name, lvl in pairs(levels) do
-    if sys_level >= lvl then
+  for name, lvl in pairs(levels_by_name) do
+    if sys_level >= lvl or ngx.config.is_console then
       rawset(log, name, make_log(lvl, log_varargs))
       rawset(log, name .. "f", make_log(lvl, log_f))
     end
   end
 end
+
+function log.inspect(...)
+  return require("inspect")(...)
+end
+
+function log.stdout(...)
+  stdout:write(...)
+  stdout:write("\n")
+  stdout:flush()
+end
+
+function log.stderr(...)
+  stderr:write(...)
+  stderr:write("\n")
+  stderr:flush()
+end
+
+function log.stdoutf(f, ...)
+  log.stdout(fmt(f, ...))
+end
+
+function log.stderrf(f, ...)
+  log.stderr(fmt(f, ...))
+end
+
+
+
 
 return log

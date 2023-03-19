@@ -170,5 +170,51 @@ describe("doorbell.rules.shm", function()
       assert.same({ t = 3 }, shm.get())
     end)
 
+    it("never increments beyond the highest valid version", function()
+      local version = shm.get_current_version()
+      assert.equals(version, shm.update_current_version())
+
+      local new = shm.allocate_new_version()
+      assert.equals(version, shm.update_current_version())
+
+      shm.cancel_pending_version(new)
+      assert.equals(version, shm.update_current_version())
+    end)
+  end)
+
+  describe("cancel_pending_version()", function()
+    it("removes a previously allocated pending version", function()
+      assert(shm.set({}, shm.allocate_new_version()))
+      assert(shm.update_current_version())
+
+      local current = shm.get_current_version()
+
+      local new = shm.allocate_new_version()
+      assert.is_true(new > current)
+      assert.equals(current, shm.get_current_version())
+      assert.equals(new, shm.get_latest_version())
+
+      local newer = shm.allocate_new_version()
+      assert.is_true(newer > new)
+      assert.equals(current, shm.get_current_version())
+      assert.equals(newer, shm.get_latest_version())
+
+      local newest = shm.allocate_new_version()
+      assert.is_true(newest > newer)
+      assert.equals(current, shm.get_current_version())
+      assert.equals(newest, shm.get_latest_version())
+
+      assert(shm.set({}, newest))
+
+      assert.equals(current, shm.update_current_version())
+
+      shm.cancel_pending_version(new)
+      assert.equals(current, shm.update_current_version())
+      assert.equals(current, shm.get_current_version())
+
+      shm.cancel_pending_version(newer)
+      assert.equals(newest, shm.update_current_version())
+      assert.equals(newest, shm.get_current_version())
+    end)
   end)
 end)

@@ -18,6 +18,22 @@ local STATUS = {
   answered = {"answered"},
 }
 
+---@enum doorbell.notify.level
+_M.level = {
+  debug  = 0,
+  info   = 1,
+  error  = 2,
+  alert  = 3,
+}
+
+---@class doorbell.notify.message : table
+---
+---@field title       string
+---@field message     string
+---@field level       doorbell.notify.level
+---@field link?       string
+---@field link_title? string
+
 ---@type prometheus.counter
 local metric
 
@@ -25,17 +41,22 @@ local metric
 ---@field from integer
 ---@field to integer
 
+---@alias doorbell.notify.strategy.config
+---| table
+---| resty.pushover.client.opts
+
 ---@class doorbell.notify.config : table
----@field strategy "pushover"
----@field periods doorbell.notify.period[]
----@field config table|resty.pushover.client.opts
+---@field strategy string|"pushover"
+---@field periods  doorbell.notify.period[]
+---@field config   doorbell.notify.strategy.config
 
 ---@type doorbell.notify.period[]
 local periods
 
 ---@class doorbell.notify.strategy
----@field init fun(conf:doorbell.notify.config)
----@field send fun(req:doorbell.request, url:string):boolean, string, string|table|nil
+---@field init fun(conf:doorbell.notify.strategy.config)
+---@field ring fun(req:doorbell.request, url:string):boolean?, string?, string|table|nil
+---@field send fun(msg:doorbell.notify.message):boolean?, string?, string|table|nil
 local strategy
 
 ---@param conf doorbell.config
@@ -75,8 +96,26 @@ end
 ---@return boolean?          ok
 ---@return string?           err
 ---@return string|table|nil? res
-function _M.send(req, url)
-  return strategy.send(req, url)
+function _M.ring(req, url)
+  return strategy.ring(req, url)
+end
+
+function _M.send(msg)
+  assert(type(msg) == "table")
+
+  if not _M.enabled() then
+    log.debugf("not sending message (%s), notification system is disabled", msg.title)
+    return true
+  end
+
+  msg.level = msg.level or _M.level.info
+
+  if msg.level <= _M.level.debug and not _M.in_notify_period() then
+    log.debugf("not sending debug message (%s), outside of notifcation period", msg.title)
+    return true
+  end
+
+  return strategy.send(msg)
 end
 
 ---@return boolean

@@ -11,6 +11,7 @@ describe("doorbell", function()
     local conf = test.config(prefix)
     conf.allow = { { ua = "allow" } }
     conf.deny  = { { ua = "deny" } }
+    conf.notify = nil
 
     nginx = test.nginx(prefix, conf)
     nginx:conf_test()

@@ -5,6 +5,7 @@ local ms = require "spec.testing.mock-upstream"
 describe("OTA updates", function()
   local prefix = os.getenv("DOORBELL_PREFIX") or join(test.ROOT_DIR, "test")
 
+  ---@type spec.testing.client
   local client
   local nginx
 

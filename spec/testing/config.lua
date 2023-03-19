@@ -17,6 +17,12 @@ function config.new(prefix)
     metrics    = { disable  = true },
     allow      = {},
     deny       = {},
+    notify     = {
+      strategy = "spec.testing.mock-notify",
+      config   = {
+        file = join(prefix, "notify.log"),
+      },
+    },
   }
 end
 

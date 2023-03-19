@@ -15,6 +15,7 @@ local sort         = table.sort
 local fmt          = string.format
 local decode       = cjson.decode
 local setmetatable = setmetatable
+local getmetatable = getmetatable
 local now          = ngx.now
 local update_time  = ngx.update_time
 local byte         = string.byte
@@ -75,6 +76,27 @@ end
 
 _M.compare = compare
 
+local hash_rule
+do
+  local buf = {}
+  local md5 = ngx.md5
+
+  ---@param rule doorbell.rule
+  ---@return string
+  function hash_rule(rule)
+    buf[1] = rule.addr   or ""
+    buf[2] = rule.cidr   or ""
+    buf[3] = rule.method or ""
+    buf[4] = rule.host   or ""
+    buf[5] = rule.path   or ""
+    buf[6] = rule.ua     or ""
+    buf[7] = rule.country or ""
+    local s = concat(buf, "||", 1, 7)
+    return md5(s)
+  end
+end
+
+
 
 local rule_mt
 do
@@ -111,8 +133,18 @@ do
 
   ---@param at? number
   ---@return number
-  function rule:ttl(at)
+  function rule:remaining_ttl(at)
     return ttl_from_expires(self.expires, at)
+  end
+
+  ---@param other doorbell.rule
+  ---@return boolean
+  function rule:is_same(other)
+    return self.hash == other.hash
+  end
+
+  function rule:update_hash()
+    self.hash = hash_rule(self)
   end
 
   rule_mt = {
@@ -124,27 +156,7 @@ do
 end
 
 
-local hash_rule
-do
-  local buf = {}
-  local md5 = ngx.md5
-
-  ---@param rule doorbell.rule
-  ---@return string
-  function hash_rule(rule)
-    buf[1] = rule.addr   or ""
-    buf[2] = rule.cidr   or ""
-    buf[3] = rule.method or ""
-    buf[4] = rule.host   or ""
-    buf[5] = rule.path   or ""
-    buf[6] = rule.ua     or ""
-    buf[7] = rule.country or ""
-    local s = concat(buf, "||", 1, 7)
-    return md5(s)
-  end
-end
-
----@param json string
+---@param json string|table|doorbell.rule
 ---@param pull_stats? boolean
 ---@return doorbell.rule
 local function hydrate(json, pull_stats)
@@ -153,6 +165,8 @@ local function hydrate(json, pull_stats)
   if type(json) == "string" then
     rule = decode(json)
   end
+
+  assert(type(rule) == "table")
 
   setmetatable(rule, rule_mt)
 
@@ -339,6 +353,7 @@ function _M.new(opts)
 
   return hydrate(rule)
 end
+
 
 ---@param s string
 ---@return boolean

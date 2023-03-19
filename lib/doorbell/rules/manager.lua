@@ -11,6 +11,8 @@ local util    = require "doorbell.util"
 local storage = require "doorbell.rules.storage"
 local rules   = require "doorbell.rules"
 local matcher = require "doorbell.rules.matcher"
+local shm = require "doorbell.rules.shm"
+local transaction = require "doorbell.rules.transaction"
 
 local cjson      = require "cjson"
 local uuid       = require("resty.jit-uuid").generate_v4
@@ -49,6 +51,38 @@ local rules_total
 
 local cache = require("doorbell.cache").new("rules", 1000)
 
+local RULES_VERSION = 0
+---@type doorbell.rule[]
+local RULES = {}
+---@type table<string, doorbell.rule>
+local RULES_BY_ID = {}
+---@type table<string, doorbell.rule>
+local RULES_BY_HASH = {}
+
+local function update_local_rules()
+  local version = shm.update_current_version()
+  if version == RULES_VERSION then
+    return
+  end
+
+  local list = shm.get(version)
+  local by_id = {}
+  local by_hash = {}
+
+  for i = 1, #list do
+    local rule = rules.hydrate(list[i])
+    list[i] = rule
+    by_id[rule.id] = rule
+    by_hash[rule.hash] = rule
+  end
+
+  RULES = list
+  RULES_BY_ID = by_id
+  RULES_BY_HASH = by_hash
+  RULES_VERSION = version
+end
+
+
 local function need_save(x)
   local key = "rules:need-save"
 
@@ -73,7 +107,7 @@ local function last_saved(x)
 end
 
 local function inc_version()
-  return META:incr("rules:version", 1, 0)
+  return shm.update_current_version()
 end
 
 local function noop(...)
@@ -117,8 +151,6 @@ do
   end
 end
 
-local VERSION = 0
-
 ---@param rule doorbell.rule
 ---@param overwrite? boolean
 ---@return boolean? ok
@@ -154,92 +186,89 @@ local function save_rule(rule, overwrite, stamp)
   return ok, err
 end
 
----@param id string
----@return string?
-local function get_hash_by_id(id)
-  return HASH:get(id)
-end
-
 ---@param hash_or_id string
 ---@param include_stats? boolean
 local function get(hash_or_id, include_stats)
-  local hash
+  update_local_rules()
 
+  local rule
   if rules.is_id(hash_or_id) then
-    hash = get_hash_by_id(hash_or_id)
+    rule = RULES_BY_ID[hash_or_id]
 
   elseif rules.is_hash(hash_or_id) then
-    hash = hash_or_id
+    rule = RULES_BY_HASH[hash_or_id]
   end
 
-  if not hash then
-    return
-  end
-
-  local rule = SHM:get(hash)
   if rule then
     return rules.hydrate(rule, include_stats)
   end
 end
 
 
----@param rule doorbell.rule
----@param locked? boolean
----@return boolean ok
+---@param rule string|doorbell.rule
+---@return boolean? ok
 ---@return string? error
-local function delete_rule(rule, locked)
-  if type(rule) == "string" then
-    return delete_rule(get(rule), locked)
+local function delete_rule(rule)
+  update_local_rules()
+
+  local hash, id = nil, nil
+
+  if rules.is_hash(rule) then
+    rule = RULES_BY_HASH[rule]
+
+  elseif rules.is_id(rule) then
+    rule = RULES_BY_ID[rule]
 
   elseif type(rule) == "table" then
-    rule = get(rule.hash)
+    rule = RULES_BY_HASH[rule.hash]
   end
 
   if not rule then
     return nil, "not found"
   end
 
-  local unlock = lock_storage("delete-rule", locked)
-
-  -- don't really care if this fails
-  stats.delete(rule)
-
-  local ok, err = SHM:set(rule.hash, nil)
-  if not ok then
-    return unlock(nil, err)
+  local trx, err = transaction.new()
+  if not trx then
+    return nil, err
   end
 
-  ok, err = HASH:set(rule.id, nil)
+  local ok
+  ok, err = trx:delete_where({ hash = hash, id = id })
+  if not ok then
+    trx:abort()
+    return nil, err
+  end
+
+  ok, err = trx:commit()
+  if not ok then
+    return nil, err
+  end
+
+  stats.delete(rule)
+
   inc_version()
 
-  return unlock(ok, err)
+  return true
 end
-
 
 ---@param include_stats? boolean
 ---@return doorbell.rule[]
 local function get_all_rules(include_stats)
-  local list = {}
-  local n = 0
+  local list = shm.get()
 
-  local keys = SHM:get_keys(0)
-  for i = 1, #keys do
-    local key = keys[i]
-    local value = SHM:get(key)
-    local rule = value and rules.hydrate(value, include_stats)
-    if rule then
-      n = n + 1
-      list[n] = rule
-    end
+  for i = 1, #list do
+    list[i] = rules.hydrate(list[i], include_stats)
   end
 
   return list
 end
 
+
 local check_match
 
 local function rebuild_matcher()
-  local match = matcher.new(get_all_rules())
+  update_local_rules()
+  local match = matcher.new(RULES)
   cache:flush_all()
   check_match = match
 end
@@ -295,17 +324,16 @@ end
 
 ---@return number
 local function get_version()
-  return META:get("rules:version") or 0
+  return shm.get_current_version()
 end
 
 local function reload()
-  local version = get_version()
   local start = now()
   rebuild_matcher()
-  VERSION = version
   local duration = now() - start
   duration = ceil(duration * 1000) / 1000
-  log.debugf("reloaded match rules for version %s in %ss", version, duration)
+
+  log.debugf("reloaded match rules for version %s in %ss", RULES_VERSION, duration)
 end
 
 --- save rules from shared memory to disk
@@ -371,16 +399,29 @@ local function create(opts, nobuild, overwrite, locked)
     return nil, err
   end
 
-  local act = overwrite and "set-rule" or "add-rule"
-  local unlock = lock_storage(act, locked)
-  local saved
-  saved, err = save_rule(rule, overwrite)
-  if not saved then
-    unlock()
+  local trx
+  trx, err = transaction.new()
+  if not trx then
+    return nil, err
+  end
+
+  local ok
+  if overwrite then
+    ok, err = trx:upsert(rule)
+  else
+    ok, err = trx:insert(rule)
+  end
+
+  if not ok then
+    errorf("failed adding/updating rule: %s", err)
+  end
+
+  ok, err = trx:commit()
+  if not ok then
     if err == "exists" then
       return nil, err
     end
-    errorf("failed adding/updating rule: %s", err)
+    errorf("failed to commit transaction: %s", err)
   end
 
   need_save(1)
@@ -388,12 +429,12 @@ local function create(opts, nobuild, overwrite, locked)
   local inc
   inc, err = inc_version()
   if not inc then
-    unlock()
     errorf("failed incrementing version: %s", err)
   end
 
   if not nobuild then reload() end
-  return unlock(rule)
+
+  return rule
 end
 
 
@@ -430,7 +471,7 @@ end
 ---@return boolean?        cache_hit
 function _M.match(req)
   local version = get_version()
-  if not check_match or version ~= VERSION then
+  if not check_match or version ~= RULES_VERSION then
     reload()
   end
 
@@ -452,7 +493,7 @@ function _M.match(req)
     end
 
     if not cached then
-      cache:set("req", key, rule, rule:ttl(time))
+      cache:set("req", key, rule, rule:remaining_ttl(time))
     end
   end
 

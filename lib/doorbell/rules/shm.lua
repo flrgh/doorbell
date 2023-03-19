@@ -66,9 +66,10 @@ end
 _M.get_current_version = get_current_version
 _M.get_latest_version = get_latest_version
 
+---@param version? number
 ---@return doorbell.rule[]
-function _M.get()
-  local version = get_current_version()
+function _M.get(version)
+  version = version or get_current_version()
   if version == 0 then
     return {}
   end
@@ -108,6 +109,8 @@ function _M.set(rules, version)
   if not added then
     errorf("failed to store rules version %s: %s", v, err)
   end
+
+  return true
 end
 
 
@@ -116,9 +119,24 @@ function _M.allocate_new_version()
   local version = SHM:incr(V_LATEST, 1, 0)
   local v = tostring(version)
   assert(SHM:safe_add(v, PENDING, _M.PENDING_TTL))
+
+  log.debug("allocated new shm version: ", v)
   return version
 end
 
+---@param version integer
+function _M.cancel_pending_version(version)
+  if get_current_version() > version then
+    return
+  end
+
+  assert(get_latest_version() >= version)
+
+  local v = tostring(version)
+  local value = SHM:get_stale(v)
+  assert(value == PENDING or value == nil)
+  SHM:delete(v)
+end
 
 function _M.update_current_version()
   local current = get_current_version()
@@ -130,6 +148,7 @@ function _M.update_current_version()
   end
 
   local pointer = current
+  local last_valid = current
 
   while pointer < latest do
     local next_version = pointer + 1
@@ -142,17 +161,21 @@ function _M.update_current_version()
     elseif value == PENDING then
       log.debugf("stopping at pending version: %s", next_version)
       break
+
+    elseif type(value) == "string" then
+      last_valid = next_version
+
+      assert(SHM:safe_set(V_CURRENT, next_version))
+      delete(pointer)
     end
 
-    assert(SHM:safe_set(V_CURRENT, next_version))
-    delete(pointer)
     pointer = next_version
     latest = get_latest_version()
   end
 
-  log.debugf("current version increased from %s => %s (latest: %s)", current, pointer, latest)
+  log.debugf("current version increased from %s => %s (latest: %s)", current, last_valid, latest)
 
-  return pointer
+  return last_valid
 end
 
 
