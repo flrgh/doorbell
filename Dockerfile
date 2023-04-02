@@ -1,3 +1,4 @@
+# TODO: adapt slim image
 FROM openresty/openresty:alpine-fat
 
 RUN apk add --no-cache \

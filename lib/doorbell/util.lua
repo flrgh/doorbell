@@ -224,12 +224,14 @@ function _M.filter(t, fn, ...)
   return t
 end
 
+---@param path string
+---@return boolean
 function _M.is_regex(path)
   return byte(path, 1) == TILDE
 end
 
 ---@param re string
----@return boolean ok
+---@return string? regex
 ---@return string? err
 function _M.validate_regex(re)
   -- strip the '~' prefix
