@@ -43,20 +43,9 @@ jobs:
   tests:
     name: Busted
     runs-on: ubuntu-latest
+    container: openresty/openresty:${{ env.OPENRESTY_VERSION }}-0-alpine-fat
     steps:
       - uses: actions/checkout@v2
-
-      - name: Setup OpenResty
-        id: setup-openresty
-        uses: thibaultcha/setup-openresty@main
-        with:
-          version: ${{ env.OPENRESTY_VERSION }}
-          test-nginx: false
-
-      - name: Install LuaRocks
-        uses: leafo/gh-actions-luarocks@v4
-        with:
-          withLuaPath: ${{ steps.setup-openresty.outputs.OPENRESTY_PREFIX }}/luajit
 
       - name: Install Main Luarocks Dependencies
         run: luarocks install --deps-only ${{ env.ROCKSPEC_FILE }}
