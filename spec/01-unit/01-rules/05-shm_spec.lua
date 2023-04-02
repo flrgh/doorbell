@@ -1,4 +1,3 @@
-local const = require "doorbell.constants"
 local shm = require "doorbell.rules.shm"
 local test = require "spec.testing"
 
