@@ -57,7 +57,7 @@ jobs:
         uses: leafo/gh-actions-luarocks@v4
         with:
           withLuaPath: ${{ steps.setup-openresty.outputs.OPENRESTY_PREFIX }}/luajit
-          luarocksVersion: "3.8.2"
+          luarocksVersion: "3.9.2"
 
       - name: Install Main Luarocks Dependencies
         run: luarocks install --deps-only ${{ env.ROCKSPEC_FILE }}
