@@ -67,7 +67,7 @@ jobs:
         run: luarocks test --prepare ${{ env.ROCKSPEC_FILE }}
 
       - name: Unit Tests
-        run: busted --run unit
+        run: ./bin/busted --run unit
 
       - name: Integration Tests
-        run: busted --run integration
+        run: ./bin/busted --run integration
