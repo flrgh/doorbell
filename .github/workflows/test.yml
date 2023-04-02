@@ -1,5 +1,9 @@
 name: Test
 
+env:
+  OPENRESTY_VERSION: "1.21.4.1"
+  ROCKSPEC_FILE: "doorbell-dev-1.rockspec"
+
 on:
   push:
     branches:
@@ -8,12 +12,6 @@ on:
   pull_request:
     branches:
       - '*'
-
-  workflow_dispatch:
-    inputs:
-      openresty:
-        description: 'OpenResty version (e.g. 1.21.4.1rc2)'
-        required: true
 
 defaults:
   run:
@@ -37,25 +35,19 @@ jobs:
         run: luarocks install luacheck
 
       - name: Lint rockspec file
-        run: luarocks lint doorbell-dev-1.rockspec
+        run: luarocks lint ${{ env.ROCKSPEC_FILE }}
 
       - name: Lint Lua files
         run: luacheck lib spec
 
   tests:
     name: Busted
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-        openresty:
-          - 1.21.4.1
+    runs-on: ubuntu-latest
     steps:
-      - run: echo "OPENRESTY_VERSION=${{ matrix.openresty }}" >> $GITHUB_ENV
-
       - uses: actions/checkout@v2
 
       - name: Setup OpenResty
+        id: setup-openresty
         uses: thibaultcha/setup-openresty@main
         with:
           version: ${{ env.OPENRESTY_VERSION }}
@@ -64,13 +56,13 @@ jobs:
       - name: Install LuaRocks
         uses: leafo/gh-actions-luarocks@v4
         with:
-          withLuaPath: ${{ env.OPENRESTY_PREFIX }}/luajit
+          withLuaPath: ${{ steps.setup-openresty.outputs.OPENRESTY_PREFIX }}/luajit
 
       - name: Install Main Luarocks Dependencies
-        run: luarocks install --deps-only doorbell-dev-1.rockspec
+        run: luarocks install --deps-only ${{ env.ROCKSPEC_FILE }}
 
       - name: Install Test Luarocks Dependencies
-        run: luarocks test --prepare doorbell-dev-1.rockspec
+        run: luarocks test --prepare ${{ env.ROCKSPEC_FILE }}
 
       - name: Unit Tests
         run: busted run --unit
