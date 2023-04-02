@@ -1,4 +1,4 @@
-name: CI
+name: Test
 
 on:
   push:
@@ -25,15 +25,22 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - uses: leafo/gh-actions-lua@v10
+      - name: Install Lua
+        uses: leafo/gh-actions-lua@v10
         with:
           luaVersion: "luajit-openresty"
 
-      - uses: leafo/gh-actions-luarocks@v4
+      - name: Install LuaRocks
+        uses: leafo/gh-actions-luarocks@v4
 
-      - run: luarocks lint doorbell-dev-1.rockspec
-      - run: luarocks install luacheck
-      - run: luacheck lib spec
+      - name: Install luacheck
+        run: luarocks install luacheck
+
+      - name: Lint rockspec file
+        run: luarocks lint doorbell-dev-1.rockspec
+
+      - name: Lint Lua files
+        run: luacheck lib spec
 
   tests:
     name: Tests
@@ -52,3 +59,18 @@ jobs:
         uses: thibaultcha/setup-openresty@main
         with:
           version: ${{ env.OPENRESTY_VERSION }}
+
+      - name: Install LuaRocks
+        uses: leafo/gh-actions-luarocks@v4
+
+      - name: Install Main Luarocks Dependencies
+        run: luarocks install --deps-only doorbell-dev-1.rockspec
+
+      - name: Install Test Luarocks Dependencies
+        run: luarocks test --prepare doorbell-dev-1.rockspec
+
+      - name: Busted Unit Tests
+        run: busted run --unit
+
+      - name: Busted Integration Tests
+        run: busted run --unit
