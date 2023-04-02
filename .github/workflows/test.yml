@@ -3,6 +3,7 @@ name: Test
 env:
   OPENRESTY_VERSION: "1.21.4.1"
   ROCKSPEC_FILE: "doorbell-dev-1.rockspec"
+  LUAROCKS_VERSION: "3.9.2"
 
 on:
   push:
@@ -57,7 +58,7 @@ jobs:
         uses: leafo/gh-actions-luarocks@v4
         with:
           withLuaPath: ${{ steps.setup-openresty.outputs.OPENRESTY_PREFIX }}/luajit
-          luarocksVersion: "3.9.2"
+          luarocksVersion: ${{ env.LUAROCKS_VERSION }}
 
       - name: Install Main Luarocks Dependencies
         run: luarocks install --deps-only ${{ env.ROCKSPEC_FILE }}
@@ -66,7 +67,7 @@ jobs:
         run: luarocks test --prepare ${{ env.ROCKSPEC_FILE }}
 
       - name: Unit Tests
-        run: busted run --unit
+        run: busted --run unit
 
       - name: Integration Tests
-        run: busted run --unit
+        run: busted --run integration
