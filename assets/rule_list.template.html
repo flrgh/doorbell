@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+
+		<style>
+			html {
+				font-family: sans-serif;
+			}
+
+			table {
+				border-collapse: collapse;
+				border: 2px solid rgb(200,200,200);
+				letter-spacing: 1px;
+				font-size: 0.8rem;
+			}
+
+			td, th {
+				border: 1px solid rgb(190,190,190);
+				padding: 5px 10px;
+			}
+
+			th {
+				background-color: rgb(235,235,235);
+			}
+
+			td {
+				text-align: center;
+			}
+
+			tr:nth-child(even) td {
+				background-color: rgb(250,250,250);
+			}
+
+			tr:nth-child(odd) td {
+				background-color: rgb(245,245,245);
+			}
+
+			caption {
+				padding: 5px;
+			}
+		</style>
+
+	</head>
+	<body>
+		<h1>Rules</h1>
+		<table>
+			<tr>
+				<td>hash</td>
+				<td>action</td>
+				<td>source</td>
+				<td>created</td>
+				<td>expires</td>
+				<td>terminate</td>
+				<td>last match</td>
+				<td># matches</td>
+				<td>conditions</td>
+			</tr>
+
+			{% for _, rule in ipairs(rules) do %}
+			<tr>
+				<td>{{rule.hash}}</td>
+				<td>{{rule.action}}</td>
+				<td>{{rule.source}}</td>
+				<td>{{rule.created}}</td>
+				<td>{{rule.expires}}</td>
+				<td>{{rule.terminate and "yes" or "no" }}</td>
+				<td>{{ rule.last_match }}</td>
+				<td>{{ rule.match_count }}</td>
+
+				<td>
+					<table>
+						{% for _, key in ipairs(conditions) do %}
+							{% if rule[key] ~= nil then %}
+						<tr>
+							<td>{{ key }}</td>
+							<td>{{ rule[key] }}</td>
+						</tr>
+							{% end %}
+						{% end %}
+					</table>
+				</td>
+			</tr>
+			{% end %}
+
+		</table>
+	</body>
+</html>

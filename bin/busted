@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+exec -a busted \
+    resty \
+    -I ./lib \
+    -I ./ \
+    --http-include "./assets/nginx.include/http.shm.conf" \
+    ./spec/busted "$@"

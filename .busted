@@ -1,0 +1,26 @@
+return {
+  default = {
+    output = "htest",
+    loaders = { "lua", },
+  },
+
+  _all = {
+    lpath = "./lib/?.lua;./lib/?/init.lua;./?.lua;./?/init.lua",
+  },
+
+  unit = {
+    output = "htest",
+    ROOT = {
+      "./spec/01-unit",
+    },
+  },
+
+  integration = {
+    output = "htest",
+    ROOT = {
+      "./spec/02-integration",
+    },
+  },
+}
+
+-- vim: set ft=lua ts=2 sw=2 sts=2 et :
