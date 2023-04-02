@@ -66,8 +66,11 @@ jobs:
       - name: Install Test Luarocks Dependencies
         run: luarocks test --prepare ${{ env.ROCKSPEC_FILE }}
 
+      - name: Set PATH
+        run: echo "$PWD/bin" >> $GITHUB_PATH
+
       - name: Unit Tests
-        run: ./bin/busted --run unit
+        run: busted --run unit
 
       - name: Integration Tests
-        run: ./bin/busted --run integration
+        run: busted --run integration
