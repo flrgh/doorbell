@@ -43,7 +43,7 @@ jobs:
         run: luacheck lib spec
 
   tests:
-    name: Tests
+    name: Busted
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -59,9 +59,12 @@ jobs:
         uses: thibaultcha/setup-openresty@main
         with:
           version: ${{ env.OPENRESTY_VERSION }}
+          test-nginx: false
 
       - name: Install LuaRocks
         uses: leafo/gh-actions-luarocks@v4
+        with:
+          withLuaPath: ${{ env.OPENRESTY_PREFIX }}/luajit
 
       - name: Install Main Luarocks Dependencies
         run: luarocks install --deps-only doorbell-dev-1.rockspec
@@ -69,8 +72,8 @@ jobs:
       - name: Install Test Luarocks Dependencies
         run: luarocks test --prepare doorbell-dev-1.rockspec
 
-      - name: Busted Unit Tests
+      - name: Unit Tests
         run: busted run --unit
 
-      - name: Busted Integration Tests
+      - name: Integration Tests
         run: busted run --unit
