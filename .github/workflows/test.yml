@@ -1,4 +1,4 @@
-name: Test
+name: Lint & Test
 
 env:
   OPENRESTY_VERSION: "1.21.4.1"
@@ -41,6 +41,8 @@ jobs:
 
       - name: Install LuaRocks
         uses: leafo/gh-actions-luarocks@v4
+        with:
+          luarocksVersion: ${{ env.LUAROCKS_VERSION }}
 
       - name: Install luacheck
         run: luarocks install luacheck
@@ -51,12 +53,12 @@ jobs:
       - name: Lint Lua files
         run: luacheck lib spec
 
-  tests:
-    name: Busted
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
 
+      # TODO: use a pre-built package for this
       - name: Setup OpenResty
         id: setup-openresty
         uses: thibaultcha/setup-openresty@main
