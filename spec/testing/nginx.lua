@@ -140,6 +140,18 @@ function nginx:update_config(config)
   self:restart()
 end
 
+---@return string? contents
+---@return string? error
+function nginx:read_error_log()
+  local fname = fs.join(self.config.log_path, "error.log")
+  if not fs.exists(fname) then
+    return nil, fname .. " not found"
+  end
+
+  return fs.file_contents(fname)
+end
+
+
 nginx.__index = nginx
 
 ---@param prefix string
@@ -147,7 +159,7 @@ nginx.__index = nginx
 ---@return spec.testing.nginx
 function _M.new(prefix, conf)
   prepare(prefix, conf)
-  local self = { prefix = prefix, conf = conf }
+  local self = { prefix = prefix, config = conf }
   return setmetatable(self, nginx)
 end
 
