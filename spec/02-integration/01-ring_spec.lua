@@ -38,6 +38,14 @@ describe("doorbell", function()
       client.request.host = "127.0.0.1"
     end)
 
+    lazy_teardown(function()
+      if res and type(res.status) == "number" and res.status >= 500 then
+        print(string.rep("-", 120))
+        print(nginx:read_error_log())
+        print(string.rep("-", 120))
+      end
+    end)
+
     it("returns a 400 if any x-forwarded-(for|method|proto|host|uri) header is missing", function()
       res, err = client:send()
       assert.is_nil(err)

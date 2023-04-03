@@ -32,12 +32,6 @@ local function raw_get(version)
   return SHM:get(tostring(version))
 end
 
----@param version string|integer
----@return boolean
-local function exists(version)
-  return raw_get(version) ~= nil
-end
-
 
 ---@param version string|integer
 local function delete(version)

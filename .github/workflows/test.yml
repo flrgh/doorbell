@@ -1,0 +1,103 @@
+name: Lint & Test
+
+env:
+  OPENRESTY_VERSION: "1.21.4.1"
+  OPENSSL_VERSION: "1.1.1n"
+  ROCKSPEC_FILE: "doorbell-dev-1.rockspec"
+  LUAROCKS_VERSION: "3.9.2"
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - '*'
+    paths:
+      - '*.rockspec'
+      - '.busted'
+      - '.github/**'
+      - '.luacheckrc'
+      - 'bin/**'
+      - 'lib/**'
+      - 'spec/**'
+      - '**.lua'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Lua
+        uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "luajit-openresty"
+
+      - name: Install LuaRocks
+        uses: leafo/gh-actions-luarocks@v4
+        with:
+          luarocksVersion: ${{ env.LUAROCKS_VERSION }}
+
+      - name: Install luacheck
+        run: luarocks install luacheck
+
+      - name: Lint rockspec file
+        run: luarocks lint ${{ env.ROCKSPEC_FILE }}
+
+      - name: Lint Lua files
+        run: luacheck lib spec
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      # TODO: use a pre-built package for this
+      - name: Setup OpenResty
+        id: setup-openresty
+        uses: thibaultcha/setup-openresty@main
+        with:
+          version: ${{ env.OPENRESTY_VERSION }}
+          test-nginx: false
+          openssl-version: ${{ env.OPENSSL_VERSION }}
+          opt: >
+            --with-compat
+            --with-http_realip_module
+            --with-http_ssl_module
+            --with-pcre-jit
+            --with-stream
+            --with-threads
+
+      - name: Install LuaRocks
+        uses: leafo/gh-actions-luarocks@v4
+        with:
+          withLuaPath: ${{ steps.setup-openresty.outputs.OPENRESTY_PREFIX }}/luajit
+          luarocksVersion: ${{ env.LUAROCKS_VERSION }}
+
+      - name: Install Main Luarocks Dependencies
+        run: luarocks install --deps-only ${{ env.ROCKSPEC_FILE }}
+
+      - name: Install Test Luarocks Dependencies
+        run: luarocks test --prepare ${{ env.ROCKSPEC_FILE }}
+
+      - name: Set PATH
+        run: |
+          echo "$PWD/bin" >> $GITHUB_PATH
+          echo ${{ steps.setup-openresty.outputs.OPENRESTY_PREFIX }}/bin >> $GITHUB_PATH
+          echo ${{ steps.setup-openresty.outputs.OPENRESTY_PREFIX }}/luajit/bin >> $GITHUB_PATH
+          echo ${{ steps.setup-openresty.outputs.OPENRESTY_PREFIX }}/nginx/sbin >> $GITHUB_PATH
+
+      - name: OpenResty info
+        run: nginx -V
+
+      - name: Unit Tests
+        run: busted --run unit
+
+      - name: Integration Tests
+        run: busted --run integration

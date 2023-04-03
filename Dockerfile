@@ -1,5 +1,7 @@
+ARG OPENRESTY_VERSION=1.21.4.1-0
+
 # TODO: adapt slim image
-FROM openresty/openresty:alpine-fat
+FROM openresty/openresty:${OPENRESTY_VERSION}-alpine-fat
 
 RUN apk add --no-cache \
         ca-certificates \

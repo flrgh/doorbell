@@ -388,12 +388,12 @@ local function saver(premature)
 end
 
 
----@param  opts    table
----@param nobuild boolean
----@param overwrite boolean
+---@param  opts           table
+---@param  nobuild        boolean
+---@param  overwrite      boolean
 ---@return doorbell.rule? rule
----@return string? error
-local function create(opts, nobuild, overwrite, locked)
+---@return string?        error
+local function create(opts, nobuild, overwrite)
   local rule, err = rules.new(opts)
   if not rule then
     return nil, err

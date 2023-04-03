@@ -14,7 +14,7 @@ setmetatable(_M, {
 ---@alias doorbell.view fun(ctx:doorbell.ctx)
 
 ---@module 'lfs'
-local lfs = require "lfs_ffi"
+local lfs = require "lfs"
 
 ---@param conf doorbell.config
 function _M.init(conf)

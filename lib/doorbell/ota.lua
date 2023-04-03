@@ -9,7 +9,6 @@ local manager = require "doorbell.rules.manager"
 local const = require "doorbell.constants"
 local rules = require "doorbell.rules"
 local log = require "doorbell.log"
-local util = require "doorbell.util"
 local transaction = require "doorbell.rules.transaction"
 local notify = require "doorbell.notify"
 local fmt = string.format

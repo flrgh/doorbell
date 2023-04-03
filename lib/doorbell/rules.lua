@@ -15,7 +15,6 @@ local sort         = table.sort
 local fmt          = string.format
 local decode       = cjson.decode
 local setmetatable = setmetatable
-local getmetatable = getmetatable
 local now          = ngx.now
 local update_time  = ngx.update_time
 local byte         = string.byte

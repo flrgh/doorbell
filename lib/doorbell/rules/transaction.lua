@@ -2,33 +2,13 @@ local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
-local const   = require "doorbell.constants"
-local log     = require "doorbell.log"
-local stats   = require "doorbell.rules.stats"
 local util    = require "doorbell.util"
 local rules   = require "doorbell.rules"
-local matcher = require "doorbell.rules.matcher"
 local shm = require "doorbell.rules.shm"
 
-local cjson      = require "cjson"
-local uuid       = require("resty.jit-uuid").generate_v4
-
-local ngx         = ngx
-local now         = ngx.now
-local timer_at    = ngx.timer.at
-local sleep       = ngx.sleep
-local exiting     = ngx.worker.exiting
-local get_phase   = ngx.get_phase
-
-local assert       = assert
-local encode       = cjson.encode
-local min          = math.min
-local ceil         = math.ceil
-local fmt          = string.format
-local insert       = table.insert
-local pairs        = pairs
-local ipairs       = ipairs
-local type         = type
+local insert = table.insert
+local pairs  = pairs
+local ipairs = ipairs
 
 
 
