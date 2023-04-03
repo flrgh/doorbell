@@ -1,8 +1,6 @@
 name: Lint & Test
 
 env:
-  OPENRESTY_VERSION: "1.21.4.1"
-  OPENSSL_VERSION: "1.1.1n"
   ROCKSPEC_FILE: "doorbell-dev-1.rockspec"
   LUAROCKS_VERSION: "3.9.2"
 
@@ -55,30 +53,75 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    name: Test - OpenResty ${{ matrix.openresty }}
+    strategy:
+      matrix:
+        include:
+          - openresty: 1.21.4.1
+            openssl: 1.1.1n
+            openresty-opts: >-
+              --with-compat
+              --with-http_realip_module
+              --with-http_ssl_module
+              --with-pcre-jit
+              --with-stream
+              --with-threads
+
     steps:
       - uses: actions/checkout@v3
 
-      # TODO: use a pre-built package for this
+      - name: Set OpenResty prefix
+        run: |
+          echo OPENRESTY_PREFIX=${GITHUB_WORKSPACE}/openresty/${{ matrix.openresty }} >> $GITHUB_ENV
+
+      - name: Store OpenResty build opts
+        run: |
+          echo '${{ matrix.openresty-opts }}' > .resty-opts
+
+      - name: Cache OpenResty
+        uses: actions/cache@v3
+        id: cache-openresty
+        with:
+          path: |
+            ${{ env.OPENRESTY_PREFIX }}
+            work/
+          key: v1::${{ runner.os }}-openresty-${{ matrix.openresty }}-opts-${{ hashFiles('.resty-opts') }}-openssl-${{ matrix.openssl }}
+
       - name: Setup OpenResty
         id: setup-openresty
+        if: ${{ steps.cache-openresty.outputs.cache-hit != 'true' }}
         uses: thibaultcha/setup-openresty@main
         with:
-          version: ${{ env.OPENRESTY_VERSION }}
+          version: ${{ matrix.openresty }}
           test-nginx: false
-          openssl-version: ${{ env.OPENSSL_VERSION }}
-          opt: >
-            --with-compat
-            --with-http_realip_module
-            --with-http_ssl_module
-            --with-pcre-jit
-            --with-stream
-            --with-threads
+          openssl-version: ${{ matrix.openssl }}
+          opt: ${{ matrix.openresty-opts }}
+
+      - name: Cleanup OpenResty build artifacts
+        if: ${{ steps.cache-openresty.outputs.cache-hit != 'true' }}
+        run: |
+          rm -rf \
+            ./work/OpenResty \
+            ./work/OpenSSL/test \
+            ./work/OpenSSL/doc \
+            ./work/OpenSSL/test \
+            ./work/OpenSSL/demos \
+            ./work/OpenSSL/fuzz \
+            ./work/downloads \
+          || true
 
       - name: Install LuaRocks
         uses: leafo/gh-actions-luarocks@v4
         with:
-          withLuaPath: ${{ steps.setup-openresty.outputs.OPENRESTY_PREFIX }}/luajit
+          withLuaPath: ${{ env.OPENRESTY_PREFIX }}/luajit
           luarocksVersion: ${{ env.LUAROCKS_VERSION }}
+
+      - name: Cache LuaRocks Dependencies
+        uses: actions/cache@v3
+        id: cache-luarocks-deps
+        with:
+          path: .luarocks/
+          key: v1::${{ runner.os }}-luarocks-${{ env.LUAROCKS_VERSION }}-openresty-${{ matrix.openresty }}-${{ hashFiles('*.rockspec') }}
 
       - name: Install Main Luarocks Dependencies
         run: luarocks install --deps-only ${{ env.ROCKSPEC_FILE }}
@@ -88,10 +131,10 @@ jobs:
 
       - name: Set PATH
         run: |
-          echo "$PWD/bin" >> $GITHUB_PATH
-          echo ${{ steps.setup-openresty.outputs.OPENRESTY_PREFIX }}/bin >> $GITHUB_PATH
-          echo ${{ steps.setup-openresty.outputs.OPENRESTY_PREFIX }}/luajit/bin >> $GITHUB_PATH
-          echo ${{ steps.setup-openresty.outputs.OPENRESTY_PREFIX }}/nginx/sbin >> $GITHUB_PATH
+          echo "${PWD}/bin"                      >> $GITHUB_PATH
+          echo "${OPENRESTY_PREFIX}/bin"         >> $GITHUB_PATH
+          echo "${OPENRESTY_PREFIX}/luajit/bin"  >> $GITHUB_PATH
+          echo "${OPENRESTY_PREFIX}/nginx/sbin"  >> $GITHUB_PATH
 
       - name: OpenResty info
         run: nginx -V
