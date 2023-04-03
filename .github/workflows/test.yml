@@ -53,6 +53,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    name: Test - OpenResty ${{ matrix.openresty }}
     strategy:
       matrix:
         include:
