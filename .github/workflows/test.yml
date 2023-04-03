@@ -55,6 +55,13 @@ jobs:
           version: ${{ env.OPENRESTY_VERSION }}
           test-nginx: false
           openssl-version: ${{ env.OPENSSL_VERSION }}
+          opt: >
+            --with-compat
+            --with-http_realip_module
+            --with-http_ssl_module
+            --with-pcre-jit
+            --with-stream
+            --with-threads
 
       - name: Install LuaRocks
         uses: leafo/gh-actions-luarocks@v4
@@ -74,6 +81,9 @@ jobs:
           echo ${{ steps.setup-openresty.outputs.OPENRESTY_PREFIX }}/bin >> $GITHUB_PATH
           echo ${{ steps.setup-openresty.outputs.OPENRESTY_PREFIX }}/luajit/bin >> $GITHUB_PATH
           echo ${{ steps.setup-openresty.outputs.OPENRESTY_PREFIX }}/nginx/sbin >> $GITHUB_PATH
+
+      - name: OpenResty info
+        run: nginx -V
 
       - name: Unit Tests
         run: busted --run unit
