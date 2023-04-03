@@ -1,5 +1,18 @@
 local _M = {}
 
+do
+  local configure = assert(ngx.config.nginx_configure(),
+                           "failed to read ngx.config.configure")
+
+  if not configure:find("with-http_realip_module", nil, true) then
+    print(string.rep("-", 120))
+    print((configure:gsub(" %-", "\n-")))
+    print(string.rep("-", 120))
+
+    error("realip module not found")
+  end
+end
+
 local defaults = require "doorbell.nginx.defaults"
 local util = require "doorbell.util"
 
