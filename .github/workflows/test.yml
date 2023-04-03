@@ -116,6 +116,13 @@ jobs:
           withLuaPath: ${{ env.OPENRESTY_PREFIX }}/luajit
           luarocksVersion: ${{ env.LUAROCKS_VERSION }}
 
+      - name: Cache LuaRocks Dependencies
+        uses: actions/cache@v3
+        id: cache-luarocks-deps
+        with:
+          path: .luarocks/
+          key: v1::${{ runner.os }}-luarocks-${{ env.LUAROCKS_VERSION }}-openresty-${{ matrix.openresty }}-${{ hashFiles('*.rockspec') }}
+
       - name: Install Main Luarocks Dependencies
         run: luarocks install --deps-only ${{ env.ROCKSPEC_FILE }}
 
