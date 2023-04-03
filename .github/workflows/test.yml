@@ -84,7 +84,7 @@ jobs:
           path: |
             ${{ env.OPENRESTY_PREFIX }}
             work/
-          key: v1::${{ runner.os }}-openresty-${{ mtarix.openresty }}-opts-${{ hashFiles('.resty-opts') }}-openssl-${{ matrix.openssl }}
+          key: v1::${{ runner.os }}-openresty-${{ matrix.openresty }}-opts-${{ hashFiles('.resty-opts') }}-openssl-${{ matrix.openssl }}
 
       - name: Setup OpenResty
         id: setup-openresty
