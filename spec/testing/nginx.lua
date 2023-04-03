@@ -108,6 +108,10 @@ function nginx:start()
 end
 
 function nginx:stop()
+  if not self.pid then
+    return nil, "nginx is not running"
+  end
+
   self:exec("-s", "stop")
 
   local proc = join("/proc", tostring(self.pid))
