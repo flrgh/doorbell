@@ -333,13 +333,134 @@ describe("doorbell.rules.transaction", function()
         assert.same("updated", manager.get(rule.id).ua)
       end)
     end)
-
   end)
 
   describe("delete_all()", function()
+    it("deletes all rules from the data store", function()
+      for i = 1, 10 do
+        assert(manager.add({
+          source = "user",
+          action = "allow",
+          ua = "delete-all-" .. i
+        }))
+      end
+
+      assert.same(10, #manager.list())
+
+      local trx = TRX.new()
+      assert(trx:delete_all())
+
+      assert(trx:insert(new_rule({
+        source = "user",
+        action = "allow",
+        ua = "delete-all-remaining",
+      })))
+
+      assert(trx:commit())
+
+      manager.update()
+
+      local list = manager.list()
+      assert.same(1, #list)
+      assert.same("delete-all-remaining", list[1].ua)
+    end)
+
+    it("also deletes all rules added to the transaction", function()
+      for i = 1, 10 do
+        assert(manager.add({
+          source = "user",
+          action = "allow",
+          ua = "delete-all-" .. i
+        }))
+      end
+
+      assert.same(10, #manager.list())
+
+      local trx = TRX.new()
+
+      for i = 11, 20 do
+        assert(trx:insert(new_rule({
+          source = "user",
+          action = "allow",
+          ua = "delete-all-" .. i
+        })))
+      end
+
+      assert(trx:delete_all())
+
+      assert(trx:insert(new_rule({
+        source = "user",
+        action = "allow",
+        ua = "delete-all-remaining",
+      })))
+
+      assert(trx:commit())
+
+      manager.update()
+
+      local list = manager.list()
+      assert.same(1, #list)
+      assert.same("delete-all-remaining", list[1].ua)
+    end)
+
+
   end)
 
   describe("delete_where()", function()
+    it("deletes rules that match fields", function()
+      local ua = "delete-where-test"
+      local host = "delete-me.test"
+
+      assert(manager.add({
+        source = "user",
+        action = "allow",
+        ua = ua,
+        host = "dont-delete-me.test",
+      }))
+
+      assert(manager.add({
+        source = "user",
+        action = "allow",
+        ua = ua,
+        host = host,
+      }))
+
+      assert(manager.add({
+        source = "user",
+        action = "allow",
+        ua = ua,
+      }))
+
+      assert.same(3, #manager.list())
+
+      local trx = TRX.new()
+
+      assert(trx:insert(new_rule({
+        source = "user",
+        action = "allow",
+        ua = ua,
+        path = "/do-not-delete",
+      })))
+
+      assert(trx:delete_where({ ua = ua, host = host }))
+
+      assert(trx:insert(new_rule({
+        source = "user",
+        action = "allow",
+        ua = ua,
+        path = "/also-do-not-delete",
+      })))
+
+      assert(trx:commit())
+
+      manager.update()
+
+      assert.same(4, #manager.list())
+      for _, rule in ipairs(manager.list()) do
+        assert.same(ua, rule.ua)
+        assert.not_same(host, rule.host)
+      end
+    end)
   end)
 
   describe("commit()", function()
