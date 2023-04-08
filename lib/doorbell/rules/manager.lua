@@ -44,9 +44,9 @@ local HASH  = assert(ngx.shared[const.shm.rule_hash])
 
 local errorf = util.errorf
 
----@type prometheus.counter
+---@type PrometheusCounter
 local rule_actions
----@type prometheus.gauge
+---@type PrometheusGauge
 local rules_total
 
 local cache = require("doorbell.cache").new("rules", 1000)
@@ -75,6 +75,13 @@ local function update_local_rules()
     by_id[rule.id] = rule
     by_hash[rule.hash] = rule
   end
+
+  require("spec.testing").inspect({
+    RULES = list,
+    RULES_BY_ID = by_id,
+    RULES_BY_HASH = by_hash,
+    RULES_VERSION = version,
+  })
 
   RULES = list
   RULES_BY_ID = by_id
@@ -453,16 +460,16 @@ end
 ---@param  opts    table
 ---@return doorbell.rule? rule
 ---@return string? error
-function _M.add(opts, nobuild, locked)
-  return create(opts, nobuild, false, locked)
+function _M.add(opts, nobuild)
+  return create(opts, nobuild, false)
 end
 
 --- create or update a rule
 ---@param  opts    table
 ---@return doorbell.rule? rule
 ---@return string? error
-function _M.upsert(opts, nobuild, locked)
-  return create(opts, nobuild, true, locked)
+function _M.upsert(opts, nobuild)
+  return create(opts, nobuild, true)
 end
 
 --- get a matching rule for a request
@@ -710,6 +717,11 @@ function _M.init(conf)
     rule.source = const.sources.config
     assert(_M.upsert(rule, true))
   end
+end
+
+function _M.update()
+  inc_version()
+  update_local_rules()
 end
 
 return _M

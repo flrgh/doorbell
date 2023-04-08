@@ -6,6 +6,10 @@ local config = require "spec.testing.config"
 local client = require "spec.testing.client"
 local await = require "spec.testing.await"
 
+require "spec.testing.assertions"
+
+local inspect = require "inspect"
+
 
 ---@module 'doorbell.util'
 _M.util = util
@@ -37,5 +41,10 @@ _M.await = {
     assert(await.falsy(timeout, step, fn), msg or "timeout reached")
   end,
 }
+
+---@param v any
+function _M.inspect(v)
+  require("doorbell.log").stderr(inspect(v))
+end
 
 return _M
