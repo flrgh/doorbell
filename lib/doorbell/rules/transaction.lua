@@ -5,6 +5,7 @@ local _M = {
 local util  = require "doorbell.util"
 local rules = require "doorbell.rules"
 local shm   = require "doorbell.rules.shm"
+local nkeys = require "table.nkeys"
 
 local insert = table.insert
 local pairs  = pairs
@@ -174,6 +175,9 @@ end
 
 ---@return boolean? success
 function trx:delete_where(fields)
+  assert(type(fields) == "table")
+  assert(nkeys(fields) > 0)
+
   insert(self.actions, delete_where(fields))
   return true
 end
@@ -222,6 +226,7 @@ function _M.new()
     return nil, err
   end
 
+  shm.update_current_version()
   local version = shm.allocate_new_version()
 
   local self = setmetatable({

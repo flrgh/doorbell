@@ -16,6 +16,22 @@ local headers_mt = {
   end,
 }
 
+
+---@param req spec.testing.client.request
+local function prepare(req)
+  if req.json then
+    assert(req.body == nil, "request.json and request.body are " ..
+                            "mutually exclusive")
+
+    req.body = cjson.encode(req.json)
+    req.json = nil
+
+    req.headers = req.headers or {}
+    req.headers["content-type"] = "application/json"
+  end
+end
+
+
 ---@param t table|nil
 ---@return table
 function _M.headers(t)
@@ -28,11 +44,15 @@ function _M.headers(t)
   return new
 end
 
+---@class spec.testing.client.request : resty.http.request_params
+---
+---@field json table
+
 
 ---@class spec.testing.client : table
 ---
 ---@field httpc        resty.http.client
----@field request      resty.http.request_params
+---@field request      spec.testing.client.request
 ---@field response     resty.http.response
 ---@field err          string
 ---@field host         string
@@ -40,6 +60,7 @@ end
 ---@field scheme       "http"|"https"
 ---@field headers      table<string,string>
 ---@field need_connect boolean
+---@field timeout      number
 local client = {}
 client.__index = client
 
@@ -73,6 +94,7 @@ function client:send()
 
   local req = clone(self.request)
   req.headers = req.headers or _M.headers()
+  prepare(req)
 
   for k, v in pairs(self.headers) do
     req.headers[k] = v
@@ -131,8 +153,10 @@ end
 for _, method in ipairs({"get", "put", "post", "delete", "patch"}) do
   ---@param self spec.testing.client
   ---@param path string
-  ---@param params resty.http.request_params
+  ---@param params spec.testing.client.request
   client[method] = function(self, path, params)
+    params = params or {}
+
     if self.need_connect then
       local ok, err = self.httpc:connect({
         host   = self.host,
@@ -150,7 +174,10 @@ for _, method in ipairs({"get", "put", "post", "delete", "patch"}) do
       path    = path,
       query   = params.query,
       body    = params.body,
+      json    = params.json,
     }
+
+    prepare(req)
 
     for k, v in pairs(self.headers) do
       req.headers[k] = v

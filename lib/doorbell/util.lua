@@ -6,6 +6,7 @@ local const   = require "doorbell.constants"
 local log     = require "doorbell.log"
 local cjson = require "cjson.safe"
 local resty_lock = require "resty.lock"
+local uuid = require("resty.jit-uuid").generate_v4
 
 local encode  = cjson.encode
 local decode  = cjson.decode
@@ -333,5 +334,31 @@ function _M.join(...)
 
   return concat(buf, "/", 1, n)
 end
+
+---@return string
+_M.uuid = uuid
+
+---@generic T : table
+---@param t T
+---@return T
+local function deep_copy(t)
+  local new
+  if type(t) == "table" then
+    new = {}
+
+    for k, v in pairs(t) do
+      new[k] = deep_copy(v)
+    end
+
+  else
+    new = t
+  end
+
+  return new
+end
+
+_M.deep_copy = deep_copy
+
+
 
 return _M
