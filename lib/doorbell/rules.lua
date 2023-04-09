@@ -268,8 +268,6 @@ local function validate(opts)
     end
   end
 
-  opts.expires = opts.expires or 0
-
   update_time()
   local time = now()
 
@@ -280,11 +278,15 @@ local function validate(opts)
       insert(errors, "`ttl` must be > 0")
     elseif opts.ttl > 0 then
       opts.expires = time + opts.ttl
+      opts.ttl = nil
     end
-  elseif opts.expires > 0 then
+  elseif (opts.expires or 0) > 0 then
     if ttl_from_expires(opts.expires, time) <= 0 then
       insert(errors, "rule is already expired")
     end
+
+  elseif not opts.expires then
+    opts.expires = 0
   end
 
   if opts.expires and opts.expires < 0 then
