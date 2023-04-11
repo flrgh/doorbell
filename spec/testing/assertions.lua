@@ -1,5 +1,4 @@
 local luassert = require "luassert"
-local say = require "say"
 local util = require "luassert.util"
 
 local function deep_copy(t)

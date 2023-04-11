@@ -1,8 +1,6 @@
 local TRX = require "doorbell.rules.transaction"
 local rules = require "doorbell.rules"
 local manager = require "doorbell.rules.manager"
-local log = require "doorbell.log"
-local test = require "spec.testing"
 local const = require "doorbell.constants"
 
 
@@ -195,7 +193,7 @@ describe("doorbell.rules.transaction", function()
       })
       assert(manager.add(rule))
 
-      trx = TRX.new()
+      local trx = TRX.new()
       rule = new_rule({
         action = "deny",
         source = "user",
@@ -209,7 +207,7 @@ describe("doorbell.rules.transaction", function()
     end)
 
     it("causes the transaction to fail if the rule already exists (current transaction)", function()
-      trx = TRX.new()
+      local trx = TRX.new()
 
       local rule = new_rule({
         action = "allow",
@@ -255,7 +253,7 @@ describe("doorbell.rules.transaction", function()
       })
       assert(manager.add(rule))
 
-      trx = TRX.new()
+      local trx = TRX.new()
 
       rule.action = "deny"
       assert(trx:upsert(rule))
@@ -270,7 +268,7 @@ describe("doorbell.rules.transaction", function()
     end)
 
     it("updates an existing rule (current transaction)", function()
-      trx = TRX.new()
+      local trx = TRX.new()
 
       local rule = new_rule({
         action = "allow",

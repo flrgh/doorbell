@@ -63,6 +63,7 @@ describe("rules API", function()
 
     describe("GET", function()
       it("returns all current rules", function()
+        local err
         res, err = client:get("/rules")
         assert.is_nil(err)
         assert.same(200, res.status)

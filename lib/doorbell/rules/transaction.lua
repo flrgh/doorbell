@@ -148,8 +148,7 @@ function trx:commit()
   end
 
   for _, action in ipairs(self.actions) do
-    local ok
-    ok, err = action(list)
+    local ok, err = action(list)
     if not ok then
       self:abort()
       return self.lock:unlock(nil, err)
