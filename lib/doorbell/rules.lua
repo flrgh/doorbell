@@ -5,10 +5,12 @@ local _M = {
 local const = require "doorbell.constants"
 local stats = require "doorbell.rules.stats"
 local ip    = require "doorbell.ip"
+local util  = require "doorbell.util"
 
 local cjson = require "cjson"
 
 local uuid         = require("resty.jit-uuid").generate_v4
+local valid_uuid   = require("resty.jit-uuid").is_valid
 local concat       = table.concat
 local insert       = table.insert
 local sort         = table.sort
@@ -18,6 +20,7 @@ local setmetatable = setmetatable
 local now          = ngx.now
 local update_time  = ngx.update_time
 local byte         = string.byte
+local deep_copy    = util.deep_copy
 
 local CONDITIONS = {
   "addr",
@@ -210,8 +213,6 @@ local function tkeys(t)
   return concat(keys, "|")
 end
 
-local errors = {}
-local function err(v) insert(errors, v) end
 
 local fields = {
   action    = {"string", true, const.actions},
@@ -229,11 +230,13 @@ local fields = {
   country   = {"string"},
   deny_action = {"string", false, const.deny_actions},
   comment   = {"string"},
+  id        = {"string"},
 }
 
 ---@param opts table
 local function validate(opts)
-  errors = {}
+  local errors = {}
+
   for name, spec in pairs(fields) do
     local typ = spec[1]
     local req = spec[2]
@@ -244,68 +247,63 @@ local function validate(opts)
     local ok = true
 
     if req and value == nil then
-      err(e_required(name))
+      insert(errors, e_required(name))
       ok = false
     end
 
     if ok and value ~= nil and not is_type(typ, value) then
-      err(e_type(name, typ, type(value)))
+      insert(errors, e_type(name, typ, type(value)))
       ok = false
     end
 
     if ok and req and typ == "string" and value == "" then
-      err(e_empty(name))
+      insert(errors, e_empty(name))
       ok = false
     end
 
     if ok and value ~= nil and lookup then
       if not lookup[value] then
-        err(e_enum(name, tkeys(lookup), value))
+        insert(errors, e_enum(name, tkeys(lookup), value))
       end
     end
   end
-end
-
----@param  opts    table
----@return doorbell.rule? rule
----@return string? error
-function _M.new(opts)
-  validate(opts)
-
-  local expires = opts.expires or 0
 
   update_time()
   local time = now()
 
   if opts.ttl then
     if opts.expires then
-      err("only one of `ttl` and `expires` allowed")
+      insert(errors, "only one of `ttl` and `expires` allowed")
     elseif opts.ttl < 0 then
-      err("`ttl` must be > 0")
+      insert(errors, "`ttl` must be > 0")
     elseif opts.ttl > 0 then
-      expires = time + opts.ttl
+      opts.expires = time + opts.ttl
+      opts.ttl = nil
     end
-  elseif expires > 0 then
-    if ttl_from_expires(expires, time) <= 0 then
-      err("rule is already expired")
+  elseif (opts.expires or 0) > 0 then
+    if ttl_from_expires(opts.expires, time) <= 0 then
+      insert(errors, "rule is already expired")
     end
+
+  elseif not opts.expires then
+    opts.expires = 0
   end
 
   if opts.expires and opts.expires < 0 then
-    err("`expires` must be >= 0")
+    insert(errors, "`expires` must be >= 0")
   end
 
   if not (opts.addr or opts.cidr or opts.ua or opts.method or opts.host or opts.path or opts.country) then
-    err("at least one of `addr`|`cidr`|`ua`|`method`|`host`|`path`|`country` required")
+    insert(errors, "at least one of `addr`|`cidr`|`ua`|`method`|`host`|`path`|`country` required")
   end
 
   if opts.action == const.actions.allow and opts.deny_action then
-    err("`deny_action` cannot be used when `action` is '" .. const.actions.allow .. "'")
+    insert(errors, "`deny_action` cannot be used when `action` is '" .. const.actions.allow .. "'")
   end
 
   if opts.country and type(opts.country) == "string" then
     if not ip.get_country_name(opts.country) then
-      err("`country` must be a valid, two letter country code")
+      insert(errors, "`country` must be a valid, two letter country code")
     end
   end
 
@@ -315,10 +313,26 @@ function _M.new(opts)
       conditions = conditions + 1
     end
   end
+  opts.conditions = conditions
 
   if opts.terminate and conditions > 1 then
-    err("can only have one match condition with `terminate`")
+    insert(errors, "can only have one match condition with `terminate`")
   end
+
+  if opts.id and not valid_uuid(opts.id) then
+    insert(errors, "`id` must be a valid uuid")
+  end
+
+
+  return errors
+end
+
+---@param  opts    doorbell.rule
+---@return doorbell.rule? rule
+---@return string? error
+function _M.new(opts)
+  opts = deep_copy(opts)
+  local errors = validate(opts)
 
   if #errors > 0 then
     return nil, concat(errors, "\n")
@@ -331,14 +345,14 @@ function _M.new(opts)
 
   ---@type doorbell.rule
   local rule = {
-    id          = uuid(),
+    id          = opts.id or uuid(),
     action      = opts.action,
     addr        = opts.addr,
     cidr        = opts.cidr,
-    conditions  = conditions,
-    created     = opts.created or time,
+    conditions  = opts.conditions,
+    created     = opts.created or now(),
     deny_action = deny_action,
-    expires     = expires,
+    expires     = opts.expires,
     hash        = hash_rule(opts),
     host        = opts.host,
     method      = opts.method,
@@ -351,6 +365,19 @@ function _M.new(opts)
   }
 
   return hydrate(rule)
+end
+
+
+---@param  rule    doorbell.rule
+---@return boolean? ok
+---@return string? error
+function _M.validate(rule)
+  local errors = validate(rule)
+  if #errors > 0 then
+    return nil, concat(errors, "\n")
+  end
+
+  return true
 end
 
 

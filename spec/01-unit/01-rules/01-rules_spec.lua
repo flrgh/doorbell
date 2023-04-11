@@ -172,9 +172,9 @@ describe("doorbell.rules", function()
       },
 
       {
-        desc = "source must be one of config/user",
+        desc = "source must be one of config/user/ota/api",
         input = { source = "nope" },
-        expect = 'invalid `source` (expected: "config"|"ota"|"user", got: "nope")',
+        expect = 'invalid `source` (expected: "api"|"config"|"ota"|"user", got: "nope")',
         plain = true,
       },
 
@@ -226,7 +226,7 @@ describe("doorbell.rules", function()
       assert.equals(created, rule.created)
     end)
 
-    it("auto-generates the `expires` field from ttl if given", function()
+    it("#only auto-generates the `expires` field from ttl if given", function()
       local rule, err = new { ttl = 10, ua = "test", action = "deny", source = "config" }
       assert.is_nil(err)
       assert.near(ngx.now() + 10, rule.expires, 1)

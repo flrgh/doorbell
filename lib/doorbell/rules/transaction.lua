@@ -2,18 +2,23 @@ local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
-local util    = require "doorbell.util"
-local rules   = require "doorbell.rules"
-local shm = require "doorbell.rules.shm"
+local util  = require "doorbell.util"
+local rules = require "doorbell.rules"
+local shm   = require "doorbell.rules.shm"
+local nkeys = require "table.nkeys"
 
 local insert = table.insert
 local pairs  = pairs
 local ipairs = ipairs
 
+local LOCK_OPTS = {
+  timeout = 5,
+  exptime = 5,
+}
 
 
-local function get_lock(action)
-  return util.lock("rules", "trx", action)
+local function get_lock()
+  return util.lock("rules", "trx", "write", LOCK_OPTS)
 end
 
 
@@ -25,6 +30,8 @@ end
 ---@field rules doorbell.rule[]
 ---
 ---@field actions table
+---
+---@field lock doorbell.lock
 local trx = {}
 trx.__index = trx
 
@@ -83,7 +90,7 @@ local function update_rule(hash_or_id, params)
   return function(candidates)
     local found = false
     for _, current in ipairs(candidates) do
-      if current.hash == hash_or_id or current.id == hash_or_id then
+      if current.hash == hash_or_id or current.id == hash_or_id and not deleted(current) then
         found = true
         for k, v in pairs(params) do
           current[k] = v
@@ -131,9 +138,8 @@ end
 ---@return boolean? success
 ---@return string? error
 function trx:commit()
-  local lock, err = get_lock("transaction:commit")
-  if not lock then
-    return nil, err
+  if not self.lock:expire() then
+    return nil, "unlocked"
   end
 
   local list = self.rules
@@ -142,14 +148,12 @@ function trx:commit()
   end
 
   for _, action in ipairs(self.actions) do
-    local ok
-    ok, err = action(list)
+    local ok, err = action(list)
     if not ok then
       self:abort()
-      return lock:unlock(nil, err)
+      return self.lock:unlock(nil, err)
     end
   end
-
 
   local new = {}
   for _, rule in ipairs(list) do
@@ -158,13 +162,21 @@ function trx:commit()
     end
   end
 
+  if shm.get_latest_version() ~= self.version then
+    self:abort()
+    return nil, "stale"
+  end
+
   shm.set(new, self.version)
 
-  return lock:unlock(true)
+  return self.lock:unlock(true)
 end
 
 ---@return boolean? success
 function trx:delete_where(fields)
+  assert(type(fields) == "table")
+  assert(nkeys(fields) > 0)
+
   insert(self.actions, delete_where(fields))
   return true
 end
@@ -208,19 +220,22 @@ end
 ---@return doorbell.rules.transaction? trx
 ---@return string?                     error
 function _M.new()
-  local lock, err = get_lock("transaction:create")
+  local lock, err = get_lock()
   if not lock then
     return nil, err
   end
 
+  shm.update_current_version()
+  local version = shm.allocate_new_version()
+
   local self = setmetatable({
     lock = lock,
-    version = shm.allocate_new_version(),
+    version = version,
     actions = {},
     rules = shm.get(),
   }, trx)
 
-  return lock:unlock(self)
+  return self
 end
 
 

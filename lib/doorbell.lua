@@ -6,7 +6,7 @@ local _M = {
 }
 
 
-local rules   = require "doorbell.rules.manager"
+local manager = require "doorbell.rules.manager"
 local const   = require "doorbell.constants"
 local log     = require "doorbell.log"
 local metrics = require "doorbell.metrics"
@@ -70,7 +70,7 @@ local function init_core_routes()
     metrics_enabled = false,
     content_type    = "text/plain",
     POST = function()
-      local ok, err = rules.load(config.state_path, false)
+      local ok, err = manager.load(config.state_path, false)
       if ok then
         return send(201, "success")
       end
@@ -84,7 +84,7 @@ local function init_core_routes()
     metrics_enabled = false,
     content_type    = "text/plain",
     POST            = function()
-      local ok, err = rules.save()
+      local ok, err = manager.save()
       if not ok then
         log.err("failed saving rules to disk: ", err)
         return send(500, "failure")
@@ -189,17 +189,30 @@ local function init_core_routes()
     allow_untrusted = false,
     content_type    = "application/json",
     GET             = function()
-      return send(200, rules.list(true))
+      local list, err = manager.list()
+      if not list then
+        log.err("failed to list rules for API request: ", err)
+        return send(500, { error = "internal server error" })
+      end
+
+      return send(200, { data = list })
     end,
 
     POST = function()
       local json = http.get_json_request_body()
 
-      local rule, rerr = rules.add(json)
+      json.source = const.sources.api
+
+      local rule, err, status = manager.add(json)
       if not rule then
-        return send(200, {
-          error = "failed adding rule: " .. tostring(rerr or "unknown")
-        })
+        local msg = { error = err }
+
+        if status >= 500 then
+          log.err("failed creating rule: ", err)
+          msg.error = "internal server error"
+        end
+
+        return send(status, msg)
       end
 
       return send(201, rule)
@@ -212,30 +225,39 @@ local function init_core_routes()
     allow_untrusted = false,
     content_type    = "application/json",
     GET             = function(_, match)
-      local rule = rules.get(match.hash)
-      return send(rule and ngx.HTTP_OK or ngx.HTTP_NOT_FOUND, rule)
+      local rule = manager.get(match.hash)
+      if rule then
+        return send(200, rule)
+      else
+        return send(404, { error = "rule not found" })
+      end
     end,
 
     PATCH          = function(_, match)
-      local rule = rules.get(match.hash)
-      if not rule then
-        return send(404, { error = "rule not found" })
-      end
-
       local json = http.get_json_request_body()
-      local updated, err = rules.upsert(json)
+
+      local updated, err, status = manager.patch(match.hash, json)
+
       if not updated then
-        return send(400, { error = err })
+        return send(status, { error = err } )
       end
 
-      return send(201, updated)
+      return send(200, updated)
     end,
 
     DELETE = function(_, match)
-      local ok, err = rules.delete(match.hash)
+      local ok, err, status = manager.delete(match.hash)
       if not ok then
-        return send(400, { error = err })
+        local msg = { error = err }
+
+        if status >= 500 then
+          log.err("failed deleting rule: ", err)
+          msg.error = "internal server error"
+        end
+
+        return send(status, msg)
       end
+
 
       return send(204)
     end
@@ -265,7 +287,7 @@ function _M.init()
   views.init(config)
   notify.init(config)
   auth.init(config)
-  rules.init(config)
+  manager.init(config)
   request.init(config)
   ota.init(config)
 
@@ -273,19 +295,19 @@ function _M.init()
 
   assert(proc.enable_privileged_agent(10))
 
-  rules.reload()
+  manager.reload()
 end
 
 local function init_worker()
   metrics.init_worker()
-  rules.init_worker()
+  manager.init_worker()
   request.init_worker()
   cache.init_worker()
   notify.init_worker()
 end
 
 local function init_agent()
-  rules.init_agent()
+  manager.init_agent()
   ota.init_agent()
 end
 
@@ -347,7 +369,7 @@ function _M.log()
   local start = start_time()
 
   if not ctx.no_metrics then
-    rules.log(ctx, start)
+    manager.log(ctx, start)
   end
 
   request.log(ctx)

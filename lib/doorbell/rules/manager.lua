@@ -23,6 +23,7 @@ local timer_at    = ngx.timer.at
 local sleep       = ngx.sleep
 local exiting     = ngx.worker.exiting
 local get_phase   = ngx.get_phase
+local null        = ngx.null
 
 local assert       = assert
 local encode       = cjson.encode
@@ -44,9 +45,9 @@ local HASH  = assert(ngx.shared[const.shm.rule_hash])
 
 local errorf = util.errorf
 
----@type prometheus.counter
+---@type PrometheusCounter
 local rule_actions
----@type prometheus.gauge
+---@type PrometheusGauge
 local rules_total
 
 local cache = require("doorbell.cache").new("rules", 1000)
@@ -208,10 +209,9 @@ end
 ---@param rule string|doorbell.rule
 ---@return boolean? ok
 ---@return string? error
+---@return integer? status_code
 local function delete_rule(rule)
   update_local_rules()
-
-  local hash, id = nil, nil
 
   if rules.is_hash(rule) then
     rule = RULES_BY_HASH[rule]
@@ -224,24 +224,24 @@ local function delete_rule(rule)
   end
 
   if not rule then
-    return nil, "not found"
+    return nil, "not found", 404
   end
 
   local trx, err = transaction.new()
   if not trx then
-    return nil, err
+    return nil, err, 500
   end
 
   local ok
-  ok, err = trx:delete_where({ hash = hash, id = id })
+  ok, err = trx:delete_where({ id = rule.id })
   if not ok then
     trx:abort()
-    return nil, err
+    return nil, err, 500
   end
 
   ok, err = trx:commit()
   if not ok then
-    return nil, err
+    return nil, err, 500
   end
 
   stats.delete(rule)
@@ -393,16 +393,17 @@ end
 ---@param  overwrite      boolean
 ---@return doorbell.rule? rule
 ---@return string?        error
+---@return integer?       status_code
 local function create(opts, nobuild, overwrite)
   local rule, err = rules.new(opts)
   if not rule then
-    return nil, err
+    return nil, err, 400
   end
 
   local trx
   trx, err = transaction.new()
   if not trx then
-    return nil, err
+    return nil, err, 500
   end
 
   local ok
@@ -453,16 +454,16 @@ end
 ---@param  opts    table
 ---@return doorbell.rule? rule
 ---@return string? error
-function _M.add(opts, nobuild, locked)
-  return create(opts, nobuild, false, locked)
+function _M.add(opts, nobuild)
+  return create(opts, nobuild, false)
 end
 
 --- create or update a rule
 ---@param  opts    table
 ---@return doorbell.rule? rule
 ---@return string? error
-function _M.upsert(opts, nobuild, locked)
-  return create(opts, nobuild, true, locked)
+function _M.upsert(opts, nobuild)
+  return create(opts, nobuild, true)
 end
 
 --- get a matching rule for a request
@@ -501,6 +502,37 @@ function _M.match(req)
 end
 
 _M.delete = delete_rule
+
+
+---@param  id_or_hash     string
+---@param  updates        doorbell.rule
+---@return doorbell.rule? patched
+---@return string?        error
+---@return integer?       status_code
+function _M.patch(id_or_hash, updates)
+  assert(type(updates) == "table")
+
+  local rule = get(id_or_hash)
+
+  if not rule then
+    return nil, "rule not found", 404
+  end
+
+  for k, v in pairs(updates) do
+    if v == null then
+      v = nil
+    end
+
+    rule[k] = v
+  end
+
+  local ok, err = rules.validate(rule)
+  if not ok then
+    return nil, err, 400
+  end
+
+  return create(rule, true, true)
+end
 
 --- retrieve a list of all current rules
 ---@param include_stats? boolean
@@ -710,6 +742,11 @@ function _M.init(conf)
     rule.source = const.sources.config
     assert(_M.upsert(rule, true))
   end
+end
+
+function _M.update()
+  inc_version()
+  update_local_rules()
 end
 
 return _M
