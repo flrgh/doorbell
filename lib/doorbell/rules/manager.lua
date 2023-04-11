@@ -77,13 +77,6 @@ local function update_local_rules()
     by_hash[rule.hash] = rule
   end
 
-  require("spec.testing").inspect({
-    RULES = list,
-    RULES_BY_ID = by_id,
-    RULES_BY_HASH = by_hash,
-    RULES_VERSION = version,
-  })
-
   RULES = list
   RULES_BY_ID = by_id
   RULES_BY_HASH = by_hash

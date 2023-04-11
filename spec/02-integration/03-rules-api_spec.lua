@@ -143,12 +143,10 @@ describe("rules API", function()
             ua = "patched!",
           }
         }))
-        test.inspect(res)
         assert.same(200, res.status)
         assert.same("patched!", res.json.ua)
 
         res = assert(client:get("/rules/" .. rule.id))
-        test.inspect(res)
         assert.same(200, res.status)
         assert.same("patched!", res.json.ua)
       end)

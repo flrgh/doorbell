@@ -59,17 +59,6 @@ local function assert_fields(state, arguments)
 
   left = delete_nulls(left)
 
---  require("spec.testing").inspect({
---    LHS = {
---      original = arguments[1],
---      compare = left,
---    },
---    RHS = {
---      original = arguments[2],
---      compare = right,
---    },
---  })
-
   local message = arguments[3]
   arguments[3] = nil
 
