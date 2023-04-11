@@ -1,3 +1,4 @@
+require "spec.testing"
 local TRX = require "doorbell.rules.transaction"
 local rules = require "doorbell.rules"
 local manager = require "doorbell.rules.manager"
