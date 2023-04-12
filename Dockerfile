@@ -15,6 +15,7 @@ RUN luarocks install --deps-only /tmp/doorbell-dev-1.rockspec && \
 
 ARG DOORBELL_PREFIX=/usr/local/doorbell
 ENV DOORBELL_PREFIX=${DOORBELL_PREFIX}
+ENV DOORBELL_ASSET_PATH=${DOORBELL_PREFIX}/assets
 
 COPY ./lib/ ${DOORBELL_PREFIX}/lib/
 COPY ./bin/render-nginx-template ${DOORBELL_PREFIX}/bin/
