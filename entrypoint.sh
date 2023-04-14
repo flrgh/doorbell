@@ -2,25 +2,32 @@
 
 set -euo pipefail
 
-DOORBELL_PREFIX=${DOORBELL_PREFIX:-/usr/local/doorbell}
-
 for var in ${!DOORBELL_*}; do
-    export "$var"
+    export "${var}=${!var}"
 done
 
-export LUA_PATH="${DOORBELL_PREFIX}/lib/?.lua;${DOORBELL_PREFIX}/lib/?/init.lua;${LUA_PATH:-};"
+export LUA_PATH="${DOORBELL_LIB_DIR}/?.lua;${DOORBELL_LIB_DIR}/?/init.lua;${LUA_PATH:-};"
 
 if [[ ${1:-} = start ]]; then
-    mkdir -p "$DOORBELL_PREFIX/logs"
-    chown 775 "$DOORBELL_PREFIX/logs"
+    # nginx uses {{prefix}}/logs to log errors encountered before/during
+    # config parsing, so it needs to exist
+    mkdir -p "$DOORBELL_RUNTIME_DIR/logs"
+    ln -sf /dev/stderr "$DOORBELL_RUNTIME_DIR/logs/error.log"
+    ln -sf /dev/stdout "$DOORBELL_RUNTIME_DIR/logs/access.log"
 
-    $DOORBELL_PREFIX/bin/render-nginx-template \
-        < "$DOORBELL_PREFIX"/assets/nginx.template.conf \
-        > "$DOORBELL_PREFIX"/nginx.conf
+    if [[ $DOORBELL_LOG_DIR == "stdio" ]]; then
+        export DOORBELL_LOG_DIR=$DOORBELL_RUNTIME_DIR/logs
+        ln -sf /dev/stderr "${DOORBELL_LOG_DIR}/logs/error.log"
+        ln -sf /dev/stdout "${DOORBELL_LOG_DIR}/logs/access.log"
+    fi
+
+    "$DOORBELL_LIBEXEC_DIR"/render-nginx-template \
+        < "$DOORBELL_ASSET_DIR"/nginx.template.conf \
+        > "$DOORBELL_RUNTIME_DIR"/nginx.conf
 
     exec nginx \
-        -p "$DOORBELL_PREFIX" \
-        -c "$DOORBELL_PREFIX/nginx.conf"
+        -p "$DOORBELL_RUNTIME_DIR" \
+        -c "$DOORBELL_RUNTIME_DIR"/nginx.conf
 fi
 
 exec "$@"

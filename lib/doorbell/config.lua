@@ -1,27 +1,80 @@
 ---@class doorbell.config : table
 ---
----@field allow      doorbell.rule[]
----@field asset_path string
----@field base_url   string
----@field cache_size integer
----@field deny       doorbell.rule[]
----@field geoip_db   string
----@field host       string
----@field log_path   string
----@field notify     doorbell.notify.config
----@field state_path string
----@field trusted    string[]
----@field metrics    doorbell.metrics.config
----@field ota?       doorbell.ota.config
+---@field allow       doorbell.rule[]
+---@field asset_dir   string
+---@field base_url    string
+---@field cache_size  integer
+---@field deny        doorbell.rule[]
+---@field geoip_db    string
+---@field host        string
+---@field log_dir     string
+---@field notify      doorbell.notify.config
+---@field runtime_dir string
+---@field trusted     string[]
+---@field metrics     doorbell.metrics.config
+---@field ota?        doorbell.ota.config
 local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
 local util = require "doorbell.util"
+local pl_path = require "pl.path"
+local cjson_safe = require "cjson.safe"
 
-local prefix = ngx.config.prefix()
 local getenv = os.getenv
+local fmt = string.format
 
+local ngx_prefix = ngx.config.prefix()
+local prefix = getenv("DOORBELL_RUNTIME_DIR") or ngx_prefix
+
+
+---@param s string
+---@return string[]
+local function split_at_comma(s)
+  local items = {}
+  local _ = s:gsub("[^,]+", function(word)
+    word = word:gsub("^%s+", ""):gsub("%s+$", "")
+    table.insert(items, word)
+  end)
+  return items
+end
+
+
+---@param path string
+---@return boolean? ok
+---@return string? error
+local function is_dir(path)
+  if pl_path.exists(path) then
+    if pl_path.isdir(path) then
+      return true
+    end
+
+    return nil, fmt("%q is not a directory", path)
+  end
+
+  return nil, fmt("%q does not exist", path)
+end
+
+
+---@param path string
+---@return boolean? ok
+---@return string? error
+local function is_file(path)
+  if pl_path.exists(path) then
+    if pl_path.isfile(path) then
+      return true
+    end
+
+    return nil, fmt("%q is not a regular file", path)
+  end
+
+  return nil, fmt("%q does not exist", path)
+end
+
+
+
+---@param name string
+---@return string
 local function require_env(name)
   local value = getenv(name)
   if value == nil then
@@ -31,6 +84,7 @@ local function require_env(name)
   end
   return value
 end
+
 
 local function iter_keys(t)
   local keys = {}
@@ -45,6 +99,10 @@ local function iter_keys(t)
   end
 end
 
+
+---@generic T : table|string
+---@param t T
+---@return T
 local function replace_env(t)
   local typ = type(t)
   if typ == "string" then
@@ -58,53 +116,272 @@ local function replace_env(t)
   return t
 end
 
-local REQUIRED = {}
-local NOT_REQUIRED = {}
 
----@type doorbell.config
-local defaults = {
-  allow      = NOT_REQUIRED,
-  asset_path = util.join(prefix, "assets"),
-  base_url   = REQUIRED,
-  cache_size = 1000,
-  deny       = NOT_REQUIRED,
-  geoip_db   = NOT_REQUIRED,
-  host       = NOT_REQUIRED,
-  log_path   = util.join(prefix, "logs"),
-  notify     = NOT_REQUIRED,
-  state_path = util.join(prefix, "state"),
-  trusted    = NOT_REQUIRED,
-  metrics    = NOT_REQUIRED,
-  ota        = NOT_REQUIRED,
+---@param exp string
+---@return fun(any):boolean?, string?
+local function is_type(exp)
+  return function(v)
+    local got = type(v)
+    if got == exp then
+      return true
+    end
+    return nil, "expected: " .. exp .. ", got: " .. got
+  end
+end
+
+
+---@param funcs function[]
+---@return fun(any):boolean?, string?
+local function all(funcs)
+  return function(v)
+    for _, fn in ipairs(funcs) do
+      local ok, err = fn(v)
+      if not ok then
+        return nil, err
+      end
+    end
+
+    return true
+  end
+end
+
+
+---@class doorbell.config.field
+---
+---@field name         string
+---@field from_env?    boolean
+---@field _validate?    fun(any):boolean?, string?
+---@field default?     any
+---@field _unserialize? fun(any):any?, string?
+---@field required?    boolean
+local field_mt = {}
+
+
+---@param value any
+---@return boolean? ok
+---@return string? error
+function field_mt:validate(value)
+  if self._validate then
+    local ok, err = self._validate(value)
+    if not ok then
+      return nil, fmt("invalid value for %s (%q): %s",
+                      self.name, value, err)
+    end
+  end
+
+  return true
+end
+
+---@param value any
+---@return any? unserialized
+---@return string? error
+function field_mt:unserialize(value)
+  if self._unserialize then
+    local unserialized, err = self._unserialize(value)
+    if err then
+      return nil, fmt("error unserializing %s from %q, %s",
+                      self.name, value, err)
+    end
+    value = unserialized
+  end
+
+  return value
+end
+
+---@param self doorbell.config.field
+---@return any
+---@return string? error
+function field_mt:get_from_env()
+  if not self.from_env then
+    return
+  end
+
+  local varname = "DOORBELL_" .. self.name:upper()
+
+  local value = getenv(varname)
+  if value == nil then
+    return
+  end
+
+  local err
+  value, err = self:unserialize(value)
+  if err then
+    return nil, fmt("could not unserialize %s: %s", varname, err)
+  end
+
+  local ok
+  ok, err = self:validate(value)
+  if not ok then
+    return nil, err
+  end
+
+  return value
+end
+
+
+
+---@type doorbell.config.field[]
+local FIELDS = {
+  { name = "allow",
+    _validate = is_type("table"),
+  },
+
+  { name = "asset_dir",
+    default = "/usr/local/share/doorbell",
+    from_env = true,
+    _validate = all {
+      is_type("string"),
+      is_dir,
+    }
+  },
+
+  { name = "base_url",
+    from_env = true,
+    _validate = is_type("string"),
+    required = true,
+  },
+
+  { name = "cache_size",
+    from_env = true,
+    default = 1000,
+    _validate = is_type("number"),
+    _unserialize = tonumber,
+  },
+
+  { name = "deny",
+    _validate = is_type("table"),
+  },
+
+  { name = "geoip_db",
+    from_env = true,
+    _validate = all {
+      is_type("string"),
+      is_file,
+    }
+  },
+
+  { name = "log_dir",
+    from_env = true,
+    default = "/var/log/doorbell",
+    _validate = all {
+      is_type("string"),
+      is_dir,
+    },
+  },
+
+  { name = "notify",
+    _validate = is_type("table"),
+  },
+
+  { name = "runtime_dir",
+    from_env = true,
+    default = "/var/run/doorbell",
+    _validate = all {
+      is_type("string"),
+      is_dir,
+    },
+  },
+
+  { name = "trusted",
+    from_env = true,
+    _unserialize = split_at_comma,
+    _validate = all {
+      is_type("table"),
+    },
+  },
+
+  { name = "metrics",
+    _validate = all {
+      is_type("table"),
+    },
+  },
+
+  { name = "ota",
+    _validate = is_type("table"),
+  },
 }
 
-function _M.init()
-  local fname = getenv("DOORBELL_CONFIG") or util.join(prefix, "config.json")
+do
+  local mt = { __index = field_mt }
+  for i = 1, #FIELDS do
+    setmetatable(FIELDS[i], mt)
+  end
+end
 
-  local data, err = util.read_json_file(fname)
-  if not data then
-    util.errorf("failed loading config (%s): %s", fname, err)
+function _M.init()
+  ngx_prefix = ngx.config.prefix()
+  prefix = getenv("DOORBELL_RUNTIME_DIR") or ngx_prefix
+
+  local data, err
+
+  do
+    local content = getenv("DOORBELL_CONFIG_STRING")
+    local fname
+    if content then
+      fname = "env://DOORBELL_CONFIG_STRING"
+
+    else
+      fname = getenv("DOORBELL_CONFIG")
+    end
+
+    if fname and not content then
+      content, err = util.read_file(fname)
+      if not content then
+        util.errorf("failed to open user config file %s: %s",
+                    fname, err)
+      end
+
+    elseif not content then
+      fname = util.join(prefix, "config.json")
+      content = util.read_file(fname)
+    end
+
+    if content then
+      data, err = cjson_safe.decode(content)
+      if err then
+        util.errorf("config file %s JSON is invalid: %s",
+                    fname, err)
+      end
+
+    else
+      data = {}
+    end
   end
 
   replace_env(data)
 
-  for name in iter_keys(defaults) do
-    local default = defaults[name]
-    local user    = data[name]
+  for _, field in ipairs(FIELDS) do
+    local value
+    value, err = field:get_from_env()
 
-    if user ~= nil then
-      _M[name] = user
-    elseif default == REQUIRED then
-      util.errorf("config.%s is required", name)
-    elseif default == NOT_REQUIRED then
-      _M[name] = nil
-    else
-      _M[name] = default
+    if err then
+      util.errorf(err)
     end
+
+    if value == nil then
+      value = data[field.name]
+    end
+
+    if value == nil then
+      value = field.default
+
+    else
+      local ok
+      ok, err = field:validate(value)
+      if not ok then
+        util.errorf(err)
+      end
+    end
+
+    if value == nil and field.required then
+      util.errorf("config.%s is required", field.name)
+    end
+
+    _M[field.name] = value
   end
 
   do
-    local m = ngx.re.match(_M.base_url, "^(http(s)?://)?(?<host>[^/]+)")
+    local m = ngx.re.match(_M.base_url, "^(http(s)?://)?(?<host>[a-zA-Z][a-zA-Z0-9_-]*)")
     if not (m and m.host) then
       util.errorf("failed to parse hostname from base_url: %s", _M.base_url)
     end

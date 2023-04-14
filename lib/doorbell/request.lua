@@ -207,7 +207,7 @@ end
 
 ---@param opts doorbell.config
 function _M.init(opts)
-  if opts.log_path == "/dev/null" then
+  if opts.log_dir == "/dev/null" then
     LOG = false
   else
     logger.init(opts)

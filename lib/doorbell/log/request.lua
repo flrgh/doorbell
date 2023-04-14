@@ -194,7 +194,7 @@ end
 
 ---@param conf doorbell.config
 function _M.init(conf)
-  PATH = util.join(conf.log_path, "doorbell.json.log")
+  PATH = util.join(conf.log_dir, "doorbell.json.log")
   ENTRIES = { n = 0 }
 end
 

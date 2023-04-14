@@ -18,9 +18,9 @@ local TEMPLATE_PATH = join(const.FIXTURES_DIR, "busted.nginx.conf")
 ---@param prefix string
 ---@param conf doorbell.config
 local function prepare(prefix, conf)
-  fs.mkdir(prefix)
-  fs.reset_dir(conf.log_path)
-  fs.reset_dir(conf.state_path)
+  fs.reset_dir(prefix)
+  fs.reset_dir(conf.log_dir)
+
   render(
     TEMPLATE_PATH,
     join(prefix, "nginx.conf"),
@@ -31,6 +31,7 @@ local function prepare(prefix, conf)
       daemon = "on",
       test_fixtures_dir = const.FIXTURES_DIR,
       worker_processes = 1,
+      log_dir = conf.log_dir,
     }
   )
   fs.write_json_file(
@@ -143,7 +144,7 @@ end
 ---@return string? contents
 ---@return string? error
 function nginx:read_error_log()
-  local fname = fs.join(self.config.log_path, "error.log")
+  local fname = fs.join(self.config.log_dir, "error.log")
   if not fs.exists(fname) then
     return nil, fname .. " not found"
   end

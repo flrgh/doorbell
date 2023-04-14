@@ -9,14 +9,14 @@ local join = require("spec.testing.fs").join
 ---@return doorbell.config
 function config.new(prefix)
   return {
-    base_url = "http://127.0.0.1/",
-    trusted = { "127.0.0.1/32" },
-    asset_path = const.ASSET_DIR,
-    state_path = join(prefix, "state"),
-    log_path   = join(prefix, "logs"),
-    metrics    = { disable  = true },
-    allow      = {},
-    deny       = {},
+    base_url    = "http://127.0.0.1/",
+    trusted     = { "127.0.0.1/32" },
+    asset_dir   = const.ASSET_DIR,
+    runtime_dir = prefix,
+    log_dir     = join(prefix, "logs"),
+    metrics     = { disable  = true },
+    allow       = {},
+    deny        = {},
     notify     = {
       strategy = "spec.testing.mock-notify",
       config   = {
