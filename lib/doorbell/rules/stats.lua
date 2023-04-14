@@ -210,7 +210,7 @@ end
 
 ---@param conf doorbell.config
 function _M.init(conf)
-  SAVE_PATH = util.join(conf.state_path, "stats.json")
+  SAVE_PATH = util.join(conf.runtime_dir, "stats.json")
 end
 
 local function saver(premature, interval)

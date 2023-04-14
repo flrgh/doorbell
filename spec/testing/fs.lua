@@ -64,5 +64,29 @@ function fs.reset_dir(dir)
   fs.mkdir(dir)
 end
 
+local seeded = false
+
+function fs.tmpdir()
+  if not seeded then
+    ngx.update_time()
+    math.randomseed(ngx.now() + ngx.worker.pid())
+    seeded = true
+  end
+
+  local tmp
+  local tries = 1000
+
+  for _ = 1, tries do
+    local name = fmt("/tmp/doorbell-test-%x", math.random())
+    if pl_path.mkdir(name) then
+      tmp = name
+      break
+    end
+  end
+
+  assert(tmp ~= nil, "failed to create temp dir after " .. tries .. " tries")
+
+  return tmp
+end
 
 return fs

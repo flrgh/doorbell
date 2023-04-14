@@ -66,12 +66,12 @@ dependencies = {
   "luafilesystem-ffi == 0.3.0",
   "luajit-geoip == 2.1.0",
   "nginx-lua-prometheus == 0.20221218",
+  "penlight >= 1.0.0",
 }
 
 test_dependencies = {
   "inspect",
   "luafilesystem",
-  "penlight >= 1.0.0",
   "busted >= 2.1.1",
   "busted-htest >= 1.0.0",
 }

@@ -18,7 +18,7 @@ local lfs = require "lfs"
 
 ---@param conf doorbell.config
 function _M.init(conf)
-  local path = conf.asset_path
+  local path = conf.asset_dir
 
   local rt = require("resty.template").new({ root = path })
 

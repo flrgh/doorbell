@@ -70,7 +70,7 @@ local function init_core_routes()
     metrics_enabled = false,
     content_type    = "text/plain",
     POST = function()
-      local ok, err = manager.load(config.state_path, false)
+      local ok, err = manager.load(config.runtime_dir, false)
       if ok then
         return send(201, "success")
       end

@@ -24,9 +24,7 @@ end
 
 
 return {
-  access_log       = "logs/access.log",
-  error_log        = "logs/error.log",
-  error_log_level  = "debug",
+  log_level        = "debug",
   listen           = "9876",
   resolver         = "8.8.8.8",
   user             = "nobody",
