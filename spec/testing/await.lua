@@ -5,7 +5,7 @@
 ---@return boolean ok
 local function await(timeout, step, fn, ...)
   step = step or 0.05
-  local remain = timeout
+  local remain = timeout or 5
 
   while remain > 0 do
     if fn(...) then

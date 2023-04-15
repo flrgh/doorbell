@@ -31,6 +31,7 @@ _M.ROOT_DIR = const.ROOT_DIR
 
 _M.constants = const
 
+_M.fs = require("spec.testing.fs")
 
 _M.await = {
   truthy = function(fn, timeout, step, msg)
@@ -39,6 +40,14 @@ _M.await = {
 
   falsy = function(fn, timeout, step, msg)
     assert(await.falsy(timeout, step, fn), msg or "timeout reached")
+  end,
+
+  no_error = function(fn, timeout, step, msg)
+    fn = function(...)
+      return pcall(fn, ...)
+    end
+
+    assert(await.truthy(timeout, step, fn), msg or "timeout reached")
   end,
 }
 
