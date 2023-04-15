@@ -6,7 +6,7 @@ describe("rules API", function()
 
   local client
   local nginx
-  local res
+  local res, err
 
   lazy_setup(function()
     local conf = test.config(prefix)
@@ -63,7 +63,6 @@ describe("rules API", function()
 
     describe("GET", function()
       it("returns all current rules", function()
-        local err
         res, err = client:get("/rules")
         assert.is_nil(err)
         assert.same(200, res.status)
@@ -170,7 +169,7 @@ describe("rules API", function()
       end)
 
       it("deletes a rule", function()
-        local res, err = client:delete("/rules/" .. rule.id)
+        res, err = client:delete("/rules/" .. rule.id)
         assert.is_nil(err)
         assert.same(204, res.status)
 

@@ -216,7 +216,7 @@ describe("state", function()
     ngx.sleep(0.1)
     nginx:start()
 
-    local client = test.client()
+    client = test.client()
     finally(client:close())
 
     test.await.no_error(function()
