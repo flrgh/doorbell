@@ -20,8 +20,7 @@ local sleep = ngx.sleep
 
 
 local TTL_PENDING = const.ttl.pending
-local SHM_NAME    = const.shm.doorbell
-local SHM         = assert(ngx.shared[SHM_NAME], "missing shm " .. SHM_NAME)
+local SHM         = require("doorbell.shm").doorbell
 local WAIT_TIME   = const.wait_time
 local STATES      = const.states
 

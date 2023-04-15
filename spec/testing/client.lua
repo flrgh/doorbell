@@ -31,9 +31,10 @@ local function prepare(req)
   end
 end
 
+---@alias spec.testing.client.headers table<string, string|string[]>
 
----@param t table|nil
----@return table
+---@param t? spec.testing.client.headers
+---@return spec.testing.client.headers
 function _M.headers(t)
   local new = setmetatable({}, headers_mt)
   if t then
@@ -44,27 +45,45 @@ function _M.headers(t)
   return new
 end
 
+---@alias spec.testing.client.method fun(self:spec.testing.client, path:string, params?:spec.testing.client.request):spec.testing.client.response? string?
+
+
 ---@class spec.testing.client.request : resty.http.request_params
 ---
----@field json table
+---@field json? table
+
+
+---@class spec.testing.client.response : table
+---
+---@field status  integer
+---@field json    table|nil
+---@field body    string|nil
+---@field headers spec.testing.client.headers
 
 
 ---@class spec.testing.client : table
 ---
 ---@field httpc        resty.http.client
 ---@field request      spec.testing.client.request
----@field response     resty.http.response
----@field err          string
+---@field response     spec.testing.client.response
+---@field err          string|nil
 ---@field host         string
 ---@field port         integer
 ---@field scheme       "http"|"https"
----@field headers      table<string,string>
+---@field headers      spec.testing.client.headers
 ---@field need_connect boolean
 ---@field timeout      number
+---
+---@field get    spec.testing.client.method
+---@field post   spec.testing.client.method
+---@field put    spec.testing.client.method
+---@field patch  spec.testing.client.method
+---@field delete spec.testing.client.method
 local client = {}
 client.__index = client
 
 function client:close()
+  self.need_connect = true
   return self.httpc:close()
 end
 
@@ -99,6 +118,8 @@ function client:send()
   for k, v in pairs(self.headers) do
     req.headers[k] = v
   end
+
+  self.httpc:set_timeout(self.timeout or 5000)
 
   local res, err = self.httpc:request(req)
   self.err = err
@@ -140,11 +161,14 @@ function client:parse_uri(uri, query_in_path)
   return self.httpc:parse_uri(uri, query_in_path)
 end
 
-function client:add_x_forwarded_headers(addr, meth, req)
+---@param addr   string
+---@param method string
+---@param url    string
+function client:add_x_forwarded_headers(addr, method, url)
   local headers = self.headers
   headers.x_forwarded_for = addr
-  headers.x_forwarded_method = meth
-  local parsed = assert(self:parse_uri(req, true))
+  headers.x_forwarded_method = method
+  local parsed = assert(self:parse_uri(url, true))
   headers.x_forwarded_proto = parsed[1]
   headers.x_forwarded_host  = parsed[2]
   headers.x_forwarded_uri   = parsed[4]
@@ -221,6 +245,8 @@ for _, method in ipairs({"get", "put", "post", "delete", "patch"}) do
   end
 end
 
+---@param url? string
+---@return spec.testing.client
 function _M.new(url)
   url = url or "http://127.0.0.1:9876"
 

@@ -7,18 +7,19 @@ local logger = require "doorbell.log.request"
 
 local tb = require "tablepool"
 
-local ngx               = ngx
-local var               = ngx.var
-local now               = ngx.now
-local get_headers       = ngx.req.get_headers
-local http_version      = ngx.req.http_version
-local start_time        = ngx.req.start_time
-local get_resp_headers  = ngx.resp.get_headers
-local get_method        = ngx.req.get_method
-local get_uri_args      = ngx.req.get_uri_args
-local exiting           = ngx.worker.exiting
-local tonumber = tonumber
-local get_country = ip.get_country
+local ngx              = ngx
+local var              = ngx.var
+local now              = ngx.now
+local get_headers      = ngx.req.get_headers
+local http_version     = ngx.req.http_version
+local start_time       = ngx.req.start_time
+local get_resp_headers = ngx.resp.get_headers
+local get_method       = ngx.req.get_method
+local get_uri_args     = ngx.req.get_uri_args
+local exiting          = ngx.worker.exiting
+local tonumber         = tonumber
+local get_country      = ip.get_country
+local tostring         = tostring
 
 local pool    = "doorbell.request"
 local narr    = 0
@@ -46,9 +47,10 @@ local countries
 ---@field country? string
 
 
----@param ctx doorbell.ctx
----@param headers? table
----@return doorbell.request
+---@param  ctx               doorbell.ctx
+---@param  headers?          table
+---@return doorbell.request? request
+---@return string?           error
 function _M.new(ctx, headers)
   if not ctx.trusted_ip then
     return nil, "untrusted client IP address"
@@ -91,7 +93,7 @@ function _M.new(ctx, headers)
   end
   r.method = method
 
-  r.ua      = headers["user-agent"]
+  r.ua = headers["user-agent"]
 
   local code, name_or_err = get_country(addr)
   r.country = code
@@ -127,7 +129,7 @@ end
 ---@param ctx doorbell.ctx
 function _M.log(ctx)
   if counter and not ctx.no_metrics then
-    counter:inc(1, { ngx.status })
+    counter:inc(1, { tostring(ngx.status) })
 
     if countries and ctx.country_code then
       countries:inc(1, { ctx.country_code })
@@ -183,6 +185,7 @@ end
 function _M.init_worker()
   WORKER_PID = ngx.worker.pid()
   WORKER_ID  = ngx.worker.id()
+
   if LOG then
     logger.init_worker()
   end

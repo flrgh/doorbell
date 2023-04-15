@@ -2,16 +2,16 @@ local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
-local const   = require "doorbell.constants"
-local log     = require "doorbell.log"
-local metrics = require "doorbell.metrics"
-local ip      = require "doorbell.ip"
-local stats   = require "doorbell.rules.stats"
-local util    = require "doorbell.util"
-local storage = require "doorbell.rules.storage"
-local rules   = require "doorbell.rules"
-local matcher = require "doorbell.rules.matcher"
-local shm = require "doorbell.rules.shm"
+local const       = require "doorbell.constants"
+local log         = require "doorbell.log"
+local metrics     = require "doorbell.metrics"
+local ip          = require "doorbell.ip"
+local stats       = require "doorbell.rules.stats"
+local util        = require "doorbell.util"
+local storage     = require "doorbell.rules.storage"
+local rules       = require "doorbell.rules"
+local matcher     = require "doorbell.rules.matcher"
+local shm         = require "doorbell.rules.shm"
 local transaction = require "doorbell.rules.transaction"
 
 local ngx         = ngx
@@ -32,10 +32,7 @@ local ipairs       = ipairs
 local type         = type
 
 
-local SHM_NAME  = const.shm.rules
-local SHM       = assert(ngx.shared[SHM_NAME], "rules SHM missing")
-local META_NAME = const.shm.doorbell
-local META      = assert(ngx.shared[META_NAME], "main SHM missing")
+local META = require("doorbell.shm").doorbell
 local SAVE_PATH
 
 local errorf = util.errorf
@@ -238,7 +235,7 @@ local function flush_expired(premature, schedule, locked)
 
   local unlock = lock_storage("flush-expired", locked)
 
-  SHM:flush_expired()
+  shm.flush_expired()
   stats.flush_expired()
 
   ---@type doorbell.rule[]
@@ -254,27 +251,28 @@ local function flush_expired(premature, schedule, locked)
     end
   end
 
-  if #delete == 0 then
-    log.debug("no expired rules to delete")
-    return unlock()
-  end
-
   local count = #delete
 
-  for _, rule in ipairs(delete) do
-    local ok, err = delete_rule(rule)
-    if not ok then
-      count = count - 1
-      log.errf("failed deleting rule %s: %s", rule.hash, err)
+  if count > 0 then
+    for _, rule in ipairs(delete) do
+      local ok, err = delete_rule(rule)
+      if not ok then
+        count = count - 1
+        log.errf("failed deleting rule %s: %s", rule.hash, err)
+      end
     end
+
+    need_save(1)
+    log.debugf("removed %s expired rules", count)
+
+  else
+    log.debug("no expired rules to delete")
   end
 
-  need_save(1)
   unlock()
-  log.debugf("removed %s expired rules", count)
 
   if schedule then
-    assert(timer_at(min_ttl, flush_expired, schedule))
+    assert(timer_at(1, flush_expired, schedule))
   end
 end
 
@@ -308,7 +306,7 @@ local function save(fname)
   end
 
   if written then
-    log.noticef("saved %s rules to disk", #rules)
+    log.noticef("saved %s rules to %s", #list, fname)
   end
 
   last_saved(now())
@@ -333,9 +331,11 @@ local function saver(premature)
       save(SAVE_PATH)
       need_save(-c)
       last = now()
+
     elseif (now() - last) > 60 then
       save(SAVE_PATH)
       last = now()
+
     else
       sleep(1)
     end
@@ -345,20 +345,16 @@ local function saver(premature)
 end
 
 
----@param  opts           table
+---@param  rule           doorbell.rule
 ---@param  nobuild        boolean
 ---@param  overwrite      boolean
 ---@return doorbell.rule? rule
 ---@return string?        error
 ---@return integer?       status_code
-local function create(opts, nobuild, overwrite)
-  local rule, err = rules.new(opts)
-  if not rule then
-    return nil, err, 400
-  end
+local function create(rule, nobuild, overwrite)
+  assert(rules.is_rule(rule), "passed an uninitialized rule to the manager")
 
-  local trx
-  trx, err = transaction.new()
+  local trx, err = transaction.new()
   if not trx then
     return nil, err, 500
   end
@@ -407,25 +403,25 @@ function _M.get(id_or_hash)
 end
 
 --- add a rule
----@param  opts    table
+---@param  rule    doorbell.rule
 ---@return doorbell.rule? rule
 ---@return string? error
-function _M.add(opts, nobuild)
-  return create(opts, nobuild, false)
+function _M.add(rule, nobuild)
+  return create(rule, nobuild, false)
 end
 
 --- create or update a rule
----@param  opts    table
+---@param  rule doorbell.rule
 ---@return doorbell.rule? rule
 ---@return string? error
-function _M.upsert(opts, nobuild)
-  return create(opts, nobuild, true)
+function _M.upsert(rule, nobuild)
+  return create(rule, nobuild, true)
 end
 
 --- get a matching rule for a request
 ---@param  req            doorbell.request
 ---@return doorbell.rule? rule
----@return boolean?        cache_hit
+---@return boolean?       cache_hit
 function _M.match(req)
   local version = get_version()
   if not check_match or version ~= RULES_VERSION then
@@ -507,14 +503,13 @@ function _M.list()
 end
 
 function _M.reset()
-  SHM:flush_all()
-  assert(SHM:flush_expired(0))
+  shm.reset()
   return reload()
 end
 
 --- reload the rule matching function from shared memory
 function _M.reload()
-  SHM:flush_expired(0)
+  shm.flush_expired()
   return reload()
 end
 
@@ -569,7 +564,7 @@ function _M.load(dir)
     return unlock(nil, err)
   end
 
-  data = storage.migrate(data)
+  local list = storage.unserialize(data)
 
   local trx = assert(transaction.new())
   assert(trx:delete_all())
@@ -577,9 +572,7 @@ function _M.load(dir)
   local time = now()
 
   local count = 0
-  for _, rule in ipairs(data.rules) do
-    rule = rules.hydrate(rule)
-
+  for _, rule in ipairs(list) do
     if rule.source == const.sources.config then
       log.debugf("skipping restore of config rule %s", rule.id)
 
@@ -597,7 +590,6 @@ function _M.load(dir)
   inc_version()
 
   log.noticef("restored %s rules from disk", count)
-
   return unlock(true)
 end
 
@@ -654,6 +646,7 @@ function _M.init_worker()
   end
 end
 
+
 ---@param ctx doorbell.ctx
 ---@param start_time number
 function _M.log(ctx, start_time)
@@ -676,7 +669,7 @@ function _M.init(conf)
   SAVE_PATH = util.join(conf.runtime_dir, "rules.json")
   stats.init(conf)
 
-  local ok, err = _M.load(conf.runtime_dir, true)
+  local ok, err = _M.load(conf.runtime_dir)
   if not ok then
     log.warn("failed loading rules from disk: ", err)
   end
@@ -684,12 +677,14 @@ function _M.init(conf)
   for _, rule in ipairs(conf.allow or {}) do
     rule.action = const.actions.allow
     rule.source = const.sources.config
+    rule = assert(rules.new(rule))
     assert(_M.upsert(rule, true))
   end
 
   for _, rule in ipairs(conf.deny or {}) do
     rule.action = const.actions.deny
     rule.source = const.sources.config
+    rule = assert(rules.new(rule))
     assert(_M.upsert(rule, true))
   end
 end

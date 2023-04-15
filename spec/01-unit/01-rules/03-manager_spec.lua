@@ -1,17 +1,17 @@
 local manager = require "doorbell.rules.manager"
-local stats = require "doorbell.rules.stats"
-
-local uuid       = require("resty.jit-uuid").generate_v4
+local api = require "doorbell.rules.api"
+local rules = require "doorbell.rules"
+local uuid  = require("resty.jit-uuid").generate_v4
 
 local fmt = string.format
 
-describe("doorbell.rules.manager", function()
+describe("rules.manager", function()
   describe("get()", function()
     local rule
 
     lazy_setup(function()
       manager.reset()
-      rule = manager.add({
+      rule = api.insert({
         source = "user",
         action = "allow",
         addr   = "127.0.0.1",
@@ -28,16 +28,6 @@ describe("doorbell.rules.manager", function()
       assert.same(rule, got)
     end)
 
-    pending("optionally includes stats", function()
-      local got = manager.get(rule.hash)
-      assert.is_nil(got.match_count)
-      assert.is_nil(got.last_match)
-
-      got = manager.get(rule.hash, true)
-      assert.equals(0, got.match_count)
-      assert.equals(0, got.last_match)
-    end)
-
     it("returns nil, nil when a rule does not exist", function()
       local got, err = manager.get("nope")
       assert.is_nil(got)
@@ -50,28 +40,28 @@ describe("doorbell.rules.manager", function()
       manager.reset()
     end)
 
-    it("creates a new rule", function()
-      local rule = manager.add({
+    it("adds a rule", function()
+      local rule = manager.add(rules.new({
         source = "user",
         action = "allow",
         addr   = "127.0.0.1",
-      })
+      }))
 
       assert.same(rule, manager.get(rule.id))
     end)
 
     it("returns an error if a rule with the same hash already exists", function()
-      local rule = manager.add({
+      local rule = manager.add(rules.new({
         source = "user",
         action = "allow",
         addr   = "127.0.0.1",
-      })
+      }))
 
-      local new, err = manager.add({
+      local new, err = manager.add(rules.new({
         source = "user",
         action = "deny",
         addr   = "127.0.0.1"
-      })
+      }))
 
       assert.is_nil(new)
       assert.matches("exists", err)
@@ -85,28 +75,28 @@ describe("doorbell.rules.manager", function()
       manager.reset()
     end)
 
-    it("creates a new rule", function()
-      local rule = manager.add({
+    it("adds a new rule", function()
+      local rule = manager.add(rules.new({
         source = "user",
         action = "allow",
         addr   = "127.0.0.1",
-      })
+      }))
 
       assert.same(rule, manager.get(rule.id))
     end)
 
     it("overwrites an existing rule", function()
-      local rule = manager.add({
+      local rule = manager.add(rules.new({
         source = "user",
         action = "allow",
         addr   = "127.0.0.1",
-      })
+      }))
 
-      local new, err = manager.upsert({
+      local new, err = manager.upsert(rules.new({
         source = "user",
         action = "deny",
         addr   = "127.0.0.1"
-      })
+      }))
 
       assert.is_nil(err)
       assert.same(new, manager.get(rule.hash))
@@ -117,11 +107,11 @@ describe("doorbell.rules.manager", function()
     local rule
     before_each(function()
       manager.reset()
-      rule = manager.add({
+      rule = manager.add(rules.new({
         source = "user",
         action = "allow",
         addr   = "127.0.0.1",
-      })
+      }))
     end)
 
     it("deletes a rule object", function()
@@ -171,13 +161,13 @@ describe("doorbell.rules.manager", function()
   end)
 
   describe("list()", function()
-    local rules = {}
+    local added = {}
 
     lazy_setup(function()
       manager.reset()
       for i = 1, 5 do
-        rules[i] = assert(
-          manager.add({
+        added[i] = assert(
+          api.insert({
             source = "user",
             action = "allow",
             addr   = fmt("127.0.0.%s", i),
@@ -189,23 +179,7 @@ describe("doorbell.rules.manager", function()
     it("fetches all rules", function()
       local list = manager.list()
       table.sort(list, function(a, b) return a.addr < b.addr end)
-      assert.same(rules, list)
-    end)
-
-    pending("optionally includes stats", function()
-      stats.inc_match_count(rules[2])
-      local stamp = ngx.now()
-      stats.set_last_match(rules[3], stamp)
-
-      local list = manager.list(true)
-      table.sort(list, function(a, b) return a.addr < b.addr end)
-
-      assert.equals(0, list[1].last_match)
-      assert.equals(0, list[1].match_count)
-
-      assert.equals(1, list[2].match_count)
-
-      assert.equals(stamp, list[3].last_match)
+      assert.same(added, list)
     end)
   end)
 
@@ -215,7 +189,7 @@ describe("doorbell.rules.manager", function()
 
     before_each(function()
       manager.reset()
-      rule = manager.add({
+      rule = api.insert({
         source = "user",
         action = "allow",
         addr   = "127.0.0.1",

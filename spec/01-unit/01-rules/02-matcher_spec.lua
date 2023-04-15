@@ -1,6 +1,7 @@
 ---local rules = require "doorbell.rules"
 local manager = require "doorbell.rules.manager"
 local matcher = require "doorbell.rules.matcher"
+local rules =  require "doorbell.rules"
 
 describe("matching", function()
   local req
@@ -12,7 +13,9 @@ describe("matching", function()
       r.source = "user"
       r.action = r.action or "deny"
 
-      manager.add(r, true, true)
+      local rule = rules.hydrate(r)
+
+      manager.add(rule, true)
     end
     match = matcher.new(manager.list())
   end

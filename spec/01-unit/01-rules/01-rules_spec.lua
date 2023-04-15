@@ -87,20 +87,6 @@ describe("doorbell.rules", function()
       },
 
       {
-        desc = "created must be a number",
-        input = { created = false },
-        expect = "invalid `created` (expected number, got: boolean)",
-        plain  = true,
-      },
-
-      {
-        desc = "created must be a number",
-        input = { created = false },
-        expect = "invalid `created` (expected number, got: boolean)",
-        plain  = true,
-      },
-
-      {
         desc = "addr must be a string",
         input = { addr = false },
         expect = "invalid `addr` (expected string, got: boolean)",
@@ -215,18 +201,13 @@ describe("doorbell.rules", function()
       assert.equals(3, rule.conditions)
     end)
 
-    it("auto-generates the `created` field if not supplied", function()
+    it("auto-generates the `created` field", function()
       local rule, err = new { ua = "test", action = "deny", source = "config" }
       assert.is_nil(err)
       assert.near(ngx.now(), rule.created, 1)
-
-      local created = ngx.now() - 5
-      rule, err = new { created = created, ua = "test", action = "deny", source = "config" }
-      assert.is_nil(err)
-      assert.equals(created, rule.created)
     end)
 
-    it("#only auto-generates the `expires` field from ttl if given", function()
+    it("auto-generates the `expires` field from ttl if given", function()
       local rule, err = new { ttl = 10, ua = "test", action = "deny", source = "config" }
       assert.is_nil(err)
       assert.near(ngx.now() + 10, rule.expires, 1)
@@ -237,7 +218,6 @@ describe("doorbell.rules", function()
       assert.is_nil(err)
       assert.equals(0, rule.expires)
     end)
-
 
     it("auto-generates the `hash` field based on rule conditions", function()
       local rule, err = new { ua = "test", action = "deny", source = "config" }

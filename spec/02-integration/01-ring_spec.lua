@@ -33,6 +33,7 @@ describe("doorbell", function()
 
     before_each(function()
       client:reset()
+      client.timeout = 1000
       headers = client.headers
       client.request.path = "/ring"
       client.request.host = "127.0.0.1"
@@ -92,6 +93,122 @@ describe("doorbell", function()
       res, err = client:send()
       assert.is_nil(err)
       assert.equals(403, res.status)
+    end)
+
+    it("responds to API updates", function()
+      local ua = "api-test"
+
+      client:add_x_forwarded_headers("1.2.3.4", "GET", "http://api.test/")
+      headers["user-agent"] = ua
+
+      local api = test.client()
+      finally(api:close())
+
+      local rule = assert(api:post("/rules", {
+        json = {
+          action = "allow",
+          host = "api.test",
+          ua = ua,
+        }
+      })).json
+
+      test.await.no_error(function()
+        res, err = client:send()
+        assert.is_nil(err)
+        assert.same(200, res.status)
+      end, 1, 0.1, "expected request to be allowed after adding allow rule")
+
+      assert(api:patch("/rules/" .. rule.id, {
+        json = {
+          action = "deny",
+          host = "api.test",
+          ua = ua,
+        }
+      }))
+
+      test.await.no_error(function()
+        res, err = client:send()
+        assert.is_nil(err)
+        assert.same(403, res.status)
+      end, 1, 0.1, "expected request to be denied after changing rule action to deny")
+
+      rule = assert(api:post("/rules", {
+        json = {
+          action = "allow",
+          host = "api.test",
+          ua = ua,
+          path = "~^/allow",
+        }
+      })).json
+
+      client:add_x_forwarded_headers("1.2.3.4", "GET", "http://api.test/allow/me/please")
+
+      test.await.no_error(function()
+        res, err = client:send()
+        assert.is_nil(err)
+        assert.same(200, res.status)
+      end, 1, 0.1, "expected request to be allowed after adding new allow rule")
+
+      assert(api:delete("/rules/" .. rule.id))
+
+      test.await.no_error(function()
+        res, err = client:send()
+        assert.is_nil(err)
+        assert.same(403, res.status)
+      end, 1, 0.1, "expected request to be denied after deleting allow rule")
+    end)
+
+    it("responds to rule expiry", function()
+      local ua = "expires-test"
+
+      client:add_x_forwarded_headers("1.2.3.4", "GET", "http://api.test/")
+      headers["user-agent"] = ua
+
+      local api = test.client()
+      finally(api:close())
+
+      -- add a blanket deny rule
+      res = assert(api:post("/rules", {
+        json = {
+          action = "deny",
+          ua = ua,
+        }
+      }))
+
+      assert.same(201, res.status)
+
+      -- await deny
+      test.await.no_error(function()
+        res, err = client:send()
+        assert.is_nil(err)
+        assert.same(403, res.status)
+      end, 1, 0.1, "expected request to be denied after adding a deny rule")
+
+      -- add temporary allow rule
+      res = assert(api:post("/rules", {
+        json = {
+          action = "allow",
+          host = "api.test",
+          ua = ua,
+          ttl = 2,
+        }
+      }))
+
+      assert.same(201, res.status)
+
+      -- await initial state update
+      test.await.no_error(function()
+        res, err = client:send()
+        assert.is_nil(err)
+        assert.same(200, res.status)
+      end, 1, 0.05, "expected request to be allowed after adding temp allow rule")
+
+      -- await expiry
+      test.await.no_error(function()
+        res, err = client:send()
+        assert.is_nil(err)
+        assert.same(403, res.status)
+      end, 5, 0.1, "expected request to be denied after temp allow rule expired")
     end)
   end)
 end)

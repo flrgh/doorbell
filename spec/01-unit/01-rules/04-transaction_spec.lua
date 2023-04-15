@@ -3,6 +3,7 @@ local TRX = require "doorbell.rules.transaction"
 local rules = require "doorbell.rules"
 local manager = require "doorbell.rules.manager"
 local const = require "doorbell.constants"
+local api = require "doorbell.rules.api"
 
 
 describe("doorbell.rules.transaction", function()
@@ -192,7 +193,7 @@ describe("doorbell.rules.transaction", function()
         source = "user",
         ua = "insert",
       })
-      assert(manager.add(rule))
+      assert(api.insert(rule))
 
       local trx = TRX.new()
       rule = new_rule({
@@ -252,7 +253,7 @@ describe("doorbell.rules.transaction", function()
         source = "user",
         ua = "upsert",
       })
-      assert(manager.add(rule))
+      assert(api.insert(rule))
 
       local trx = TRX.new()
 
@@ -297,7 +298,7 @@ describe("doorbell.rules.transaction", function()
   describe("update()", function()
     describe("(prior transaction)", function()
       it("updates an existing rule by id", function()
-        local rule = manager.add({
+        local rule = api.insert({
           source = "user",
           action = "allow",
           ua = "update",
@@ -315,7 +316,7 @@ describe("doorbell.rules.transaction", function()
       end)
 
       it("updates an existing rule by hash", function()
-        local rule = manager.add({
+        local rule = api.insert({
           source = "user",
           action = "allow",
           ua = "update",
@@ -337,7 +338,7 @@ describe("doorbell.rules.transaction", function()
   describe("delete_all()", function()
     it("deletes all rules from the data store", function()
       for i = 1, 10 do
-        assert(manager.add({
+        assert(api.insert({
           source = "user",
           action = "allow",
           ua = "delete-all-" .. i
@@ -366,7 +367,7 @@ describe("doorbell.rules.transaction", function()
 
     it("also deletes all rules added to the transaction", function()
       for i = 1, 10 do
-        assert(manager.add({
+        assert(api.insert({
           source = "user",
           action = "allow",
           ua = "delete-all-" .. i
@@ -410,21 +411,21 @@ describe("doorbell.rules.transaction", function()
       local ua = "delete-where-test"
       local host = "delete-me.test"
 
-      assert(manager.add({
+      assert(api.insert({
         source = "user",
         action = "allow",
         ua = ua,
         host = "dont-delete-me.test",
       }))
 
-      assert(manager.add({
+      assert(api.insert({
         source = "user",
         action = "allow",
         ua = ua,
         host = host,
       }))
 
-      assert(manager.add({
+      assert(api.insert({
         source = "user",
         action = "allow",
         ua = ua,

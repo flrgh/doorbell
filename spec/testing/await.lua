@@ -5,14 +5,19 @@
 ---@return boolean ok
 local function await(timeout, step, fn, ...)
   step = step or 0.05
-  local remain = timeout or 5
+  timeout = timeout or 5
 
-  while remain > 0 do
+  ngx.update_time()
+  local start = ngx.now()
+  local elapsed = 0
+
+  while elapsed < timeout do
     if fn(...) then
       return true
     end
     ngx.sleep(step)
-    remain = remain - step
+    ngx.update_time()
+    elapsed = ngx.now() - start
   end
 
   return false

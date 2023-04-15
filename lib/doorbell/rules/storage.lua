@@ -23,8 +23,12 @@ local migrations = {
   }
 }
 
+
 _M.version = VERSION
 
+
+---@param  data                        doorbell.rules.storage.json
+---@return doorbell.rules.storage.json migrated
 function _M.migrate(data)
   local v = data._version or 0
 
@@ -50,10 +54,19 @@ function _M.migrate(data)
   return data
 end
 
+
+---@param data
+---@return doorbell.rule[]
+function _M.unserialize(data)
+  data = _M.migrate(data)
+  return util.map(data.rules, rules.hydrate)
+end
+
+
 ---@class doorbell.rules.storage.json
 ---@field _version integer
 ---@field _timestamp string
----@field rules doorbell.rule[]
+---@field rules doorbell.rule.dehydrated[]
 
 ---@param list doorbell.rule[]
 ---@return doorbell.rules.storage.json
@@ -63,5 +76,6 @@ function _M.serialize(list)
     rules    = util.map(list, rules.dehydrate),
   }
 end
+
 
 return _M
