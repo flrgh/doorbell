@@ -3,7 +3,7 @@ local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
-local SHM = ngx.shared[require("doorbell.constants").shm.doorbell]
+local SHM = require("doorbell.shm").doorbell
 local metric_fmt = "cache:worker(%s):lru(%s):count"
 
 ---@class doorbell.cache
@@ -57,10 +57,10 @@ function cache:get(ns, key)
   return value
 end
 
----@param ns string
----@param key string
+---@param ns    string
+---@param key   string
 ---@param value any
----@param ttl number
+---@param ttl?  number
 function cache:set(ns, key, value, ttl)
   if ttl == 0 then
     ttl = nil

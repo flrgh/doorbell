@@ -2,19 +2,17 @@ local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
-local const = require "doorbell.constants"
 local log   = require "doorbell.log"
 local util  = require "doorbell.util"
 local cjson = require "cjson"
 
-local ngx    = ngx
 local assert = assert
 local type   = type
 local tostring = tostring
 
 local errorf = util.errorf
 
-local SHM = assert(ngx.shared[const.shm.rules], "rules SHM missing")
+local SHM = require("doorbell.shm").rules
 local V_CURRENT = "current-version"
 local V_LATEST = "latest-version"
 local PENDING = "pending"
@@ -172,5 +170,8 @@ function _M.update_current_version()
   return last_valid
 end
 
+function _M.flush_expired()
+  SHM:flush_expired(0)
+end
 
 return _M

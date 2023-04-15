@@ -154,6 +154,29 @@ describe("rules API", function()
     end)
 
     describe("DELETE", function()
+      local rule
+
+      lazy_setup(function()
+        res = assert(client:post("/rules", {
+          json = {
+            action = "allow",
+            host = "api.test",
+            path = "/DELETE/" .. test.util.uuid(),
+          }
+        }))
+
+        assert.same(201, res.status)
+        rule = assert.is_table(res.json)
+      end)
+
+      it("deletes a rule", function()
+        local res, err = client:delete("/rules/" .. rule.id)
+        assert.is_nil(err)
+        assert.same(204, res.status)
+
+        res = client:get("/rules/" .. rule.id)
+        assert.same(404, res.status)
+      end)
     end)
   end)
 end)

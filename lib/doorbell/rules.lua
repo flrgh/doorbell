@@ -3,7 +3,6 @@ local _M = {
 }
 
 local const = require "doorbell.constants"
-local stats = require "doorbell.rules.stats"
 local ip    = require "doorbell.ip"
 local util  = require "doorbell.util"
 
@@ -98,31 +97,75 @@ do
   end
 end
 
+---@param rule doorbell.rule.new.opts|doorbell.rule
+---@return integer
+local function count_conditions(rule)
+  local c = 0
+  for _, cond in ipairs(CONDITIONS) do
+    if rule[cond] ~= nil then
+      c = c + 1
+    end
+  end
 
+  return c
+end
+
+local SERIALIZED_FIELDS = {
+  "action",
+  "addr",
+  "cidr",
+  "comment",
+  "country",
+  "created",
+  "deny_action",
+  "expires",
+  "host",
+  "id",
+  "method",
+  "path",
+  "source",
+  "terminate",
+  "ua",
+}
+
+_M.SERIALIZED_FIELDS = SERIALIZED_FIELDS
+
+---@class doorbell.rule.dehydrated : table
+---
+---@field action      doorbell.action
+---@field addr        string
+---@field cidr        string
+---@field comment     string
+---@field country     string
+---@field created     number
+---@field deny_action doorbell.deny_action
+---@field expires     number
+---@field host        string
+---@field id          string
+---@field method      string
+---@field path        string
+---@field source      doorbell.source
+---@field terminate   boolean
+---@field ua          string
+
+
+---@class doorbell.rule.shorthand_fields : table
+---
+---@field ttl integer
+
+
+---@class doorbell.rule.new.opts : doorbell.rule.dehydrated : doorbell.rule.shorthand_fields
+
+
+---@class doorbell.rule.generated_fields : table
+---
+---@field conditions integer
+---
+---@field hash string
 
 local rule_mt
 do
-  ---@class doorbell.rule : table
-  ---@field id         string
-  ---@field action     doorbell.action
-  ---@field source     doorbell.source
-  ---@field hash       string
-  ---@field created    number
-  ---@field expires    number
-  ---@field addr       string
-  ---@field cidr       string
-  ---@field ua         string
-  ---@field host       string
-  ---@field path       string
-  ---@field method     string
-  ---@field country    string
-  ---@field conditions number
-  ---@field terminate  boolean
-  ---@field key        string
-  ---@field deny_action doorbell.deny_action
-  ---@field match_count integer
-  ---@field last_match number
-  ---@field comment    string
+  ---@class doorbell.rule : doorbell.rule.dehydrated : doorbell.rule.generated_fields
   local rule = {}
 
   ---@param at? number
@@ -149,6 +192,11 @@ do
     self.hash = hash_rule(self)
   end
 
+  function rule:update_generated_fields()
+    self:update_hash()
+    self.conditions = count_conditions(self)
+  end
+
   rule_mt = {
     __index = rule,
     __tostring = function(self)
@@ -158,35 +206,41 @@ do
 end
 
 
----@param json string|table|doorbell.rule
----@param pull_stats? boolean
----@return doorbell.rule
-local function hydrate(json, pull_stats)
-  ---@type doorbell.rule
-  local rule = json
+---@param  json          string|table|doorbell.rule|doorbell.rule.dehydrated
+---@return doorbell.rule rule
+local function hydrate(json)
   if type(json) == "string" then
-    rule = decode(json)
+    json = decode(json)
   end
 
-  assert(type(rule) == "table")
+  assert(type(json) == "table")
+
+  ---@type doorbell.rule
+  local rule = {}
+
+  for _, field in ipairs(SERIALIZED_FIELDS) do
+    rule[field] = json[field]
+  end
 
   setmetatable(rule, rule_mt)
 
-  if pull_stats then
-    stats.update_from_shm(rule)
-  end
+  rule:update_generated_fields()
 
   return rule
 end
 
 _M.hydrate = hydrate
 
----@param rule doorbell.rule
----@return doorbell.rule
+---@param  rule doorbell.rule
+---@return doorbell.rule.dehydrated
 local function dehydrate(rule)
-  rule.last_match = nil
-  rule.match_count = nil
-  return rule
+  local t = {}
+
+  for _, field in ipairs(SERIALIZED_FIELDS) do
+    t[field] = rule[field]
+  end
+
+  return t
 end
 
 _M.dehydrate = dehydrate
@@ -204,6 +258,7 @@ local e_enum     = tpl("invalid `%s` (expected: %s, got: %q)")
 local function is_type(t, v)
   return type(v) == t
 end
+
 local function tkeys(t)
   local keys = {}
   for k in pairs(t) do
@@ -233,7 +288,8 @@ local fields = {
   id        = {"string"},
 }
 
----@param opts table
+
+---@param opts doorbell.rule.new.opts
 local function validate(opts)
   local errors = {}
 
@@ -307,13 +363,7 @@ local function validate(opts)
     end
   end
 
-  local conditions = 0
-  for _, cond in ipairs(CONDITIONS) do
-    if opts[cond] then
-      conditions = conditions + 1
-    end
-  end
-  opts.conditions = conditions
+  local conditions = count_conditions(opts)
 
   if opts.terminate and conditions > 1 then
     insert(errors, "can only have one match condition with `terminate`")
@@ -349,11 +399,9 @@ function _M.new(opts)
     action      = opts.action,
     addr        = opts.addr,
     cidr        = opts.cidr,
-    conditions  = opts.conditions,
-    created     = opts.created or now(),
+    created     = now(),
     deny_action = deny_action,
     expires     = opts.expires,
-    hash        = hash_rule(opts),
     host        = opts.host,
     method      = opts.method,
     path        = opts.path,
@@ -364,7 +412,10 @@ function _M.new(opts)
     country     = opts.country,
   }
 
-  return hydrate(rule)
+  setmetatable(rule, rule_mt)
+  rule:update_generated_fields()
+
+  return rule
 end
 
 
@@ -405,11 +456,17 @@ function _M.is_hash(s)
   return type(s) == "string" and #s == 32
 end
 
+
 ---@diagnostic disable-next-line
 if _G._TEST then
   _M._ttl_from_expires = ttl_from_expires
 end
 
+---@param t table|doorbell.rule
+---@return boolean
+function _M.is_rule(t)
+  return type(t) == "table" and getmetatable(t) == rule_mt
+end
 
 
 return _M

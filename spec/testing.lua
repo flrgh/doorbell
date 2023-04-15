@@ -43,11 +43,11 @@ _M.await = {
   end,
 
   no_error = function(fn, timeout, step, msg)
-    fn = function(...)
+    local wrapped = function(...)
       return pcall(fn, ...)
     end
 
-    assert(await.truthy(timeout, step, fn), msg or "timeout reached")
+    assert(await.truthy(timeout, step, wrapped), msg or "timeout reached")
   end,
 }
 

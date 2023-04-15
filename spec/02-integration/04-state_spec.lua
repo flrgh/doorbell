@@ -19,8 +19,6 @@ describe("state", function()
       end)
     end
 
-    test.inspect(state)
-
     return state
   end
 
@@ -190,5 +188,41 @@ describe("state", function()
       local state = get_state()
       assert.same(0, #state.rules)
     end)
+  end)
+
+  it("restores rules on start", function()
+    local client = test.client()
+
+    local res = client:post("/rules", {
+      json = {
+        action = "allow",
+        ua = "start",
+      }
+    })
+
+    local id = assert(res.json.id)
+
+    test.await.no_error(function()
+      local state = get_state()
+      assert.same(1, #state.rules)
+      assert.same("start", state.rules[1].ua)
+      assert.same("allow", state.rules[1].action)
+      assert.same("api", state.rules[1].source)
+    end, 5, 0.1, "expected state file to be updated after adding a new rule via API")
+
+    client:close()
+    nginx:stop()
+
+    ngx.sleep(0.1)
+    nginx:start()
+
+    local client = test.client()
+    finally(client:close())
+
+    test.await.no_error(function()
+      res = client:get("/rules/" .. id)
+      assert.same(200, res.status)
+      assert.same("start", res.json.ua)
+    end, 5, 0.1, "expected API rule to be restored from state on startup")
   end)
 end)

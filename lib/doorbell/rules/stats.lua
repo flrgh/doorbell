@@ -2,7 +2,6 @@ local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
-local const = require "doorbell.constants"
 local log   = require "doorbell.log"
 local util  = require "doorbell.util"
 
@@ -16,8 +15,8 @@ local insert   = table.insert
 
 local SAVE_PATH
 
-local SHM  = assert(ngx.shared[const.shm.stats], "stats SHM missing")
-local META = assert(ngx.shared[const.shm.doorbell], "main SHM missing")
+local SHM  = require("doorbell.shm").stats
+local META  = require("doorbell.shm").doorbell
 
 local function need_save(x)
   local key = "stats:need-save"
@@ -42,8 +41,8 @@ local function tpl(f)
   end
 end
 
-local match_count = tpl("%s:match_count")
-local match_last  = tpl("%s:last_match")
+local match_count_key = tpl("%s:match_count")
+local match_last_key  = tpl("%s:last_match")
 
 ---@return table<string, doorbell.rule.stat>
 local function get_all()
@@ -113,8 +112,8 @@ end
 ---@param ttl? number
 ---@return number?
 ---@return string? error
-local function _last_matched(rule, stamp, ttl)
-  local key = match_last(rule)
+local function last_matched(rule, stamp, ttl)
+  local key = match_last_key(rule)
   return get_or_set(key, stamp, ttl)
 end
 
@@ -123,8 +122,8 @@ end
 ---@param ttl? number
 ---@return number?
 ---@return string? error
-local function _match_count(rule, count, ttl)
-  local key = match_count(rule)
+local function match_count(rule, count, ttl)
+  local key = match_count_key(rule)
   return get_or_set(key, count, ttl)
 end
 
@@ -138,7 +137,7 @@ function _M.inc_match_count(rule, value, ts)
     return
   end
 
-  local new, err = SHM:incr(match_count(rule), value or 1, 0, ttl)
+  local new, err = SHM:incr(match_count_key(rule), value or 1, 0, ttl)
   if new then
     need_save(1)
     rule.match_count = new
@@ -151,7 +150,7 @@ end
 ---@param last_match number
 ---@param ts? number
 function _M.set_last_match(rule, last_match, ts)
-  local ok, err = _last_matched(rule, last_match, rule:remaining_ttl(ts))
+  local ok, err = last_matched(rule, last_match, rule:remaining_ttl(ts))
 
   if ok then
     need_save(1)
@@ -163,15 +162,9 @@ function _M.set_last_match(rule, last_match, ts)
 end
 
 ---@param rule doorbell.rule
-function _M.update_from_shm(rule)
-  rule.last_match = _last_matched(rule) or rule.last_match or 0
-  rule.match_count = _match_count(rule) or rule.match_count or 0
-end
-
----@param rule doorbell.rule
 function _M.delete(rule)
-  local ok, err = SHM:set(match_last(rule), nil)
-  local bok, berr = SHM:set(match_count(rule), nil)
+  local ok, err = SHM:set(match_last_key(rule), nil)
+  local bok, berr = SHM:set(match_count_key(rule), nil)
 
   return ok and bok, err or berr
 end
@@ -203,8 +196,8 @@ function _M.load(rules)
   local empty = {}
   for _, rule in ipairs(rules) do
     local st = stats[rule.hash] or stats[rule.id] or empty
-    _last_matched(rule, st.last_match or rule.last_match or nil, rule:remaining_ttl(time))
-    _match_count(rule, st.match_count or rule.match_count or nil, rule:remaining_ttl(time))
+    last_matched(rule, st.last_match or rule.last_match or nil, rule:remaining_ttl(time))
+    match_count(rule, st.match_count or rule.match_count or nil, rule:remaining_ttl(time))
   end
 end
 
