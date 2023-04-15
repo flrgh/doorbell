@@ -14,9 +14,6 @@ local matcher = require "doorbell.rules.matcher"
 local shm = require "doorbell.rules.shm"
 local transaction = require "doorbell.rules.transaction"
 
-local cjson      = require "cjson"
-local uuid       = require("resty.jit-uuid").generate_v4
-
 local ngx         = ngx
 local now         = ngx.now
 local timer_at    = ngx.timer.at
@@ -26,7 +23,6 @@ local get_phase   = ngx.get_phase
 local null        = ngx.null
 
 local assert       = assert
-local encode       = cjson.encode
 local min          = math.min
 local ceil         = math.ceil
 local fmt          = string.format
@@ -41,7 +37,6 @@ local SHM       = assert(ngx.shared[SHM_NAME], "rules SHM missing")
 local META_NAME = const.shm.doorbell
 local META      = assert(ngx.shared[META_NAME], "main SHM missing")
 local SAVE_PATH
-local HASH  = assert(ngx.shared[const.shm.rule_hash])
 
 local errorf = util.errorf
 
@@ -152,44 +147,8 @@ do
   end
 end
 
----@param rule doorbell.rule
----@param overwrite? boolean
----@return boolean? ok
----@return string? error
-local function save_rule(rule, overwrite, stamp)
-  local exp, ttl = rule:expired(stamp)
-  if exp then
-    return nil, "expired"
-  end
-
-  local ok, err
-  if overwrite then
-    ok, err = HASH:safe_set(rule.id, rule.hash, ttl)
-  else
-    ok, err = HASH:safe_add(rule.id, rule.hash, ttl)
-  end
-
-  if not ok then
-    return nil, err
-  end
-
-  if overwrite then
-    ok, err = SHM:safe_set(rule.hash, encode(rule), ttl)
-  else
-    ok, err = SHM:safe_add(rule.hash, encode(rule), ttl)
-  end
-
-  -- delete the lookup reference if we failed on creating a new rule
-  if err and not overwrite then
-    HASH:set(rule.id, nil)
-  end
-
-  return ok, err
-end
-
 ---@param hash_or_id string
----@param include_stats? boolean
-local function get(hash_or_id, include_stats)
+local function get(hash_or_id)
   update_local_rules()
 
   local rule
@@ -201,7 +160,7 @@ local function get(hash_or_id, include_stats)
   end
 
   if rule then
-    return rules.hydrate(rule, include_stats)
+    return rules.hydrate(rule)
   end
 end
 
@@ -244,20 +203,18 @@ local function delete_rule(rule)
     return nil, err, 500
   end
 
-  stats.delete(rule)
-
   inc_version()
+  need_save(1)
 
   return true
 end
 
----@param include_stats? boolean
 ---@return doorbell.rule[]
-local function get_all_rules(include_stats)
+local function get_all_rules()
   local list = shm.get()
 
   for i = 1, #list do
-    list[i] = rules.hydrate(list[i], include_stats)
+    list[i] = rules.hydrate(list[i])
   end
 
   return list
@@ -440,14 +397,13 @@ end
 
 
 ---@param id_or_hash string
----@param include_stats? boolean
 ---@return doorbell.rule?
 ---@return string? error
-function _M.get(id_or_hash, include_stats)
+function _M.get(id_or_hash)
   if type(id_or_hash) ~= "string" then
     return nil, "input must be a string"
   end
-  return get(id_or_hash, include_stats)
+  return get(id_or_hash)
 end
 
 --- add a rule
@@ -501,8 +457,18 @@ function _M.match(req)
   return rule, cached
 end
 
-_M.delete = delete_rule
+---@param rule string|doorbell.rule
+---@return boolean? ok
+---@return string? error
+---@return integer? status_code
+function _M.delete(rule)
+  local ok, err, status = delete_rule(rule)
+  if not ok then
+    return nil, err, status
+  end
 
+  return true
+end
 
 ---@param  id_or_hash     string
 ---@param  updates        doorbell.rule
@@ -535,10 +501,9 @@ function _M.patch(id_or_hash, updates)
 end
 
 --- retrieve a list of all current rules
----@param include_stats? boolean
 ---@return doorbell.rule[]
-function _M.list(include_stats)
-  return get_all_rules(include_stats)
+function _M.list()
+  return get_all_rules()
 end
 
 function _M.reset()
@@ -589,10 +554,9 @@ end
 
 --- reload rules from disk
 ---@param dir string
----@param set_stats? boolean
 ---@return boolean ok
 ---@return string? error
-function _M.load(dir, set_stats)
+function _M.load(dir)
   local fname = util.join(dir, "rules.json")
 
   -- don't attempt to acquire a lock if we're in init
@@ -607,43 +571,29 @@ function _M.load(dir, set_stats)
 
   data = storage.migrate(data)
 
-  ---@type doorbell.rule[]
-  local list = {}
-  for i, rule in ipairs(data.rules) do
-    list[i] = rules.hydrate(rule)
-    list[i].id = list[i].id or uuid()
-  end
-
-  if set_stats then
-    stats.load(list)
-  end
-
-  local count = 0
-
-  local ok
-  ok, err = SHM:flush_expired()
-  if not ok then
-    log.alert("failed calling shm:flush_expired(), zombie rules may exist: ", err)
-  end
+  local trx = assert(transaction.new())
+  assert(trx:delete_all())
 
   local time = now()
 
-  for _, rule in ipairs(list) do
-    -- Rules that are created from the doorbell config are only saved to disk
-    -- so that we can persist their stats (last match timestamp, match count, etc)
-    -- to disk.
-    --
-    -- We don't restore their contents because that could mean creating an
-    -- orphaned rule (if it no longer exists in the config).
-    local restore = not (rule:expired(time) or rule.source == const.sources.config)
-    if restore then
+  local count = 0
+  for _, rule in ipairs(data.rules) do
+    rule = rules.hydrate(rule)
+
+    if rule.source == const.sources.config then
+      log.debugf("skipping restore of config rule %s", rule.id)
+
+    elseif rule:expired(time) then
+      log.debugf("skipping restore of expired rule %s", rule.id)
+
+    else
+      assert(trx:insert(rule))
       count = count + 1
-      ok, err = save_rule(rule, nil, time)
-      if not ok then
-        log.alertf("failed restoring rule %s to shm: %s", rule.hash, err)
-      end
     end
   end
+
+  assert(trx:commit())
+
   inc_version()
 
   log.noticef("restored %s rules from disk", count)

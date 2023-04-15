@@ -2,6 +2,7 @@ local _M = {}
 
 local render = require("doorbell.nginx").render
 local lua_path = require("doorbell.nginx").lua_path
+local resty_signal = require "resty.signal"
 
 local const = require "spec.testing.constants"
 local fs = require "spec.testing.fs"
@@ -10,8 +11,24 @@ local await = require "spec.testing.await"
 
 local assert = require "luassert"
 
+local QUIT = assert(resty_signal.signum("QUIT"))
+local TERM = assert(resty_signal.signum("TERM"))
+local HUP = assert(resty_signal.signum("HUP"))
+
 local join = fs.join
 local fmt = string.format
+local kill = resty_signal.kill
+
+local function dead(pid)
+  local _, err = kill(pid, 0)
+  return err == "No such process"
+end
+
+
+local function alive(pid)
+  return (kill(pid, 0) and true) or false
+end
+
 
 local TEMPLATE_PATH = join(const.FIXTURES_DIR, "busted.nginx.conf")
 
@@ -58,8 +75,18 @@ end
 ---
 ---@field config doorbell.config
 ---
----@field pid string
+---@field pid integer
+---
+---@field pidfile string
 local nginx = {}
+
+
+---@param sig integer|string
+function nginx:signal(sig)
+  assert(self.pid, "nginx is not running")
+  return kill(self.pid, sig)
+end
+
 
 function nginx:exec(...)
   local prefix = self.prefix
@@ -100,12 +127,16 @@ end
 
 function nginx:start()
   self:exec()
-  local pidfile = join(self.prefix, "logs", "nginx.pid")
-  if not await(5, 0.1, fs.exists, pidfile) then
-    error("timed out waiting for NGINX pid file (" .. pidfile .. ") to exist")
+
+  if not await.truthy(5, 0.05, fs.not_empty, self.pidfile) then
+    error("timed out waiting for NGINX pid file (" .. self.pidfile .. ") to exist")
   end
 
-  self.pid = fs.file_contents(pidfile)
+  self.pid = assert(tonumber(fs.file_contents(self.pidfile)))
+
+  if not await.truthy(5, 0.05, alive, self.pid) then
+    error("timed out waiting for NGINX process (" .. self.pid .. ") to exist")
+  end
 end
 
 function nginx:stop()
@@ -113,13 +144,18 @@ function nginx:stop()
     return nil, "nginx is not running"
   end
 
-  self:exec("-s", "stop")
+  assert(self:signal(QUIT))
 
-  local proc = join("/proc", tostring(self.pid))
+  if not await.truthy(5, 0.05, dead, self.pid) then
+    self:signal(TERM)
 
-  if not await.falsy(5, 0.1, fs.exists, proc) then
-    error("timed out waiting for NGINX " .. proc .. " to go away")
+    if not await.truthy(5, 0.05, dead, self.pid) then
+      error("timed out waiting for NGINX " .. self.pid .. " to go away")
+    end
   end
+
+  fs.rm(self.pidfile, true)
+  self.pid = nil
 
   return true
 end
@@ -130,7 +166,7 @@ function nginx:restart()
 end
 
 function nginx:reload()
-  self:exec("-s", "reload")
+  assert(self:signal(HUP))
 end
 
 function nginx:update_config(config)
@@ -138,7 +174,6 @@ function nginx:update_config(config)
     join(self.prefix, "config.json"),
     config
   )
-  self:restart()
 end
 
 ---@return string? contents
@@ -160,7 +195,8 @@ nginx.__index = nginx
 ---@return spec.testing.nginx
 function _M.new(prefix, conf)
   prepare(prefix, conf)
-  local self = { prefix = prefix, config = conf }
+  local pidfile = join(prefix, "logs", "nginx.pid")
+  local self = { prefix = prefix, config = conf, pidfile = pidfile }
   return setmetatable(self, nginx)
 end
 

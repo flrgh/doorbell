@@ -25,6 +25,11 @@ function fs.write_json_file(path, data)
   assert(pl_util.writefile(path, cjson.encode(data)))
 end
 
+function fs.read_json_file(path)
+  local content = fs.file_contents(path)
+  return cjson.decode(content)
+end
+
 function fs.append_raw(path, data)
   local fh = assert(io.open(path, "a+"))
   assert(fh:write(data))
@@ -87,6 +92,17 @@ function fs.tmpdir()
   assert(tmp ~= nil, "failed to create temp dir after " .. tries .. " tries")
 
   return tmp
+end
+
+
+function fs.not_empty(fname)
+  return pl_path.isfile(fname) and pl_path.getsize(fname) > 0
+end
+
+function fs.truncate(fname)
+  local fh = assert(io.open(fname, "w+"))
+  fh:flush()
+  fh:close()
 end
 
 return fs
