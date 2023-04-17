@@ -33,6 +33,7 @@ end
 if ngx.config.is_console then
   local update_time = ngx.update_time
   local utctime = ngx.utctime
+  local getinfo = debug.getinfo
 
   ---@return string
   local function errlog_timestamp()
@@ -47,10 +48,20 @@ if ngx.config.is_console then
 
   raw_log = function(lvl, msg)
     local ts = errlog_timestamp()
-
     lvl = levels_by_num[lvl] or "info"
 
-    stderr:write(fmt("%s [%s] %s\n", ts, lvl, msg))
+    if lvl == "debug" then
+      local info = getinfo(3, "Sln")
+      local src = (info.short_src or ""):gsub("^[%./]*lib/", "")
+      local line = info.currentline
+      local caller = info.name
+
+      stderr:write(fmt("%s [%s] %s:%s: %s(): %s\n",
+                       ts, lvl, src, line, caller, msg))
+    else
+      stderr:write(fmt("%s [%s] %s\n", ts, lvl, msg))
+    end
+
     stderr:flush()
   end
 end
