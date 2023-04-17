@@ -147,7 +147,7 @@ function client:send()
 
   self.response = {
     status  = res.status,
-    headers = res.headers,
+    headers = _M.headers(res.headers),
     body    = body,
     json    = json,
   }
@@ -238,7 +238,7 @@ for _, method in ipairs({"get", "put", "post", "delete", "patch"}) do
 
     return {
       status  = res.status,
-      headers = res.headers,
+      headers = _M.headers(res.headers),
       body    = body,
       json    = json,
     }
