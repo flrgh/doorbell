@@ -52,7 +52,7 @@ function _M.init(conf)
   end
 
   if enabled then
-    require("doorbell.routes").add("/metrics", {
+    require("doorbell.router").add("/metrics", {
       description     = "prometheus metrics endpoint",
       allow_untrusted = true,
       log_enabled     = false,

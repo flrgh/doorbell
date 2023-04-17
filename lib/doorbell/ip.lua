@@ -124,9 +124,9 @@ _M.private_cidrs = {
 
 _M.private = ipmatcher.new(_M.private_cidrs)
 
-_M.localhost_cidr = "127.0.0.0/8"
+_M.localhost_cidrs = { "127.0.0.0/8", "::1/128" }
 
-_M.localhost = ipmatcher.new({_M.localhost_cidr})
+_M.localhost = ipmatcher.new(_M.localhost_cidrs)
 
 
 ---@param ctx doorbell.ctx
@@ -252,7 +252,7 @@ function _M.init(opts)
   if trusted_cidrs then
     trusted = assert(ipmatcher.new(trusted_cidrs))
   else
-    log.warnf("using default trusted IP range (%s)", _M.localhost_cidr)
+    log.warnf("using default trusted IP range (%s)", table.concat(_M.localhost_cidrs, ","))
     trusted = _M.localhost
   end
 
