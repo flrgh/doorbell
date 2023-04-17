@@ -139,6 +139,11 @@ jobs:
       - name: OpenResty info
         run: nginx -V
 
+      - name: GeoIP DB Setup
+        uses: ./.github/actions/geoip-download
+        with:
+          maxmind_license_key: ${{ secrets.MAXMIND_LICENSE_KEY }}
+
       - name: Unit Tests
         run: busted --run unit
 

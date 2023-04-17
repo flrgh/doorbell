@@ -2,6 +2,11 @@ name: GeoIP Download
 
 description: Downloads GeoIP City & Country Databases for Integration Tests
 
+inputs:
+  maxmind_license_key:
+    type: string
+    required: true
+
 runs:
   using: composite
   steps:
@@ -19,7 +24,7 @@ runs:
       shell: bash
       run: ./scripts/download-geoip-databases.sh
       env:
-        MAXMIND_LICENSE_KEY: ${{ secrets.MAXMIND_LICENSE_KEY }}
+        MAXMIND_LICENSE_KEY: ${{ inputs.maxmind_license_key }}
         DOWNLOAD_ONLY: "1"
 
     - name: Unpack Databases
