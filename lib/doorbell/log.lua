@@ -122,7 +122,7 @@ local log = setmetatable({}, {
 
 do
   for name, lvl in pairs(levels_by_name) do
-    if sys_level >= lvl or ngx.config.is_console then
+    if sys_level >= lvl then
       rawset(log, name, make_log(lvl, log_varargs))
       rawset(log, name .. "f", make_log(lvl, log_f))
     end
