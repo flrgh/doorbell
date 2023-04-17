@@ -10,8 +10,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@v3
-
     - name: restore cache
       uses: actions/cache@v3
       id: geoip-cache
@@ -22,14 +20,17 @@ runs:
     - name: Download Databases
       if: ${{ steps.geoip-cache.cache-hit != 'true' }}
       shell: bash
-      run: ./scripts/download-geoip-databases.sh
+      run: |
+        ./scripts/download-geoip-databases.sh
+        find ./geoip -ls
       env:
         MAXMIND_LICENSE_KEY: ${{ inputs.maxmind_license_key }}
-        DOWNLOAD_ONLY: "1"
+        NO_UNPACK: "1"
 
     - name: Unpack Databases
       shell: bash
-      run: ./scripts/download-geoip-databases.sh
+      run: |
+        ./scripts/download-geoip-databases.sh
+        find ./geoip -ls
       env:
-        DOWNLOAD_ONLY: "0"
-
+        NO_DOWNLOAD: "1"
