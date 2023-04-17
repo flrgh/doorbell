@@ -2,3 +2,4 @@ spec/
 test/
 *.tar.gz
 *.tgz
+geoip

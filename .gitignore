@@ -49,3 +49,4 @@ test/
 /lua
 /lua_modules
 /.luarocks
+/geoip

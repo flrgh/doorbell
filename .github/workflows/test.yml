@@ -70,6 +70,25 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Install OS Deps
+        run: |
+          sudo apt-get install -y libmaxminddb0
+          dpkg -L libmaxminddb0
+          sudo ldconfig
+          sudo ln -fs /usr/lib/x86_64-linux-gnu/libmaxminddb.so.0 \
+                      /usr/lib/x86_64-linux-gnu/libmaxminddb.so
+
+          sudo ln -fs /usr/lib/x86_64-linux-gnu/libmaxminddb.so.0 \
+                      /usr/lib/libmaxminddb.so
+
+          sudo ln -fs /usr/lib/x86_64-linux-gnu/libmaxminddb.so.0 \
+                      /usr/lib64/libmaxminddb.so
+
+          sudo ln -fs /usr/lib/x86_64-linux-gnu/libmaxminddb.so.0 \
+                      /lib/libmaxminddb.so
+
+          ldconfig -p | grep -i maxmind
+
       - name: Set OpenResty prefix
         run: |
           echo OPENRESTY_PREFIX=${GITHUB_WORKSPACE}/openresty/${{ matrix.openresty }} >> $GITHUB_ENV
@@ -138,6 +157,12 @@ jobs:
 
       - name: OpenResty info
         run: nginx -V
+
+      - name: Check libmaxminddb
+        run: luajit -e 'require("ffi").load("libmaxminddb")'
+
+      - name: Download GeoIP Test Data
+        run: ./scripts/download-geoip-test-databases.sh
 
       - name: Unit Tests
         run: busted --run unit

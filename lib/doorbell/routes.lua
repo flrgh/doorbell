@@ -11,6 +11,7 @@ local router  = require "doorbell.router"
 local util    = require "doorbell.util"
 local views   = require "doorbell.views"
 local rules   = require "doorbell.rules.api"
+local ip      = require "doorbell.ip"
 
 local safe_decode = require("cjson.safe").decode
 
@@ -234,6 +235,45 @@ function _M.init(config)
     metrics_enabled = false,
     log_enabled     = false,
     GET             = function() return send(404) end,
+  }
+
+  router["/ip/addr"] = {
+    description = "returns the client IP address",
+    metrics_enabled = true,
+    log_enabled = false,
+    allow_untrusted = true,
+    GET = function()
+      return send(200, ip.get_forwarded_ip())
+    end,
+  }
+
+  router["/ip/info"] = {
+    description = "returns IP address info",
+    metrics_enabled = true,
+    log_enabled = false,
+    allow_untrusted = true,
+    content_type = "application/json",
+    GET = function()
+      local addr = ip.get_forwarded_ip()
+      return send(200, ip.get_ip_info(addr))
+    end,
+  }
+
+  router["~^/ip/info/(?<addr>.+)"] = {
+    description = "returns IP address info",
+    metrics_enabled = true,
+    log_enabled = false,
+    allow_untrusted = false,
+    content_type = "application/json",
+    GET = function(_, match)
+      local addr = match.addr
+
+      if not ip.is_valid(addr) then
+        return send(400, { addr = addr, error = "invalid IP address" })
+      end
+
+      return send(200, ip.get_ip_info(addr))
+    end,
   }
 
 end

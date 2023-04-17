@@ -10,7 +10,7 @@ local safe_decode = require("cjson.safe").decode
 local open          = io.open
 local encode        = cjson.encode
 local ngx           = ngx
-local say           = ngx.say
+local print         = ngx.print
 local exit          = ngx.exit
 local get_body_data = ngx.req.get_body_data
 local get_body_file = ngx.req.get_body_file
@@ -59,7 +59,7 @@ local function send(status, body)
   ngx.status = status
 
   if body ~= nil then
-    say(body)
+    print(body)
   end
 
   return exit(status)
