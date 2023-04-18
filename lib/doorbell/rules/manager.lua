@@ -373,7 +373,7 @@ local function create(rule, nobuild, overwrite)
   ok, err = trx:commit()
   if not ok then
     if err == "exists" then
-      return nil, err
+      return nil, err, 400
     end
     errorf("failed to commit transaction: %s", err)
   end
@@ -406,6 +406,7 @@ end
 ---@param  rule    doorbell.rule
 ---@return doorbell.rule? rule
 ---@return string? error
+---@return integer? status_code
 function _M.add(rule, nobuild)
   return create(rule, nobuild, false)
 end

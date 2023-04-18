@@ -1,5 +1,7 @@
 local test = require "spec.testing"
 local join = require("spec.testing.fs").join
+local const = require "doorbell.constants"
+local util = require "doorbell.util"
 
 describe("rules API", function()
   local prefix = os.getenv("DOORBELL_PREFIX") or join(test.ROOT_DIR, "test")
@@ -70,6 +72,105 @@ describe("rules API", function()
         assert.is_table(res.json)
         assert.is_table(res.json.data)
         assert.same(rules, res.json.data)
+      end)
+    end)
+
+    describe("POST", function()
+      it("creates a new rule", function()
+        res, err = client:post("/rules", {
+          json = {
+            action = "allow",
+            host = "post.test",
+          }
+        })
+
+        assert.is_nil(err)
+        assert.same(201, res.status)
+        assert.is_table(res.json)
+        assert.same("allow", res.json.action)
+        assert.same("post.test", res.json.host)
+        assert.same(const.sources.api, res.json.source)
+      end)
+
+      it("returns 400 on invalid input", function()
+        res, err = client:post("/rules", {
+          json = {
+            action = "nope",
+            host = 123,
+          }
+        })
+
+        assert.is_nil(err)
+        assert.same(400, res.status)
+        assert.is_table(res.json)
+        assert.is_string(res.json.error)
+      end)
+
+      it("returns 400 on invalid input for shorthand fields (ttl)", function()
+        res, err = client:post("/rules", {
+          json = {
+            action = "allow",
+            host = "invalid.ttl.test",
+            ttl  = { "nope" },
+          }
+        })
+
+        assert.is_nil(err)
+        assert.same(400, res.status)
+        assert.is_table(res.json)
+        assert.is_string(res.json.error)
+      end)
+
+
+      it("returns a 400 if a rule with matching conditions already exists", function()
+        res, err = client:post("/rules", {
+          json = {
+            action = "allow",
+            host = "duplicate.test",
+          }
+        })
+
+        assert.is_nil(err)
+        assert.same(201, res.status)
+
+        res, err = client:post("/rules", {
+          json = {
+            action = "deny",
+            host = "duplicate.test",
+          }
+        })
+
+        assert.is_nil(err)
+        assert.same(400, res.status)
+        assert.same({ error = "exists" }, res.json)
+      end)
+
+      it("returns a 400 if a rule by the same ID already exists", function()
+        local id = util.uuid()
+
+        res, err = client:post("/rules", {
+          json = {
+            id     = id,
+            action = "allow",
+            host   = "duplicate.id.1",
+          }
+        })
+
+        assert.is_nil(err)
+        assert.same(201, res.status)
+        assert.same(id, res.json.id)
+
+        res, err = client:post("/rules", {
+          json = {
+            id     = id,
+            action = "deny",
+            host   = "duplicate.id.2",
+          }
+        })
+
+        assert.is_nil(err)
+        assert.same(400, res.status)
+        assert.same({ error = "exists" }, res.json)
       end)
     end)
   end)

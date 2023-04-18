@@ -76,8 +76,10 @@ end
 local function insert_rule(rule)
   return function(candidates)
     for _, current in ipairs(candidates) do
-      if current:is_same(rule) and not deleted(current) then
-        return nil, "exists"
+      if not deleted(current) then
+        if rule.id == current.id or current:is_same(rule) then
+          return nil, "exists"
+        end
       end
     end
 

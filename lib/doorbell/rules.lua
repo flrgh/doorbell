@@ -327,7 +327,7 @@ local function validate(opts)
   update_time()
   local time = now()
 
-  if opts.ttl then
+  if type(opts.ttl) == "number" then
     if opts.expires then
       insert(errors, "only one of `ttl` and `expires` allowed")
     elseif opts.ttl < 0 then
