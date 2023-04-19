@@ -1,5 +1,4 @@
 local const = require "doorbell.constants"
-local ipmatcher = require "resty.ipmatcher"
 local parse_uri = require("resty.http").parse_uri
 local valid_uuid = require("resty.jit-uuid").is_valid
 local ip = require "doorbell.ip"
