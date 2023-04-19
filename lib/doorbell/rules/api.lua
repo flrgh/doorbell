@@ -4,6 +4,7 @@ local _M = {
 
 local rules = require "doorbell.rules"
 local manager = require "doorbell.rules.manager"
+local null = ngx.null
 
 
 ---@param  opts           table
@@ -42,7 +43,33 @@ end
 ---@return string?        error
 ---@return integer?       status_code
 function _M.patch(id_or_hash, updates)
-  return manager.patch(id_or_hash, updates)
+  local current = manager.get(id_or_hash)
+
+  if not current then
+    return nil, "rule not found", 404
+  end
+
+  local ok, err = rules.validate_update(updates)
+
+  if not ok then
+    return nil, err, 400
+  end
+
+  for k, v in pairs(updates) do
+    if v == null then
+      v = nil
+    end
+    current[k] = v
+  end
+
+  current:update_generated_fields()
+
+  ok, err = rules.validate_entity(current)
+  if not ok then
+    return nil, err, 400
+  end
+
+  return manager.upsert(current)
 end
 
 function _M.list()

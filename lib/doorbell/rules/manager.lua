@@ -489,10 +489,12 @@ function _M.patch(id_or_hash, updates)
     rule[k] = v
   end
 
-  local ok, err = rules.validate(rule)
+
+  local ok, err = rules.validate_entity(rule)
   if not ok then
     return nil, err, 400
   end
+
 
   return create(rule, true, true)
 end

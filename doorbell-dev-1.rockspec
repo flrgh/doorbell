@@ -44,6 +44,7 @@ build = {
     ["doorbell.rules.stats"] = "lib/doorbell/rules/stats.lua",
     ["doorbell.rules.storage"] = "lib/doorbell/rules/storage.lua",
     ["doorbell.rules.transaction"] = "lib/doorbell/rules/transaction.lua",
+    ["doorbell.schema"] = "lib/doorbell/schema.lua",
     ["doorbell.shm"] = "lib/doorbell/shm.lua",
     ["doorbell.util"] = "lib/doorbell/util.lua",
     ["doorbell.views"] = "lib/doorbell/views.lua",
@@ -60,6 +61,7 @@ build = {
 supported_platforms = { "linux" }
 
 dependencies = {
+  "lua-resty-ljsonschema == 1.1.3",
   "lua-cjson >= 2.1.0",
   "lua-resty-http >= 0.16.1-0",
   "lua-resty-ipmatcher == 0.6.1",

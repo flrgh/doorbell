@@ -3,17 +3,15 @@ local _M = {
 }
 
 local const = require "doorbell.constants"
-local ip    = require "doorbell.ip"
 local util  = require "doorbell.util"
+local schema = require "doorbell.schema"
+
+local validate = schema.rule.create.validate
 
 local cjson = require "cjson"
 
 local uuid         = require("resty.jit-uuid").generate_v4
-local valid_uuid   = require("resty.jit-uuid").is_valid
 local concat       = table.concat
-local insert       = table.insert
-local sort         = table.sort
-local fmt          = string.format
 local decode       = cjson.decode
 local setmetatable = setmetatable
 local now          = ngx.now
@@ -110,6 +108,8 @@ local function count_conditions(rule)
   return c
 end
 
+_M.count_conditions = count_conditions
+
 local SERIALIZED_FIELDS = {
   "action",
   "addr",
@@ -130,23 +130,48 @@ local SERIALIZED_FIELDS = {
 
 _M.SERIALIZED_FIELDS = SERIALIZED_FIELDS
 
----@class doorbell.rule.dehydrated : table
+--- IP Address to match
+---@alias doorbell.rule.fields.addr string
+
+--- Subnet/IP to match (CIDR notation)
+---@alias doorbell.rule.fields.cidr string
+
+--- Two-letter country code
+---@alias doorbell.rule.fields.country string
+
+--- HTTP Host request header
+---@alias doorbell.rule.fields.host string
+
+--- HTTP request method
+---@alias doorbell.rule.fields.method string
+
+--- HTTP request path
+---@alias doorbell.rule.fields.path string
+
+--- HTTP User-Agent request header
+---@alias doorbell.rule.fields.ua string
+
+
+---@class doorbell.rule.dehydrated: table
+---
+---@field addr        doorbell.rule.fields.addr
+---@field cidr        doorbell.rule.fields.cidr
+---@field country     doorbell.rule.fields.country
+---@field host        doorbell.rule.fields.host
+---@field method      doorbell.rule.fields.method
+---@field path        doorbell.rule.fields.path
+---@field ua          doorbell.rule.fields.ua
 ---
 ---@field action      doorbell.action
----@field addr        string
----@field cidr        string
----@field comment     string
----@field country     string
----@field created     number
----@field deny_action doorbell.deny_action
----@field expires     number
----@field host        string
----@field id          string
----@field method      string
----@field path        string
----@field source      doorbell.source
 ---@field terminate   boolean
----@field ua          string
+---@field deny_action doorbell.deny_action
+---
+---@field expires     number
+---
+---@field id      string
+---@field comment string
+---@field source  doorbell.source
+---@field created number
 
 
 ---@class doorbell.rule.shorthand_fields : table
@@ -157,15 +182,30 @@ _M.SERIALIZED_FIELDS = SERIALIZED_FIELDS
 ---@class doorbell.rule.new.opts : doorbell.rule.dehydrated : doorbell.rule.shorthand_fields
 
 
----@class doorbell.rule.generated_fields : table
+---@class doorbell.rule.update.opts : doorbell.rule.shorthand_fields
 ---
----@field conditions integer
----
----@field hash string
+---@field action      doorbell.action
+---@field addr        string
+---@field cidr        string
+---@field comment     string
+---@field country     string
+---@field deny_action doorbell.deny_action
+---@field expires     number
+---@field host        string
+---@field method      string
+---@field path        string
+---@field terminate   boolean
+---@field ua          string
+
 
 local rule_mt
 do
-  ---@class doorbell.rule : doorbell.rule.dehydrated : doorbell.rule.generated_fields
+  ---@class doorbell.rule : doorbell.rule.dehydrated
+  ---
+  ---@field conditions integer # number of match conditions this rule has
+  ---
+  ---@field hash string        # hash of the rule match conditions
+  ---
   local rule = {}
 
   ---@param at? number
@@ -246,161 +286,56 @@ end
 _M.dehydrate = dehydrate
 
 
-local function tpl(s)
-  return function(...) return s:format(...) end
-end
-
-local e_required = tpl("`%s` is required and cannot be empty")
-local e_type     = tpl("invalid `%s` (expected %s, got: %s)")
-local e_empty    = tpl("`%s` cannot be empty")
-local e_enum     = tpl("invalid `%s` (expected: %s, got: %q)")
-
-local function is_type(t, v)
-  return type(v) == t
-end
-
-local function tkeys(t)
-  local keys = {}
-  for k in pairs(t) do
-    insert(keys, fmt("%q", k))
-  end
-  sort(keys)
-  return concat(keys, "|")
-end
-
-
-local fields = {
-  action    = {"string", true, const.actions},
-  source    = {"string", true, const.sources},
-  expires   = {"number"},
-  ttl       = {"number"},
-  addr      = {"string"},
-  cidr      = {"string"},
-  path      = {"string"},
-  host      = {"string"},
-  method    = {"string"},
-  ua        = {"string"},
-  created   = {"number"},
-  terminate = {"boolean"},
-  country   = {"string"},
-  deny_action = {"string", false, const.deny_actions},
-  comment   = {"string"},
-  id        = {"string"},
-}
-
-
 ---@param opts doorbell.rule.new.opts
-local function validate(opts)
-  local errors = {}
+local function populate(opts)
+  if not opts.id then
+    opts.id = uuid()
+  end
 
-  for name, spec in pairs(fields) do
-    local typ = spec[1]
-    local req = spec[2]
-    local lookup = spec[3]
-
-    local value = opts[name]
-
-    local ok = true
-
-    if req and value == nil then
-      insert(errors, e_required(name))
-      ok = false
-    end
-
-    if ok and value ~= nil and not is_type(typ, value) then
-      insert(errors, e_type(name, typ, type(value)))
-      ok = false
-    end
-
-    if ok and req and typ == "string" and value == "" then
-      insert(errors, e_empty(name))
-      ok = false
-    end
-
-    if ok and value ~= nil and lookup then
-      if not lookup[value] then
-        insert(errors, e_enum(name, tkeys(lookup), value))
-      end
-    end
+  if opts.action == const.actions.deny and not opts.deny_action then
+    opts.deny_action = const.deny_actions.exit
   end
 
   update_time()
-  local time = now()
+  local t = now()
 
-  if type(opts.ttl) == "number" then
-    if opts.expires then
-      insert(errors, "only one of `ttl` and `expires` allowed")
-    elseif opts.ttl < 0 then
-      insert(errors, "`ttl` must be > 0")
-    elseif opts.ttl > 0 then
-      opts.expires = time + opts.ttl
-      opts.ttl = nil
-    end
-  elseif (opts.expires or 0) > 0 then
-    if ttl_from_expires(opts.expires, time) <= 0 then
-      insert(errors, "rule is already expired")
-    end
+  if opts.ttl then
+    opts.expires = t + opts.ttl
+    opts.ttl = nil
+  end
 
-  elseif not opts.expires then
+  if not opts.expires then
     opts.expires = 0
   end
 
-  if opts.expires and opts.expires < 0 then
-    insert(errors, "`expires` must be >= 0")
+  if not opts.created then
+    opts.created = t
   end
-
-  if not (opts.addr or opts.cidr or opts.ua or opts.method or opts.host or opts.path or opts.country) then
-    insert(errors, "at least one of `addr`|`cidr`|`ua`|`method`|`host`|`path`|`country` required")
-  end
-
-  if opts.action == const.actions.allow and opts.deny_action then
-    insert(errors, "`deny_action` cannot be used when `action` is '" .. const.actions.allow .. "'")
-  end
-
-  if opts.country and type(opts.country) == "string" then
-    if not ip.get_country_name(opts.country) then
-      insert(errors, "`country` must be a valid, two letter country code")
-    end
-  end
-
-  local conditions = count_conditions(opts)
-
-  if opts.terminate and conditions > 1 then
-    insert(errors, "can only have one match condition with `terminate`")
-  end
-
-  if opts.id and not valid_uuid(opts.id) then
-    insert(errors, "`id` must be a valid uuid")
-  end
-
-
-  return errors
 end
 
----@param  opts    doorbell.rule
+_M.populate = populate
+
+---@param  opts           doorbell.rule.new.opts
 ---@return doorbell.rule? rule
----@return string? error
+---@return string?        error
 function _M.new(opts)
   opts = deep_copy(opts)
-  local errors = validate(opts)
+  local valid, err = validate(opts)
 
-  if #errors > 0 then
-    return nil, concat(errors, "\n")
+  if not valid then
+    return nil, err
   end
 
-  local deny_action
-  if opts.action == const.actions.deny then
-    deny_action = opts.deny_action or "exit"
-  end
+  populate(opts)
 
   ---@type doorbell.rule
   local rule = {
-    id          = opts.id or uuid(),
+    id          = opts.id,
     action      = opts.action,
     addr        = opts.addr,
     cidr        = opts.cidr,
-    created     = now(),
-    deny_action = deny_action,
+    created     = opts.created,
+    deny_action = opts.deny_action,
     expires     = opts.expires,
     host        = opts.host,
     method      = opts.method,
@@ -418,19 +353,29 @@ function _M.new(opts)
   return rule
 end
 
-
----@param  rule    doorbell.rule
+---@param rule doorbell.rule
 ---@return boolean? ok
 ---@return string? error
-function _M.validate(rule)
-  local errors = validate(rule)
-  if #errors > 0 then
-    return nil, concat(errors, "\n")
-  end
-
-  return true
+function _M.validate_entity(rule)
+  return schema.rule.entity.validate(rule)
 end
 
+---@param opts doorbell.rule.new.opts
+---@return boolean? ok
+---@return string? error
+function _M.validate_create(opts)
+  return schema.rule.create.validate(opts)
+end
+
+---@param opts doorbell.rule.update.opts
+---@return boolean? ok
+---@return string? error
+function _M.validate_update(opts)
+  return schema.rule.patch.validate(opts)
+end
+
+
+_M.validate = _M.validate_entity
 
 ---@param s string
 ---@return boolean
