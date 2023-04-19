@@ -118,13 +118,13 @@ describe("doorbell", function()
         assert.same(200, res.status)
       end, 1, 0.1, "expected request to be allowed after adding allow rule")
 
-      assert(api:patch("/rules/" .. rule.id, {
+      assert.same(200, api:patch("/rules/" .. rule.id, {
         json = {
           action = "deny",
           host = "api.test",
           ua = ua,
         }
-      }))
+      }).status)
 
       test.await.no_error(function()
         res, err = client:send()

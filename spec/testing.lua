@@ -5,6 +5,7 @@ local const = require "spec.testing.constants"
 local config = require "spec.testing.config"
 local client = require "spec.testing.client"
 local await = require "spec.testing.await"
+local assert = require "luassert"
 
 require "spec.testing.assertions"
 
@@ -47,7 +48,7 @@ _M.await = {
       return pcall(fn, ...)
     end
 
-    assert(await.truthy(timeout, step, wrapped), msg or "timeout reached")
+    assert(await.truthy(timeout, step, wrapped), msg or "timeout reached", 2)
   end,
 }
 

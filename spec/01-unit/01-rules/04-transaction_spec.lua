@@ -4,6 +4,7 @@ local rules = require "doorbell.rules"
 local manager = require "doorbell.rules.manager"
 local const = require "doorbell.constants"
 local api = require "doorbell.rules.api"
+local util = require "doorbell.util"
 
 
 describe("doorbell.rules.transaction", function()
@@ -187,28 +188,28 @@ describe("doorbell.rules.transaction", function()
       assert.table_fields(rule, list[1])
     end)
 
-    it("causes the transaction to fail if the rule already exists (prior transaction)", function()
-      local rule = new_rule({
+    it("causes the transaction to fail if the rule hash already exists (prior transaction)", function()
+      assert(api.insert({
         action = "allow",
         source = "user",
         ua = "insert",
-      })
-      assert(api.insert(rule))
+      }))
 
       local trx = TRX.new()
-      rule = new_rule({
+      local rule = new_rule({
         action = "deny",
         source = "user",
         ua = "insert",
       })
 
       assert(trx:insert(rule))
-      local ok, err = trx:commit()
+      local ok, err, act = trx:commit()
       assert.equals("exists", err)
+      assert.same(TRX.INSERT, act.id)
       assert.falsy(ok)
     end)
 
-    it("causes the transaction to fail if the rule already exists (current transaction)", function()
+    it("causes the transaction to fail if the rule hash already exists (current transaction)", function()
       local trx = TRX.new()
 
       local rule = new_rule({
@@ -220,10 +221,67 @@ describe("doorbell.rules.transaction", function()
       assert(trx:insert(rule))
       assert(trx:insert(rule))
 
-      local ok, err = trx:commit()
+      local ok, err, act = trx:commit()
       assert.equals("exists", err)
+      assert.same(TRX.INSERT, act.id)
+      assert.same(2, act.index)
       assert.falsy(ok)
     end)
+
+    it("causes the transaction to fail if the rule ID already exists (prior transaction)", function()
+      local id = util.uuid()
+
+      assert(api.insert({
+        id     = id,
+        action = "allow",
+        source = "user",
+        ua     = "duplicate.id.1",
+      }))
+
+      local trx = TRX.new()
+      local rule = new_rule({
+        id     = id,
+        action = "deny",
+        source = "user",
+        ua     = "duplicate.id.2",
+      })
+
+      assert(trx:insert(rule))
+      local ok, err, act = trx:commit()
+      assert.equals("exists", err)
+      assert.same(TRX.INSERT, act.id)
+      assert.falsy(ok)
+    end)
+
+    it("causes the transaction to fail if the rule ID already exists (current transaction)", function()
+      local id = util.uuid()
+      local trx = TRX.new()
+
+      local rule = new_rule({
+        id     = id,
+        action = "allow",
+        source = "user",
+        ua     = "insert.1",
+      })
+
+      assert(trx:insert(rule))
+
+      rule = new_rule({
+        id     = id,
+        action = "allow",
+        source = "user",
+        ua     = "insert.2",
+      })
+
+      assert(trx:insert(rule))
+
+      local ok, err, act = trx:commit()
+      assert.equals("exists", err)
+      assert.same(TRX.INSERT, act.id)
+      assert.same(2, act.index)
+      assert.falsy(ok)
+    end)
+
 
   end)
 
@@ -248,12 +306,11 @@ describe("doorbell.rules.transaction", function()
     end)
 
     it("updates an existing rule (prior transaction)", function()
-      local rule = new_rule({
+      local rule = assert(api.insert({
         action = "allow",
         source = "user",
         ua = "upsert",
-      })
-      assert(api.insert(rule))
+      }))
 
       local trx = TRX.new()
 

@@ -13,9 +13,8 @@ describe("matching", function()
       r.source = "user"
       r.action = r.action or "deny"
 
-      local rule = rules.hydrate(r)
-
-      manager.add(rule, true)
+      local rule = assert(rules.new(r))
+      assert(manager.add(rule, true))
     end
     match = matcher.new(manager.list())
   end

@@ -19,9 +19,14 @@ local parse_ipv6 = ipmatcher.parse_ipv6
 
 
 ---@param ip string
----@return boolean
+---@return 4|6|nil
 local function valid_ip(ip)
-  return (parse_ipv4(ip) or parse_ipv6(ip)) and true or false
+  if parse_ipv4(ip) then
+    return 4
+
+  elseif parse_ipv6(ip) then
+    return 6
+  end
 end
 
 
