@@ -4,6 +4,7 @@ local _M = {
 
 local log = require "doorbell.log"
 local cache = require "doorbell.cache"
+local util = require "doorbell.util"
 
 local ipmatcher = require "resty.ipmatcher"
 local split = require("ngx.re").split
@@ -36,16 +37,65 @@ local trusted
 ---@type table<string, string>
 local country_names = require "doorbell.ip.countries"
 
-local geoip
+local LOCATION_DB_FILE
+local LOCATION_DB
+local ASN_DB_FILE
+local ASN_DB
+local HAVE_COUNTRY_DB = false
+local HAVE_CITY_DB = false
+local HAVE_ASN_DB = false
+
+
+---@param opts doorbell.config
+local function init_geoip(opts)
+  if opts.geoip_city_db then
+    HAVE_CITY_DB = true
+    HAVE_COUNTRY_DB = true
+    LOCATION_DB_FILE = opts.geoip_city_db
+
+  elseif opts.geoip_country_db then
+    HAVE_COUNTRY_DB = true
+    LOCATION_DB_FILE = opts.geoip_country_db
+
+  elseif opts.geoip_db then
+    HAVE_COUNTRY_DB = true
+    LOCATION_DB_FILE = opts.geoip_db
+  end
+
+  if opts.geoip_asn_db then
+    HAVE_ASN_DB = true
+    ASN_DB_FILE = opts.geoip_asn_db
+  end
+
+  if LOCATION_DB_FILE then
+    local mmdb = require("geoip.mmdb")
+    local db, err = mmdb.load_database(LOCATION_DB_FILE)
+    if not db then
+      log.alertf("failed loading GeoIP Location database file (%s): %s", LOCATION_DB_FILE, err)
+    end
+    LOCATION_DB = db
+  end
+
+  if ASN_DB_FILE then
+    local mmdb = require("geoip.mmdb")
+    local db, err = mmdb.load_database(ASN_DB_FILE)
+    if not db then
+      log.alertf("failed loading GeoIP ASN database file (%s): %s", ASN_DB_FILE, err)
+    end
+
+    ASN_DB = db
+  end
+end
+
 
 ---@param addr string
 ---@return string?
-local function lookup(addr)
-  if not geoip then
+local function lookup_country_code(addr)
+  if not LOCATION_DB then
     return
   end
 
-  return geoip:lookup_value(addr, "country", "iso_code")
+  return LOCATION_DB:lookup_value(addr, "country", "iso_code")
 end
 
 local function is_trusted(ip)
@@ -63,6 +113,7 @@ end
 ---@class doorbell.ip.info : table
 ---
 ---@field addr             string
+---@field asn              integer|nil
 ---@field city             string|nil
 ---@field continent        string
 ---@field continent_code   string
@@ -70,24 +121,38 @@ end
 ---@field country_code     string
 ---@field latitude         number|nil
 ---@field longitude        number|nil
+---@field org              string|nil
 ---@field postal_code      string|nil
 ---@field region           string|nil
 ---@field region_code      string|nil
 ---@field time_zone        string|nil
 
 
----@return doorbell.ip.info
+---@return doorbell.ip.info?
 local function get_ip_info(addr)
   local info = cache:get("geoip-info", addr)
-  if info then
-    return info
+  if info ~= nil then
+    return info or nil
   end
 
-  local geo = geoip:lookup(addr)
-  if not geo then
-    cache:set("geoip-info", addr, false)
-    return { addr = addr, message = "no geoip data found" }
+  local geo
+  if LOCATION_DB then
+    geo = LOCATION_DB:lookup(addr)
   end
+
+  local asn
+  if HAVE_ASN_DB then
+    asn = ASN_DB:lookup(addr)
+  end
+
+  if not geo and not asn then
+    cache:set("geoip-info", addr, false)
+    return
+  end
+
+  asn = asn or EMPTY
+  geo = geo or EMPTY
+
 
   local location     = geo.location or EMPTY
   local country      = geo.country or EMPTY
@@ -99,6 +164,8 @@ local function get_ip_info(addr)
 
   info = {
     addr           = addr,
+    asn            = asn.autonomous_system_number,
+    org            = asn.autonomous_system_organization,
     country        = (country.names and country.names.en)
                      or (reg_country.names and reg_country.names.en)
                      or country.geoname_id,
@@ -106,6 +173,7 @@ local function get_ip_info(addr)
     city           = (city.names or EMPTY).en or city.geoname_id,
     latitude       = location.latitude,
     longitude      = location.longitude,
+    network        = geo.network or asn.network,
     time_zone      = location.time_zone,
     postal_code    = postal.code,
     continent      = (continent.names or EMPTY).en,
@@ -153,10 +221,28 @@ function _M.require_trusted(ctx)
   ctx.trusted_ip = trust
 end
 
+
 ---@return boolean
 function _M.geoip_enabled()
-  return (geoip and true) or false
+  return (LOCATION_DB and true) or false
 end
+
+
+---@return boolean
+function _M.have_country_info()
+  return HAVE_COUNTRY_DB
+end
+
+---@return boolean
+function _M.have_city_info()
+  return HAVE_CITY_DB
+end
+
+---@return boolean
+function _M.have_asn_info()
+  return HAVE_ASN_DB
+end
+
 
 ---@param code string
 ---@return string?
@@ -164,11 +250,12 @@ function _M.get_country_name(code)
   return code and country_names[code]
 end
 
+
 ---@param addr string
 ---@return string? country_code
 ---@return string? country_name_or_error
 function _M.get_country(addr)
-  if not geoip then return nil, "geoip not enabled" end
+  if not LOCATION_DB then return nil, "geoip not enabled" end
 
   assert(cache, "doorbell.ip module not initialized")
 
@@ -181,7 +268,7 @@ function _M.get_country(addr)
   end
 
   local err
-  country, err = lookup(addr)
+  country, err = lookup_country_code(addr)
   if country then
     cache:set("geoip", addr, country)
     return country, country_names[country]
@@ -211,6 +298,7 @@ local function get_forwarded(forwarded, pos)
   return addr
 end
 
+
 ---@return string
 function _M.get_forwarded_ip()
   local client_ip = var.realip_remote_addr or var.remote_addr
@@ -227,31 +315,86 @@ function _M.get_forwarded_ip()
 end
 
 
-
 ---@param addr string
 ---
----@return doorbell.ip.info info
+---@return doorbell.ip.info? info
+---@return string? error
+---@return integer? status_code
 function _M.get_ip_info(addr)
-  if not geoip then
-    return { addr = addr, message = "geoip is not enabled" }
+  if not LOCATION_DB and not ASN_DB then
+    return nil, "geoip is not enabled", 501
   end
 
-  return get_ip_info(addr)
+  local info = get_ip_info(addr)
+  if info then
+    return info
+  end
+
+  return nil, "no ip info found", 404
+end
+
+
+---@param addr string
+---@return table? info
+---@return string? error
+---@return integer? status_code
+function _M.get_raw_ip_info(addr)
+  if not LOCATION_DB and not ASN_DB then
+    return nil, "geoip is not enabled", 501
+  end
+
+  local location, asn
+
+  if LOCATION_DB then
+    location = LOCATION_DB:lookup(addr)
+  end
+
+  if ASN_DB then
+    asn = ASN_DB:lookup(addr)
+  end
+
+  if not location and not asn then
+    return nil, "no ip info found", 404
+  end
+
+  local info = location or {}
+  for k, v in pairs(asn or EMPTY) do
+    info[k] = v
+  end
+
+  return info
+end
+
+
+---@param addr string
+---@param raw? string
+---@return table? info
+---@return string? error
+---@return integer? status_code
+function _M.info_api(addr, raw)
+  if not valid_ip(addr) then
+    return nil, "invalid IP address", 400
+  end
+
+  if not LOCATION_DB and not ASN_DB then
+    return nil, "geoip is not enabled", 501
+  end
+
+  if util.truthy(raw) then
+    return _M.get_raw_ip_info(addr)
+
+  else
+    return _M.get_ip_info(addr)
+  end
 end
 
 
 _M.is_valid = valid_ip
 
+
 ---@param opts doorbell.config
 function _M.init(opts)
-  if opts.geoip_db then
-    local mmdb = require("geoip.mmdb")
-    local db, err = mmdb.load_database(opts.geoip_db)
-    if not db then
-      log.alertf("failed loading geoip database file (%s): %s", opts.geoip_db, err)
-    end
-    geoip = db
-  end
+  init_geoip(opts)
 
   local trusted_cidrs = opts.trusted
   if trusted_cidrs then

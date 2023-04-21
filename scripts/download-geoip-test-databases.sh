@@ -12,6 +12,8 @@ readonly FILES=(
     test-data/GeoLite2-City-Test.mmdb
     source-data/GeoLite2-Country-Test.json
     test-data/GeoLite2-Country-Test.mmdb
+    source-data/GeoLite2-ASN-Test.json
+    test-data/GeoLite2-ASN-Test.mmdb
 )
 
 for file in "${FILES[@]}"; do

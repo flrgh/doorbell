@@ -76,7 +76,7 @@ describe("IP API", function()
   local GEOIP_CASES = {
     {
       name = "IPv4 city",
-      db = test.constants.GEOIP_CITY_DB,
+      city_db = test.constants.GEOIP_CITY_DB,
       exp = {
         addr           = "216.160.83.56",
         city           = "Milton",
@@ -94,13 +94,22 @@ describe("IP API", function()
     },
     {
       name = "IPv4 country",
-      db = test.constants.GEOIP_COUNTRY_DB,
+      country_db = test.constants.GEOIP_COUNTRY_DB,
       exp = {
         addr           = "216.160.83.56",
         continent      = "North America",
         continent_code = "NA",
         country        = "United States",
         country_code   = "US",
+      }
+    },
+    {
+      name = "IPv4 ASN",
+      asn_db = test.constants.GEOIP_ASN_DB,
+      exp = {
+        addr = "220.1.2.3",
+        asn  = 17676,
+        org  = "Softbank BB Corp.",
       }
     },
   }
@@ -111,7 +120,9 @@ describe("IP API", function()
       lazy_setup(function()
         conf = test.config(prefix)
         conf.trusted = { "127.0.0.0/8", "::1"}
-        conf.geoip_db = case.db
+        conf.geoip_city_db = case.city_db
+        conf.geoip_country_db = case.country_db
+        conf.geoip_asn_db = case.asn_db
         nginx = test.nginx(prefix, conf)
         nginx:conf_test()
         nginx:start()
@@ -151,4 +162,38 @@ describe("IP API", function()
       end)
     end)
   end
+
+  describe("/ip/info/:addr [errors]", function()
+    lazy_setup(function()
+      conf = test.config(prefix)
+      conf.trusted = { "127.0.0.0/8", "::1"}
+      conf.geoip_city_db = test.constants.GEOIP_CITY_DB
+      nginx = test.nginx(prefix, conf)
+      nginx:conf_test()
+      nginx:start()
+      client = test.client()
+    end)
+
+    lazy_teardown(function()
+      client:close()
+      nginx:stop()
+    end)
+
+    it("returns 404 if no IP info is found", function()
+      local res, err = client:get("/ip/info/1.2.3.4")
+      assert.is_nil(err)
+      assert.same(404, res.status)
+      assert.same("application/json", res.headers.content_type)
+      assert.same({ message = "no ip info found" }, res.json)
+    end)
+
+    it("returns 400 for invalid input", function()
+      local res, err = client:get("/ip/info/not-an-ip")
+      assert.is_nil(err)
+      assert.same(400, res.status)
+      assert.same("application/json", res.headers.content_type)
+      assert.same({ message = "invalid IP address" }, res.json)
+    end)
+
+  end)
 end)

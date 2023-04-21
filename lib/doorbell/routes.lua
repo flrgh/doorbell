@@ -255,7 +255,15 @@ function _M.init(config)
     content_type = "application/json",
     GET = function()
       local addr = ip.get_forwarded_ip()
-      return send(200, ip.get_ip_info(addr))
+
+      local info, err, status = ip.info_api(addr, ngx.var.arg_raw)
+
+      if info then
+        return send(200, info)
+
+      else
+        return send(status or 500, { message = err or "unknown error" })
+      end
     end,
   }
 
@@ -267,12 +275,14 @@ function _M.init(config)
     content_type = "application/json",
     GET = function(_, match)
       local addr = match.addr
+      local info, err, status = ip.info_api(addr, ngx.var.arg_raw)
 
-      if not ip.is_valid(addr) then
-        return send(400, { addr = addr, error = "invalid IP address" })
+      if info then
+        return send(200, info)
+
+      else
+        return send(status or 500, { message = err or "unknown error" })
       end
-
-      return send(200, ip.get_ip_info(addr))
     end,
   }
 

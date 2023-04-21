@@ -6,6 +6,7 @@ readonly GEOIP=./geoip
 readonly DOWNLOAD=${GEOIP}/download
 readonly GEOIP_CITY=${DOWNLOAD}/GeoLite2-City.tar.gz
 readonly GEOIP_COUNTRY=${DOWNLOAD}/GeoLite2-Country.tar.gz
+readonly GEOIP_ASN=${DOWNLOAD}/GeoLite2-ASN.tar.gz
 readonly BASE_URL=https://download.maxmind.com/app/geoip_download
 
 readonly NO_DOWNLOAD=${NO_DOWNLOAD:-0}
@@ -31,6 +32,16 @@ if (( NO_DOWNLOAD == 0 )); then
         --time-cond "$GEOIP_COUNTRY" \
         --output "$GEOIP_COUNTRY" \
         --url "${BASE_URL}?edition_id=GeoLite2-Country&license_key=${MAXMIND_LICENSE_KEY}&suffix=tar.gz"
+
+    echo "Downloading GeoIP ASN DB"
+    curl \
+        --fail \
+        --silent \
+        --location \
+        --time-cond "$GEOIP_ASN" \
+        --output "$GEOIP_ASN" \
+        --url "${BASE_URL}?edition_id=GeoLite2-ASN&license_key=${MAXMIND_LICENSE_KEY}&suffix=tar.gz"
+
 fi
 
 if (( NO_UNPACK == 0 )); then
@@ -45,4 +56,11 @@ if (( NO_UNPACK == 0 )); then
       -C "$GEOIP" \
       --strip-components 1 \
       --wildcards '*.mmdb'
+
+    echo "Unpacking GeoIP ASN DB"
+    tar xf "$GEOIP_ASN" \
+      -C "$GEOIP" \
+      --strip-components 1 \
+      --wildcards '*.mmdb'
+
 fi
