@@ -1,18 +1,20 @@
 ---@class doorbell.config : table
 ---
----@field allow       doorbell.rule[]
----@field asset_dir   string
----@field base_url    string
----@field cache_size  integer
----@field deny        doorbell.rule[]
----@field geoip_db    string
----@field host        string
----@field log_dir     string
----@field notify      doorbell.notify.config
----@field runtime_dir string
----@field trusted     string[]
----@field metrics     doorbell.metrics.config
----@field ota?        doorbell.ota.config
+---@field allow            doorbell.rule[]
+---@field asset_dir        string
+---@field base_url         string
+---@field cache_size       integer
+---@field deny             doorbell.rule[]
+---@field geoip_asn_db     string
+---@field geoip_city_db    string
+---@field geoip_country_db string
+---@field host             string
+---@field log_dir          string
+---@field notify           doorbell.notify.config
+---@field runtime_dir      string
+---@field trusted          string[]
+---@field metrics          doorbell.metrics.config
+---@field ota?             doorbell.ota.config
 local _M = {
   _VERSION = require("doorbell.constants").version,
 }
@@ -253,6 +255,30 @@ local FIELDS = {
   },
 
   { name = "geoip_db",
+    from_env = true,
+    _validate = all {
+      is_type("string"),
+      is_file,
+    }
+  },
+
+  { name = "geoip_country_db",
+    from_env = true,
+    _validate = all {
+      is_type("string"),
+      is_file,
+    }
+  },
+
+  { name = "geoip_city_db",
+    from_env = true,
+    _validate = all {
+      is_type("string"),
+      is_file,
+    }
+  },
+
+  { name = "geoip_asn_db",
     from_env = true,
     _validate = all {
       is_type("string"),

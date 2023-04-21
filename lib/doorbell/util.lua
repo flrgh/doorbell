@@ -360,5 +360,17 @@ end
 _M.deep_copy = deep_copy
 
 
+---@param value any
+function _M.truthy(value)
+  if type(value) == "string" then
+    value = value:lower()
+  end
+
+  return value == "yes"
+      or value == "1"
+      or value == "true"
+      or value == true
+      or value == 1
+end
 
 return _M

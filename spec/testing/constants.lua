@@ -14,4 +14,6 @@ const.GEOIP_CITY_DB = join(const.ROOT_DIR, "geoip", "GeoLite2-City-Test.mmdb")
 
 const.GEOIP_COUNTRY_DB = join(const.ROOT_DIR, "geoip", "GeoLite2-Country-Test.mmdb")
 
+const.GEOIP_ASN_DB = join(const.ROOT_DIR, "geoip", "GeoLite2-ASN-Test.mmdb")
+
 return const

@@ -30,7 +30,7 @@ local function validator(schema)
 end
 
 
----@param cidr string
+---@param cidr string|string[]
 ---@return boolean? ok
 ---@return string? error
 local function validate_cidr(cidr)
@@ -102,22 +102,63 @@ local function validate_rule(rule)
   return true
 end
 
+
+---@param config doorbell.config
+---@param field string
+local function validate_config_file_exists(config, field)
+  local value = config[field]
+
+  if value == nil then
+    return true
+
+  else
+    assert(type(value) == "string", "unreachable")
+  end
+
+  local fh, err = io.open(value, "rb")
+  if not fh then
+    return nil, "couldn't open " .. field .. " file: " .. tostring(err)
+  end
+
+  fh:close()
+
+  return true
+end
+
+
 ---@param config doorbell.config
 ---@return boolean? ok
 ---@return string? error
 local function validate_config(config)
+  local ok, err
+
   if config.trusted then
-    local ok, err = validate_cidr(config.trusted)
+    ok, err = validate_cidr(config.trusted)
     if not ok then
       return nil, "invalid trusted IP cidrs: " .. tostring(err)
     end
   end
 
   if config.base_url then
-    local ok, err = parse_uri(nil, config.base_url)
+    ok, err = parse_uri(nil, config.base_url)
     if not ok then
       return nil, "invalid base_url: " .. tostring(err)
     end
+  end
+
+  ok, err = validate_config_file_exists(config, "geoip_country_db")
+  if not ok then
+    return nil, err
+  end
+
+  ok, err = validate_config_file_exists(config, "geoip_city_db")
+  if not ok then
+    return nil, err
+  end
+
+  ok, err = validate_config_file_exists(config, "geoip_asn_db")
+  if not ok then
+    return nil, err
   end
 
   return true
@@ -624,22 +665,43 @@ config.fields.host = {
   minLength = 1,
 }
 
+config.fields.geoip_country_db = {
+  description = "Path to GeoIP Country database (.mmdb file)",
+  type = "string",
+  pattern = ".+[.]mmdb$",
+}
+
+config.fields.geoip_asn_db = {
+  description = "Path to GeoIP ASN database (.mmdb file)",
+  type = "string",
+  pattern = ".+[.]mmdb$",
+}
+
+config.fields.geoip_city_db = {
+  description = "Path to GeoIP City database (.mmdb file)",
+  type = "string",
+  pattern = ".+[.]mmdb$",
+}
+
 config.object = {
   description = "Doorbell runtime configuration object",
   type = "object",
   properties = {
-    allow       = config.fields.allow,
-    asset_dir   = config.fields.asset_dir,
-    base_url    = config.fields.base_url,
-    cache_size  = config.fields.cache_size,
-    deny        = config.fields.deny,
-    host        = config.fields.host,
-    log_dir     = config.fields.log_dir,
-    metrics     = config.fields.metrics,
-    notify      = config.fields.notify,
-    ota         = config.fields.ota,
-    runtime_dir = config.fields.runtime_dir,
-    trusted     = config.fields.trusted,
+    allow              = config.fields.allow,
+    asset_dir          = config.fields.asset_dir,
+    base_url           = config.fields.base_url,
+    cache_size         = config.fields.cache_size,
+    deny               = config.fields.deny,
+    geoip_asn_db       = config.fields.geoip_asn_db,
+    geoip_city_db      = config.fields.geoip_city_db,
+    geoip_country_db   = config.fields.geoip_country_db,
+    host               = config.fields.host,
+    log_dir            = config.fields.log_dir,
+    metrics            = config.fields.metrics,
+    notify             = config.fields.notify,
+    ota                = config.fields.ota,
+    runtime_dir        = config.fields.runtime_dir,
+    trusted            = config.fields.trusted,
   },
   additionalProperties = false,
   required = {
@@ -658,18 +720,21 @@ config.input = {
   description = "Doorbell runtime configuration input",
   type = "object",
   properties = {
-    allow       = config.fields.allow,
-    asset_dir   = config.fields.asset_dir,
-    base_url    = config.fields.base_url,
-    cache_size  = config.fields.cache_size,
-    deny        = config.fields.deny,
-    host        = config.fields.host,
-    log_dir     = config.fields.log_dir,
-    metrics     = config.fields.metrics,
-    notify      = config.fields.notify,
-    ota         = config.fields.ota,
-    runtime_dir = config.fields.runtime_dir,
-    trusted     = config.fields.trusted,
+    allow              = config.fields.allow,
+    asset_dir          = config.fields.asset_dir,
+    base_url           = config.fields.base_url,
+    cache_size         = config.fields.cache_size,
+    deny               = config.fields.deny,
+    geoip_asn_db       = config.fields.geoip_asn_db,
+    geoip_city_db      = config.fields.geoip_city_db,
+    geoip_country_db   = config.fields.geoip_country_db,
+    host               = config.fields.host,
+    log_dir            = config.fields.log_dir,
+    metrics            = config.fields.metrics,
+    notify             = config.fields.notify,
+    ota                = config.fields.ota,
+    runtime_dir        = config.fields.runtime_dir,
+    trusted            = config.fields.trusted,
   },
   additionalProperties = false,
   required = {
