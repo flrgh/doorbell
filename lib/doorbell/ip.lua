@@ -283,6 +283,25 @@ function _M.get_country(addr)
 end
 
 
+---@param addr string
+---
+---@return integer? asn
+---@return string?  org
+---@return string?  error
+function _M.get_net_info(addr)
+  if not ASN_DB then return nil, nil, "asn not enabled" end
+
+  assert(cache, "doorbell.ip module not initialized")
+
+  local info = get_ip_info(addr)
+  if not info then
+    return nil, nil, "no IP info for " .. addr
+  end
+
+  return info.asn, info.org
+end
+
+
 local function get_forwarded(forwarded, pos)
   pos = pos or #forwarded
   local addr = forwarded[pos]

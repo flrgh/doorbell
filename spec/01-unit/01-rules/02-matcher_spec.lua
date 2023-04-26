@@ -149,4 +149,56 @@ describe("matching", function()
     req.country = ""
     assert.is_nil(match(req))
   end)
+
+  it("can match based on network ASN", function()
+    add {
+      { comment = "a", asn = 1000 },
+      { comment = "b", asn = 1001 },
+    }
+
+    req.asn = 1000
+    assert.equals("a", match(req).comment)
+
+    req.asn = 1001
+    assert.equals("b", match(req).comment)
+  end)
+
+  it("defaults to 0 for the request network ASN", function()
+    add {
+      { comment = "a", asn = 1000 },
+      { comment = "b", asn = 1001 },
+    }
+
+    req.asn = nil
+    assert.is_nil(match(req))
+
+    add {
+      { comment = "c", asn = 0 },
+    }
+
+    assert.equals("c", match(req).comment)
+  end)
+
+  it("can match based on network ORG", function()
+    add {
+      { comment = "a", org = "my org" },
+      { comment = "b", org = "~my (special|normal) org" },
+      { comment = "c", org = "" },
+    }
+
+    req.org = "my org"
+    assert.equals("a", match(req).comment)
+
+    req.org = "my special org"
+    assert.equals("b", match(req).comment)
+
+    req.org = "my normal org"
+    assert.equals("b", match(req).comment)
+
+    req.org = ""
+    assert.equals("c", match(req).comment)
+
+    req.org = nil
+    assert.equals("c", match(req).comment)
+  end)
 end)
