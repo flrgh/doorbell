@@ -18,6 +18,7 @@ local type     = type
 ---@field metrics_enabled boolean
 ---@field log_enabled     boolean
 ---@field allow_untrusted boolean
+---@field need_query      boolean
 ---@field content_type    string
 ---@field GET             doorbell.route.handler
 ---@field POST            doorbell.route.handler

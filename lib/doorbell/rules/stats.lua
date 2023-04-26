@@ -15,8 +15,13 @@ local insert   = table.insert
 
 local SAVE_PATH
 
+---@type ngx.semaphore
+local SEMAPHORE
+
 local SHM  = require("doorbell.shm").stats
 local META  = require("doorbell.shm").doorbell
+
+local EMPTY = {}
 
 local function need_save(x)
   local key = "stats:need-save"
@@ -44,6 +49,7 @@ end
 local match_count_key = tpl("%s:match_count")
 local match_last_key  = tpl("%s:last_match")
 
+
 ---@return table<string, doorbell.rule.stat>
 local function get_all()
   local stats = {}
@@ -68,11 +74,13 @@ local function get_all()
   return stats
 end
 
+
 local function table_keys(t)
   local tmp = {}
   for k in pairs(t) do insert(tmp, k) end
   return ipairs(tmp)
 end
+
 
 ---@param stats table<string, doorbell.rule.stat>
 ---@return table<string, doorbell.rule.stat>
@@ -88,9 +96,7 @@ local function remove_empty(stats)
   return stats
 end
 
----@class doorbell.rule.stat : table
----@field match_count number
----@field last_match number
+
 
 local function get_or_set(key, value, ttl)
   if value then
@@ -107,6 +113,7 @@ local function get_or_set(key, value, ttl)
   return SHM:get(key)
 end
 
+
 ---@param rule doorbell.rule
 ---@param stamp? number
 ---@param ttl? number
@@ -116,6 +123,7 @@ local function last_matched(rule, stamp, ttl)
   local key = match_last_key(rule)
   return get_or_set(key, stamp, ttl)
 end
+
 
 ---@param rule doorbell.rule
 ---@param count? number
@@ -140,11 +148,11 @@ function _M.inc_match_count(rule, value, ts)
   local new, err = SHM:incr(match_count_key(rule), value or 1, 0, ttl)
   if new then
     need_save(1)
-    rule.match_count = new
   else
     log.errf("failed incrementing match count for rule %s: %s", rule.hash, err)
   end
 end
+
 
 ---@param rule doorbell.rule
 ---@param last_match number
@@ -157,9 +165,8 @@ function _M.set_last_match(rule, last_match, ts)
   else
     log.errf("failed setting last match timestamp for rule %s: %s", rule.hash, err)
   end
-
-  rule.last_match = last_match
 end
+
 
 ---@param rule doorbell.rule
 function _M.delete(rule)
@@ -169,18 +176,42 @@ function _M.delete(rule)
   return ok and bok, err or berr
 end
 
+
 function _M.flush_expired()
   SHM:flush_expired()
 end
 
-function _M.save()
-  local ok, written, err = util.update_json_file(SAVE_PATH, remove_empty(get_all()))
+
+local function save()
+  local stats = remove_empty(get_all())
+
+  local ok, err = SEMAPHORE:wait(1)
+
+  if err == "timeout" then
+    log.alert("failed to acquire lock to save stats to disk")
+    return
+
+  elseif not ok then
+    log.emerg("unexpected error waiting for lock to save stats to disk: ", err)
+    return
+  end
+
+
+  local written
+  ok, written, err = util.update_json_file(SAVE_PATH, stats)
+
+  SEMAPHORE:post(1)
+
   if not ok then
     log.err("failed writing stats to disk: ", err)
+
   elseif written then
     log.info("saved stats to ", SAVE_PATH)
   end
 end
+
+_M.save = save
+
 
 ---@param rules doorbell.rule[]
 function _M.load(rules)
@@ -193,23 +224,31 @@ function _M.load(rules)
   end
 
   local time = now()
-  local empty = {}
   for _, rule in ipairs(rules) do
-    local st = stats[rule.hash] or stats[rule.id] or empty
-    last_matched(rule, st.last_match or rule.last_match or nil, rule:remaining_ttl(time))
-    match_count(rule, st.match_count or rule.match_count or nil, rule:remaining_ttl(time))
+    local stat = stats[rule.hash] or EMPTY
+    local ttl = rule:remaining_ttl(time)
+
+    if stat.last_match then
+      last_matched(rule, stat.last_match, ttl)
+    end
+
+    if stat.match_count then
+      match_count(rule, stat.match_count, ttl)
+    end
   end
 end
+
 
 ---@param conf doorbell.config
 function _M.init(conf)
   SAVE_PATH = util.join(conf.runtime_dir, "stats.json")
 end
 
+
 local function saver(premature, interval)
   if premature or exiting() then
     log.notice("NGINX is exiting. One. Last. Save...")
-    _M.save()
+    save()
     return
   end
 
@@ -220,7 +259,7 @@ local function saver(premature, interval)
 
     local count = need_save()
     if count > 0 then
-      _M.save()
+      save()
       need_save(-count)
     end
 
@@ -230,12 +269,49 @@ local function saver(premature, interval)
   assert(timer_at(interval, saver, interval))
 end
 
+
 function _M.init_agent()
-  assert(timer_at(0, saver, 30))
+  SEMAPHORE = assert(require("ngx.semaphore").new(1))
+  assert(timer_at(0, saver, 1))
 end
+
 
 function _M.list()
   return get_all()
 end
+
+---@class doorbell.rule.stat : table
+---
+---@field match_count number
+---@field last_match number
+
+
+---@param rule_or_hash doorbell.rule|string
+---@return doorbell.rule.stat? stat
+function _M.get(rule_or_hash)
+  local last = SHM:get(match_last_key(rule_or_hash))
+  local count = SHM:get(match_count_key(rule_or_hash))
+
+  return {
+    last_match = last or 0,
+    match_count = count or 0,
+  }
+end
+
+
+---@param rule doorbell.rule
+function _M.decorate(rule)
+  rule.last_matched = SHM:get(match_last_key(rule)) or 0
+  rule.match_count  = SHM:get(match_count_key(rule)) or 0
+end
+
+
+---@param rules doorbell.rule[]
+function _M.decorate_list(rules)
+  for i = 1, #rules do
+    _M.decorate(rules[i])
+  end
+end
+
 
 return _M

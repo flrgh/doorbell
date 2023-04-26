@@ -31,6 +31,8 @@ local CONDITIONS = {
   "org",
 }
 
+_M.CONDITIONS = CONDITIONS
+
 local DENY  = const.actions.deny
 
 local TILDE = byte("~")
