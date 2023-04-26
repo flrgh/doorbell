@@ -12,11 +12,11 @@ local random     = require "resty.random"
 local str        = require "resty.string"
 local cjson      = require "cjson"
 
-local encode     = cjson.encode
-local decode     = cjson.decode
-local fmt = string.format
-local now = ngx.now
-local sleep = ngx.sleep
+local encode   = cjson.encode
+local decode   = cjson.decode
+local fmt      = string.format
+local now      = ngx.now
+local sleep    = ngx.sleep
 
 
 local TTL_PENDING = const.ttl.pending
@@ -26,12 +26,14 @@ local STATES      = const.states
 
 local base_url
 
+
 ---@param addr string
 ---@return boolean
 local function is_pending(addr)
   return SHM:get("pending:" .. addr)
 end
 _M.is_pending = is_pending
+
 
 ---@param addr string
 ---@param pending boolean
@@ -44,6 +46,7 @@ local function set_pending(addr, pending)
   end
 end
 _M.set_pending = set_pending
+
 
 ---@param req doorbell.request
 ---@return doorbell.auth_state state
@@ -93,6 +96,7 @@ function _M.get_token_address(token)
     return decode(v)
   end
 end
+
 
 ---@param req doorbell.request
 ---@param timeout? number
@@ -180,6 +184,7 @@ function _M.request(req)
 
   return lock:unlock(sent and true)
 end
+
 
 ---@param conf doorbell.config
 function _M.init(conf)
