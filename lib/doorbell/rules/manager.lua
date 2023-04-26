@@ -133,13 +133,15 @@ do
   function cache_key(req)
     local country = (have_geoip and req.country) or "_"
     return fmt(
-      "%s||%s||%s||%s||%s||%s",
+      "%s||%s||%s||%s||%s||%s||%s||%s",
       req.addr,
       country,
       req.method,
       req.host,
       req.path,
-      req.ua
+      req.ua,
+      req.asn or 0,
+      req.org or ""
     )
   end
 end
