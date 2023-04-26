@@ -26,12 +26,15 @@ local ngx        = ngx
 local header     = ngx.header
 local start_time = ngx.req.start_time
 local get_method = ngx.req.get_method
+local get_query  = ngx.req.get_uri_args
 local var        = ngx.var
 local assert     = assert
 local send       = http.send
 
 ---@type ngx.shared.DICT
 local SHM = require("doorbell.shm").doorbell
+
+local MAX_QUERY_ARGS = 20
 
 
 ---@class doorbell.ctx : table
@@ -46,6 +49,7 @@ local SHM = require("doorbell.shm").doorbell
 ---@field no_metrics      boolean
 ---@field template        fun(env:table):string
 ---@field route           doorbell.route
+---@field query?          table<string, any>
 
 
 function _M.init()
@@ -127,6 +131,10 @@ function _M.run()
   local handler = route[method] or route["*"]
   if not handler then
     send(405)
+  end
+
+  if route.need_query then
+    ctx.query = get_query(MAX_QUERY_ARGS)
   end
 
   return handler(ctx, match)

@@ -692,6 +692,9 @@ function _M.init(conf)
     rule = assert(rules.new(rule))
     assert(_M.upsert(rule, true))
   end
+
+  update_local_rules()
+  stats.load(RULES)
 end
 
 function _M.update()

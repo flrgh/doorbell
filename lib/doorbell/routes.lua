@@ -12,6 +12,7 @@ local util    = require "doorbell.util"
 local views   = require "doorbell.views"
 local rules   = require "doorbell.rules.api"
 local ip      = require "doorbell.ip"
+local stats   = require "doorbell.rules.stats"
 
 local safe_decode = require("cjson.safe").decode
 
@@ -155,11 +156,16 @@ function _M.init(config)
     metrics_enabled = false,
     allow_untrusted = false,
     content_type    = "application/json",
-    GET             = function()
+    need_query      = true,
+    GET             = function(ctx)
       local list, err = rules.list()
       if not list then
         log.err("failed to list rules for API request: ", err)
         return send(500, { error = "internal server error" })
+      end
+
+      if util.truthy(ctx.query.stats) then
+        util.map(list, stats.decorate)
       end
 
       return send(200, { data = list })
@@ -191,10 +197,17 @@ function _M.init(config)
     metrics_enabled = false,
     allow_untrusted = false,
     content_type    = "application/json",
-    GET             = function(_, match)
+    need_query      = true,
+    GET             = function(ctx, match)
       local rule = rules.get(match.hash_or_id)
+
       if rule then
+        if util.truthy(ctx.query.stats) then
+          stats.decorate(rule)
+        end
+
         return send(200, rule)
+
       else
         return send(404, { error = "rule not found" })
       end

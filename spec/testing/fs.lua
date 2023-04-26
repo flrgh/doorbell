@@ -99,10 +99,26 @@ function fs.not_empty(fname)
   return pl_path.isfile(fname) and pl_path.getsize(fname) > 0
 end
 
+
 function fs.truncate(fname)
   local fh = assert(io.open(fname, "w+"))
   fh:flush()
   fh:close()
 end
+
+
+---@param path string
+---@return integer mtime
+---@return string? error
+function fs.mtime(path)
+  local mtime, err = pl_path.getmtime(path)
+
+  if mtime then
+    return assert(tonumber(mtime))
+  end
+
+  return -1, err
+end
+
 
 return fs
