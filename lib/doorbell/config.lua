@@ -20,6 +20,7 @@ local _M = {
 }
 
 local util = require "doorbell.util"
+local http = require "doorbell.http"
 local pl_path = require "pl.path"
 local cjson_safe = require "cjson.safe"
 
@@ -407,11 +408,11 @@ function _M.init()
   end
 
   do
-    local m = ngx.re.match(_M.base_url, "^(http(s)?://)?(?<host>[a-zA-Z][a-zA-Z0-9_-]*)")
-    if not (m and m.host) then
+    local parsed = http.parse_url(_M.base_url)
+    if not parsed or not parsed.host then
       util.errorf("failed to parse hostname from base_url: %s", _M.base_url)
     end
-    _M.host = m.host:lower()
+    _M.host = parsed.host
   end
 
 end

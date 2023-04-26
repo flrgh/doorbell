@@ -7,8 +7,11 @@ describe("doorbell", function()
   local client
   local nginx
 
+  ---@type doorbell.config
+  local conf
+
   lazy_setup(function()
-    local conf = test.config(prefix)
+    conf = test.config(prefix)
     conf.allow = { { ua = "allow" } }
     conf.deny  = { { ua = "deny" } }
     conf.notify = nil
@@ -94,6 +97,21 @@ describe("doorbell", function()
       assert.is_nil(err)
       assert.equals(403, res.status)
     end)
+
+    it("allows access to the answer endpoint", function()
+      headers["user-agent"] = "nope"
+
+      client:add_x_forwarded_headers("1.2.3.4", "GET", conf.base_url .. "answer")
+      res, err = client:send()
+      assert.is_nil(err)
+      assert.equals(200, res.status)
+
+      client:add_x_forwarded_headers("1.2.3.4", "POST", conf.base_url .. "answer")
+      res, err = client:send()
+      assert.is_nil(err)
+      assert.equals(200, res.status)
+    end)
+
 
     it("responds to API updates", function()
       local ua = "api-test"
