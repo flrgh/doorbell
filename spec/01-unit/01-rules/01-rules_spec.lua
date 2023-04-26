@@ -185,6 +185,20 @@ describe("doorbell.rules", function()
         plain = true,
       },
 
+      {
+        desc = "asn must be a number",
+        input = { action = "allow", asn = "NOPE" },
+      },
+
+      {
+        desc = "asn must be >= 0",
+        input = { action = "allow", asn = -1 },
+      },
+
+      {
+        desc = "org must be a string",
+        input = { action = "allow", org = false },
+      },
     }
 
     for _, case in ipairs(validation) do
@@ -223,7 +237,7 @@ describe("doorbell.rules", function()
     it("auto-generates the `hash` field based on rule conditions", function()
       local rule, err = new { ua = "test", action = "deny", source = "config" }
       assert.is_nil(err)
-      assert.equals("c6327873a06d2806f4584678ff658a79", rule.hash)
+      assert.same("8e195d0137c229447f423ffd83a1858b", rule.hash)
 
       local other = new { ua = "test", action = "allow", source = "user"}
       assert.equals(rule.hash, other.hash)

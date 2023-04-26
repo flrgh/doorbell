@@ -27,6 +27,8 @@ local CONDITIONS = {
   "path",
   "method",
   "country",
+  "asn",
+  "org",
 }
 
 local DENY  = const.actions.deny
@@ -83,14 +85,16 @@ do
   ---@param rule doorbell.rule
   ---@return string
   function hash_rule(rule)
-    buf[1] = rule.addr   or ""
-    buf[2] = rule.cidr   or ""
-    buf[3] = rule.method or ""
-    buf[4] = rule.host   or ""
-    buf[5] = rule.path   or ""
-    buf[6] = rule.ua     or ""
+    buf[1] = rule.addr    or ""
+    buf[2] = rule.cidr    or ""
+    buf[3] = rule.method  or ""
+    buf[4] = rule.host    or ""
+    buf[5] = rule.path    or ""
+    buf[6] = rule.ua      or ""
     buf[7] = rule.country or ""
-    local s = concat(buf, "||", 1, 7)
+    buf[8] = rule.asn     or ""
+    buf[9] = rule.org     or ""
+    local s = concat(buf, "||", 1, 9)
     return md5(s)
   end
 end
@@ -113,6 +117,7 @@ _M.count_conditions = count_conditions
 local SERIALIZED_FIELDS = {
   "action",
   "addr",
+  "asn",
   "cidr",
   "comment",
   "country",
@@ -122,6 +127,7 @@ local SERIALIZED_FIELDS = {
   "host",
   "id",
   "method",
+  "org",
   "path",
   "source",
   "terminate",
@@ -151,14 +157,22 @@ _M.SERIALIZED_FIELDS = SERIALIZED_FIELDS
 --- HTTP User-Agent request header
 ---@alias doorbell.rule.fields.ua string
 
+--- Network ASN
+---@alias doorbell.rule.fields.asn integer
+
+--- Network Organization
+---@alias doorbell.rule.fields.org string
+
 
 ---@class doorbell.rule.dehydrated: table
 ---
 ---@field addr        doorbell.rule.fields.addr
+---@field asn         doorbell.rule.fields.asn
 ---@field cidr        doorbell.rule.fields.cidr
 ---@field country     doorbell.rule.fields.country
 ---@field host        doorbell.rule.fields.host
 ---@field method      doorbell.rule.fields.method
+---@field org         doorbell.rule.fields.org
 ---@field path        doorbell.rule.fields.path
 ---@field ua          doorbell.rule.fields.ua
 ---
@@ -186,6 +200,7 @@ _M.SERIALIZED_FIELDS = SERIALIZED_FIELDS
 ---
 ---@field action      doorbell.action
 ---@field addr        string
+---@field asn         doorbell.rule.fields.asn
 ---@field cidr        string
 ---@field comment     string
 ---@field country     string
@@ -195,6 +210,7 @@ _M.SERIALIZED_FIELDS = SERIALIZED_FIELDS
 ---@field method      string
 ---@field path        string
 ---@field terminate   boolean
+---@field org         doorbell.rule.fields.org
 ---@field ua          string
 
 
@@ -333,6 +349,7 @@ function _M.new(opts)
     id          = opts.id,
     action      = opts.action,
     addr        = opts.addr,
+    asn         = opts.asn,
     cidr        = opts.cidr,
     created     = opts.created,
     deny_action = opts.deny_action,
@@ -343,6 +360,7 @@ function _M.new(opts)
     source      = opts.source,
     terminate   = opts.terminate,
     ua          = opts.ua,
+    org         = opts.org,
     comment     = opts.comment,
     country     = opts.country,
   }

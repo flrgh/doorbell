@@ -318,6 +318,18 @@ rule.fields.conditions = {
   minimum = 1,
 }
 
+rule.fields.asn = {
+  description = "Network ASN",
+  type = "integer",
+  minimum = 0,
+}
+
+rule.fields.org = {
+  description = "Network Org",
+  type = "string",
+}
+
+
 local function required(name)
   return {
     type = "object",
@@ -340,6 +352,8 @@ rule.policy.at_least_one_condition = {
     required("method"),
     required("ua"),
     required("country"),
+    required("asn"),
+    required("org"),
   },
 }
 
@@ -385,17 +399,19 @@ rule.entity = {
 
   properties = {
     action      = rule.fields.action,
-    deny_action = rule.fields.deny_action,
     addr        = rule.fields.addr,
+    asn         = rule.fields.asn,
     cidr        = rule.fields.cidr,
     comment     = rule.fields.comment,
     conditions  = rule.fields.conditions,
     created     = rule.fields.created,
+    deny_action = rule.fields.deny_action,
     expires     = rule.fields.expires,
     hash        = rule.fields.hash,
     host        = rule.fields.host,
     id          = rule.fields.uuid,
     method      = rule.fields.method,
+    org         = rule.fields.org,
     path        = rule.fields.path,
     source      = rule.fields.source,
     terminate   = rule.fields.terminate,
@@ -425,6 +441,7 @@ rule.create = {
       required = { "action", "source" },
       properties = {
         action      = rule.fields.action,
+        asn         = rule.fields.asn,
         deny_action = rule.fields.deny_action,
         addr        = rule.fields.addr,
         cidr        = rule.fields.cidr,
@@ -435,6 +452,7 @@ rule.create = {
         host        = rule.fields.host,
         id          = rule.fields.uuid,
         method      = rule.fields.method,
+        org         = rule.fields.org,
         path        = rule.fields.path,
         source      = rule.fields.source,
         terminate   = rule.fields.terminate,
@@ -457,6 +475,7 @@ rule.patch = {
   type = "object",
   properties = {
     action      = rule.fields.action,
+    asn         = rule.fields.asn,
     deny_action = rule.fields.deny_action,
     addr        = rule.fields.addr,
     cidr        = rule.fields.cidr,
@@ -465,6 +484,7 @@ rule.patch = {
     expires     = rule.fields.expires,
     host        = rule.fields.host,
     method      = rule.fields.method,
+    org         = rule.fields.org,
     path        = rule.fields.path,
     terminate   = rule.fields.terminate,
     ttl         = rule.fields.ttl,
@@ -486,11 +506,13 @@ local conf_rule = {
   type = "object",
   properties = {
     addr        = rule.fields.addr,
+    asn         = rule.fields.asn,
     cidr        = rule.fields.cidr,
     comment     = rule.fields.comment,
     country     = rule.fields.country,
     host        = rule.fields.host,
     method      = rule.fields.method,
+    org         = rule.fields.org,
     path        = rule.fields.path,
     ua          = rule.fields.ua,
     deny_action = rule.fields.deny_action,

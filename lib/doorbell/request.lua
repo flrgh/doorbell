@@ -20,6 +20,7 @@ local exiting          = ngx.worker.exiting
 local tonumber         = tonumber
 local get_country      = ip.get_country
 local tostring         = tostring
+local get_net_info     = ip.get_net_info
 
 local pool    = "doorbell.request"
 local narr    = 0
@@ -38,9 +39,11 @@ local countries
 
 ---@class doorbell.request : table
 ---@field addr     string
+---@field asn?     integer
 ---@field scheme   string
 ---@field host     string
 ---@field uri      string
+---@field org?     string
 ---@field path     string
 ---@field method   string
 ---@field ua       string
@@ -103,6 +106,16 @@ function _M.new(ctx, headers)
     ctx.country_name = name_or_err
   else
     ctx.geoip_error = name_or_err
+  end
+
+  local asn, org, err = get_net_info(addr)
+  if err then
+    ctx.geoip_asn_error = err
+  else
+    r.asn = asn
+    r.org = org
+    ctx.asn = asn
+    ctx.org = org
   end
 
   return r

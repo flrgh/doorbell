@@ -65,6 +65,9 @@ end
 ---| "ua(regex)"
 ---| "method"
 ---| "country"
+---| "asn"
+---| "org(plain)"
+---| "org(regex)"
 
 local CRITERIA = {
   addr       = "addr",
@@ -76,6 +79,9 @@ local CRITERIA = {
   ua_regex   = "ua(regex)",
   method     = "method",
   country    = "country",
+  asn        = "asn",
+  org_plain  = "org(plain)",
+  org_regex  = "org(regex)",
 }
 
 local cmp_rule = rules.compare
@@ -92,7 +98,7 @@ function _M.new(list)
 
     ---@param rule doorbell.rule
     ---@param match doorbell.rule.criteria
-    ---@param value string
+    ---@param value string|integer
     local function add_criteria(rule, match, value)
       if rule:expired(time) then
         return
@@ -145,6 +151,18 @@ function _M.new(list)
       if r.country then
         add_criteria(r, CRITERIA.country, r.country)
       end
+
+      if r.asn then
+        add_criteria(r, CRITERIA.asn, r.asn)
+      end
+
+      if r.org then
+        if rules.is_regex(r.org) then
+          add_criteria(r, CRITERIA.org_regex, rules.regex(r.org))
+        else
+          add_criteria(r, CRITERIA.org_plain, r.org)
+        end
+      end
     end
   end
 
@@ -173,6 +191,16 @@ function _M.new(list)
   for re, rs in pairs(criteria[CRITERIA.ua_regex] or {}) do
     insert(uas_regex, {re, rs})
     uas_regex.n = (uas_regex.n or 0) + 1
+  end
+
+  local asns = criteria[CRITERIA.asn] or empty
+
+  local orgs_plain = criteria[CRITERIA.org_plain] or empty
+  local orgs_regex = { n = 0 }
+
+  for re, rs in pairs(criteria[CRITERIA.org_regex] or {}) do
+    insert(orgs_regex, {re, rs})
+    orgs_regex.n = (orgs_regex.n or 0) + 1
   end
 
 
@@ -239,12 +267,14 @@ function _M.new(list)
   ---@param req doorbell.request
   ---@return doorbell.rule?
   return function(req)
-    local addr   = assert(req.addr, "missing request addr")
-    local path   = assert(req.path, "missing request path")
-    local host   = assert(req.host, "missing request host")
-    local method = assert(req.method, "missing request method")
-    local ua     = req.ua or ""
+    local addr    = assert(req.addr, "missing request addr")
+    local path    = assert(req.path, "missing request path")
+    local host    = assert(req.host, "missing request host")
+    local method  = assert(req.method, "missing request method")
+    local ua      = req.ua or ""
     local country = req.country
+    local asn     = req.asn or 0
+    local org     = req.org or ""
 
     local match = new_match()
 
@@ -253,6 +283,8 @@ function _M.new(list)
     update_match(match, methods[method])
     update_match(match, hosts[host])
     update_match(match, uas_plain[ua])
+    update_match(match, asns[asn])
+    update_match(match, orgs_plain[org])
 
     if country then
       update_match(match, countries[country])
@@ -267,11 +299,17 @@ function _M.new(list)
       -- first, see if we have a match with the maximal number of conditions met
       if match.conditions < max_possible_conditions then
         update_match(match, cidrs:match(addr))
+
         if not match.terminate then
           update_match(match, regex_match(paths_regex, path))
         end
+
         if not match.terminate then
           update_match(match, regex_match(uas_regex, ua))
+        end
+
+        if not match.terminate then
+          update_match(match, regex_match(orgs_regex, org))
         end
       end
     end
