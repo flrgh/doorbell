@@ -1,15 +1,13 @@
-local rules   = require "doorbell.rules.manager"
 local log     = require "doorbell.log"
 local const   = require "doorbell.constants"
 local auth    = require "doorbell.auth"
 local ip      = require "doorbell.ip"
 local notify  = require "doorbell.notify"
+local http    = require "doorbell.http"
+local api     = require "doorbell.rules.api"
 
 local var = ngx.var
-local header = ngx.header
 local fmt = string.format
-local print = ngx.print
-
 
 local SCOPES = const.scopes
 local SUBJECTS = const.subjects
@@ -40,7 +38,7 @@ return function(ctx)
   local t = var.arg_t
   if not t then
     log.notice("/answer accessed with no token")
-    return ngx.exit(ngx.HTTP_NOT_FOUND)
+    return http.send(400)
   end
 
   if t == "TEST" then
@@ -63,31 +61,31 @@ return function(ctx)
 
     local current_ip = (var.arg_current and true) or false
 
-    header["content-type"] = "text/html"
-    print(render_form(ctx.template, req, errors, current_ip))
-    return ngx.exit(ngx.HTTP_OK)
+    http.send(200,
+              render_form(ctx.template, req, errors, current_ip),
+              { ["content-type"] = "text/html" })
   end
 
   local req = auth.get_token_address(t)
 
   if not req then
     log.noticef("/answer token %s not found", t)
-    return ngx.exit(ngx.HTTP_NOT_FOUND)
+    return http.send(404)
   end
 
   req.url = req.scheme .. "://" .. req.host .. req.uri
 
   local method = ngx.req.get_method()
   if not (method == "GET" or method == "POST") then
-    ngx.exit(ngx.HTTP_BAD_REQUEST)
+    return http.send(400)
   end
 
   local current_ip = req.addr == var.http_x_forwarded_for
 
   if method == "GET" then
-    header["content-type"] = "text/html"
-    print(render_form(ctx.template, req, nil, current_ip))
-    return ngx.exit(ngx.HTTP_OK)
+    return http.send(200,
+                     render_form(ctx.template, req, nil, current_ip),
+                     { ["content-type"] = "text/html" })
   end
 
   ngx.req.read_body()
@@ -110,9 +108,10 @@ return function(ctx)
   end
 
   if err then
-    header["content-type"] = "text/html"
-    print(render_form(ctx.template, req, { err }, current_ip))
-    return ngx.exit(ngx.HTTP_BAD_REQUEST)
+    log.noticef("POST /answer invalid form input: %s", err)
+    return http.send(400,
+                     render_form(ctx.template, req, { err }, current_ip),
+                     { ["content-type"] = "text/plain" })
   end
 
   local terminate = false
@@ -132,7 +131,8 @@ return function(ctx)
     addr = nil
   end
 
-  local rule = {
+  local rule
+  rule, err = api.insert({
     action    = (action == "approve" and "allow") or "deny",
     source    = "user",
     addr      = addr,
@@ -141,9 +141,13 @@ return function(ctx)
     ua        = ua,
     ttl       = PERIODS[period],
     terminate = terminate,
-  }
+  })
 
-  assert(rules.add(rule))
+  if not rule then
+    log.errf("POST /answer failed to insert rule: %s", err)
+    return http.send(500)
+  end
+
 
   notify.inc("answered")
 
@@ -157,7 +161,5 @@ return function(ctx)
     (PERIODS[period] == PERIODS.forever and "for all time") or ("for one " .. period)
   )
 
-  header["content-type"] = "text/plain"
-  ngx.say(msg)
-  return ngx.exit(ngx.HTTP_CREATED)
+  return http.send(201, msg, { ["content-type"] = "text/plain" })
 end

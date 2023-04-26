@@ -23,11 +23,24 @@ local function prepare(req)
     assert(req.body == nil, "request.json and request.body are " ..
                             "mutually exclusive")
 
+    assert(req.post == nil, "request.json and request.post are " ..
+                            "mutually exclusive")
+
     req.body = cjson.encode(req.json)
     req.json = nil
 
-    req.headers = req.headers or {}
+    req.headers = req.headers or _M.headers()
     req.headers["content-type"] = "application/json"
+
+  elseif req.post then
+    assert(req.body == nil, "request.post and request.body are " ..
+                            "mutually exclusive")
+
+    assert(type(req.post) == "table", "reqest.post must be a table")
+
+    req.body = assert(ngx.encode_args(req.post))
+    req.headers = req.headers or _M.headers()
+    req.headers["content-type"] = "application/x-www-form-urlencoded"
   end
 end
 
@@ -51,6 +64,8 @@ end
 ---@class spec.testing.client.request : resty.http.request_params
 ---
 ---@field json? table
+---
+---@field post? table
 
 
 ---@class spec.testing.client.response : table
@@ -180,68 +195,17 @@ for _, method in ipairs({"get", "put", "post", "delete", "patch"}) do
   ---@param params spec.testing.client.request
   client[method] = function(self, path, params)
     params = params or {}
-
-    if self.need_connect then
-      local ok, err = self.httpc:connect({
-        host   = self.host,
-        scheme = self.scheme,
-        port   = self.port,
-      })
-
-      if not ok then return nil, err end
-      self.need_connect = false
-    end
-
-    local req = {
+    self.request = {
       method  = method:upper(),
-      headers = _M.headers(),
+      headers = _M.headers(params.headers),
       path    = path,
       query   = params.query,
       body    = params.body,
       json    = params.json,
+      post    = params.post,
     }
 
-    prepare(req)
-
-    for k, v in pairs(self.headers) do
-      req.headers[k] = v
-    end
-
-    if params.headers then
-      for k, v in pairs(_M.headers(params.headers)) do
-        req.headers[k] = v
-      end
-    end
-
-    local res, err = self.httpc:request(req)
-
-    if not res then
-      self:close()
-      self.need_connect = true
-      return nil, err
-    end
-
-    local body, json
-    if res.has_body then
-      body = res:read_body()
-      local ct = res.headers["content-type"] or ""
-      if ct:find("application/json", 1, true) then
-        json = cjson.decode(body)
-      end
-    end
-
-    local conn = res.headers.connection or ""
-    if conn:find("close", 1, true) then
-      self:close()
-      self.need_connect = true
-    end
-
-    return {
-      status  = res.status,
-      headers = _M.headers(res.headers),
-      body    = body,
-      json    = json,
-    }
+    return self:send()
   end
 end
 

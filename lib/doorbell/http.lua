@@ -51,9 +51,16 @@ end
 
 ---@param status ngx.http.status_code
 ---@param body string|table|nil
-local function send(status, body)
+---@param headers? table<string, string|string[]>
+local function send(status, body, headers)
   if type(body) == "table" then
     body = encode(body)
+  end
+
+  if headers then
+    for k, v in pairs(headers) do
+      ngx.header[k] = v
+    end
   end
 
   ngx.status = status
