@@ -70,6 +70,7 @@ dependencies = {
   "lua-resty-template == 2.0",
   "luafilesystem-ffi == 0.3.0",
   "luajit-geoip == 2.1.0",
+  "luasocket",
   "nginx-lua-prometheus == 0.20221218",
   "penlight >= 1.0.0",
 }

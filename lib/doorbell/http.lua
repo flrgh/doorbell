@@ -93,4 +93,6 @@ function _M.get_json_request_body()
   return json
 end
 
+_M.parse_url = require("socket.url").parse
+
 return _M
