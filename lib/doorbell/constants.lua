@@ -90,7 +90,6 @@ const.ttl = {
 const.shm = {
   doorbell  = "doorbell",    -- primary storage
   rules     = "rules",       -- doorbell rules
-  rule_hash = "rules_hash",  -- rules hash secondary lookups
   stats     = "stats",       -- rule statistics
   metrics   = "metrics",     -- prometheus metrics
   locks     = "locks",       -- locks
