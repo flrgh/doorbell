@@ -165,7 +165,7 @@ function _M.init(config)
       end
 
       if util.truthy(ctx.query.stats) then
-        util.map(list, stats.decorate)
+        stats.decorate_list(list)
       end
 
       return send(200, { data = list })

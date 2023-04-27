@@ -57,6 +57,6 @@ return function(ctx)
   end
 
   http.send(200,
-            ctx.template({ rules = list, conditions = rules.CONDITIONS })
+            ctx.template({ rules = list, conditions = rules.CONDITIONS }),
             { ["content-type"] = "text/html" })
 end
