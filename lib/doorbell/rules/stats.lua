@@ -303,6 +303,7 @@ end
 function _M.decorate(rule)
   rule.last_matched = SHM:get(match_last_key(rule)) or 0
   rule.match_count  = SHM:get(match_count_key(rule)) or 0
+  return rule
 end
 
 
