@@ -34,6 +34,9 @@ describe("rule stats", function()
 
   lazy_setup(function()
     local conf = test.config(prefix)
+    conf.allow = {
+      { ua = "conf-allow" }
+    }
 
     nginx = test.nginx(prefix, conf)
     nginx:conf_test()
@@ -80,7 +83,6 @@ describe("rule stats", function()
 
   it("update with each rule match", function()
     local stats = get_rule_with_stats(rule)
-    test.inspect(stats)
 
     assert.same(0, stats.last_matched)
     assert.same(0, stats.match_count)
@@ -92,7 +94,6 @@ describe("rule stats", function()
     assert.same(200, client.response.status)
 
     stats = get_rule_with_stats(rule)
-    test.inspect(stats)
 
     assert.same(1, stats.match_count)
     assert.near(ngx.now(), stats.last_matched, 1)
@@ -106,7 +107,6 @@ describe("rule stats", function()
 
     local last = stats
     stats = get_rule_with_stats(rule)
-    test.inspect(stats)
 
     assert.same(2, stats.match_count)
     assert.is_true(stats.last_matched > last.last_matched)
@@ -140,7 +140,6 @@ describe("rule stats", function()
     local last = stats
     test.await.no_error(function()
       stats = get_rule_with_stats(rule)
-      test.inspect(stats)
       assert.same(10, stats.match_count)
       assert.same(last.last_matched, stats.last_matched)
     end, 5, nil, "wait for stats to be reloaded")
@@ -156,4 +155,61 @@ describe("rule stats", function()
     assert.near(ngx.now(), stats.last_matched, 1)
   end)
 
+  it("persists/reloads stats for config rules on startup", function()
+    client:add_x_forwarded_headers("1.2.3.4", "GET", "https://test/")
+    client.headers["user-agent"] = "conf-allow"
+
+    client:get("/rules")
+    assert.is_nil(client.err)
+    assert.same(200, client.response.status)
+
+    ---@type doorbell.rule
+    local conf_rule
+
+    for _, item in ipairs(client.response.json.data) do
+      if item.ua == "conf-allow" then
+        conf_rule = item
+        break
+      end
+    end
+
+    assert.not_nil(conf_rule, "could not find config rule for test")
+
+    local mtime = test.fs.mtime(stats_file)
+
+    for _ = 1, 10 do
+      client:get("/ring")
+      assert.is_nil(client.err)
+      assert.same(200, client.response.status)
+    end
+
+    local stats = get_rule_with_stats(conf_rule.hash)
+    assert.same(10, stats.match_count)
+    assert.near(ngx.now(), stats.last_matched, 1)
+
+    test.await.truthy(function()
+      return test.fs.mtime(stats_file) > mtime
+    end, 10, nil, "wait for stats file to be saved/updated")
+
+    assert.truthy(nginx:stop())
+    ngx.sleep(1)
+    nginx:start()
+
+    local last = stats
+    test.await.no_error(function()
+      stats = get_rule_with_stats(conf_rule.hash)
+      assert.same(10, stats.match_count)
+      assert.same(last.last_matched, stats.last_matched)
+    end, 5, nil, "wait for stats to be reloaded")
+
+    for _ = 1, 15 do
+      client:get("/ring")
+      assert.is_nil(client.err)
+      assert.same(200, client.response.status)
+    end
+
+    stats = get_rule_with_stats(conf_rule.hash)
+    assert.same(25, stats.match_count)
+    assert.near(ngx.now(), stats.last_matched, 1)
+  end)
 end)
