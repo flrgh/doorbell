@@ -84,7 +84,7 @@ describe("rule stats", function()
   it("update with each rule match", function()
     local stats = get_rule_with_stats(rule)
 
-    assert.same(0, stats.last_matched)
+    assert.same(0, stats.last_match)
     assert.same(0, stats.match_count)
 
     client:add_x_forwarded_headers("1.2.3.4", "GET", "https://test/")
@@ -96,9 +96,9 @@ describe("rule stats", function()
     stats = get_rule_with_stats(rule)
 
     assert.same(1, stats.match_count)
-    assert.near(ngx.now(), stats.last_matched, 1)
+    assert.near(ngx.now(), stats.last_match, 1)
 
-    -- wait to ensure that the last_matched timestamp is updated
+    -- wait to ensure that the last_match timestamp is updated
     ngx.sleep(1)
 
     client:get("/ring")
@@ -109,7 +109,7 @@ describe("rule stats", function()
     stats = get_rule_with_stats(rule)
 
     assert.same(2, stats.match_count)
-    assert.is_true(stats.last_matched > last.last_matched)
+    assert.is_true(stats.last_match > last.last_match)
   end)
 
 
@@ -127,7 +127,7 @@ describe("rule stats", function()
 
     local stats = get_rule_with_stats(rule)
     assert.same(10, stats.match_count)
-    assert.near(ngx.now(), stats.last_matched, 1)
+    assert.near(ngx.now(), stats.last_match, 1)
 
     test.await.truthy(function()
       return test.fs.mtime(stats_file) > mtime
@@ -141,7 +141,7 @@ describe("rule stats", function()
     test.await.no_error(function()
       stats = get_rule_with_stats(rule)
       assert.same(10, stats.match_count)
-      assert.same(last.last_matched, stats.last_matched)
+      assert.same(last.last_match, stats.last_match)
     end, 5, nil, "wait for stats to be reloaded")
 
     for _ = 1, 15 do
@@ -152,7 +152,7 @@ describe("rule stats", function()
 
     stats = get_rule_with_stats(rule)
     assert.same(25, stats.match_count)
-    assert.near(ngx.now(), stats.last_matched, 1)
+    assert.near(ngx.now(), stats.last_match, 1)
   end)
 
   it("persists/reloads stats for config rules on startup", function()
@@ -185,7 +185,7 @@ describe("rule stats", function()
 
     local stats = get_rule_with_stats(conf_rule.hash)
     assert.same(10, stats.match_count)
-    assert.near(ngx.now(), stats.last_matched, 1)
+    assert.near(ngx.now(), stats.last_match, 1)
 
     test.await.truthy(function()
       return test.fs.mtime(stats_file) > mtime
@@ -199,7 +199,7 @@ describe("rule stats", function()
     test.await.no_error(function()
       stats = get_rule_with_stats(conf_rule.hash)
       assert.same(10, stats.match_count)
-      assert.same(last.last_matched, stats.last_matched)
+      assert.same(last.last_match, stats.last_match)
     end, 5, nil, "wait for stats to be reloaded")
 
     for _ = 1, 15 do
@@ -210,6 +210,6 @@ describe("rule stats", function()
 
     stats = get_rule_with_stats(conf_rule.hash)
     assert.same(25, stats.match_count)
-    assert.near(ngx.now(), stats.last_matched, 1)
+    assert.near(ngx.now(), stats.last_match, 1)
   end)
 end)
