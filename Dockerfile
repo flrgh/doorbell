@@ -17,17 +17,18 @@ ARG INSTALL_PREFIX=/usr/local
 ARG RUNTIME_PREFIX=/var/run
 ARG LOG_PREFIX=/var/log
 
-ENV DOORBELL_ASSET_DIR=${INSTALL_PREFIX}/share/doorbell
-ENV DOORBELL_LIB_DIR=${INSTALL_PREFIX}/lib/doorbell
-ENV DOORBELL_LIBEXEC_DIR=${INSTALL_PREFIX}/libexec/doorbell
-ENV DOORBELL_RUNTIME_DIR=${RUNTIME_PREFIX}/doorbell
-ENV DOORBELL_LOG_DIR=${LOG_PREFIX}/doorbell
+ENV DOORBELL_ASSET_PATH=${INSTALL_PREFIX}/share/doorbell
+ENV DOORBELL_LIB_PATH=${INSTALL_PREFIX}/lib/doorbell
+ENV DOORBELL_LIBEXEC_PATH=${INSTALL_PREFIX}/libexec/doorbell
+ENV DOORBELL_RUNTIME_PATH=${RUNTIME_PREFIX}/doorbell
+ENV DOORBELL_STATE_PATH=${RUNTIME_PREFIX}/doorbell
+ENV DOORBELL_LOG_PATH=${LOG_PREFIX}/doorbell
 
-COPY ./lib/ ${DOORBELL_LIB_DIR}/
-COPY ./assets/ ${DOORBELL_ASSET_DIR}/
-COPY ./bin/render-nginx-template ${DOORBELL_LIBEXEC_DIR}/
+COPY ./lib/ ${DOORBELL_LIB_PATH}/
+COPY ./assets/ ${DOORBELL_ASSET_PATH}/
+COPY ./bin/render-nginx-template ${DOORBELL_LIBEXEC_PATH}/
 
-RUN mkdir -p "${DOORBELL_RUNTIME_DIR}/logs" "${DOORBELL_LOG_DIR}"
+RUN mkdir -p "${DOORBELL_RUNTIME_PATH}/logs" "${DOORBELL_LOG_PATH}"
 
 # this has to be hard-coded
 COPY ./entrypoint.sh /usr/local/libexec/doorbell/entrypoint.sh

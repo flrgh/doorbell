@@ -1,20 +1,17 @@
 local test = require "spec.testing"
-local join = require("spec.testing.fs").join
 local const = require "doorbell.constants"
 local util = require "doorbell.util"
 
 describe("rules API", function()
-  local prefix = os.getenv("DOORBELL_PREFIX") or join(test.ROOT_DIR, "test")
-
   local client
   local nginx
   local res, err
 
   lazy_setup(function()
-    local conf = test.config(prefix)
+    local conf = test.config()
     conf.notify = nil
 
-    nginx = test.nginx(prefix, conf)
+    nginx = test.nginx(conf)
     nginx:conf_test()
     nginx:start()
 

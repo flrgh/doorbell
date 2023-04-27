@@ -108,4 +108,13 @@ const.endpoints = {
   answer     = "/answer",
 }
 
+const.testing = false
+
+do
+  local test = os.getenv("_DOORBELL_TEST")
+  if test == "1" or test == "true" then
+    const.testing = true
+  end
+end
+
 return const

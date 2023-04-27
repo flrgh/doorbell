@@ -21,11 +21,10 @@ _M.util = util
 
 _M.headers = client.headers
 
----@param prefix string
 ---@param conf doorbell.config
 ---@return spec.testing.nginx
-function _M.nginx(prefix, conf)
-  return require("spec.testing.nginx").new(prefix, conf)
+function _M.nginx(conf)
+  return require("spec.testing.nginx").new(conf)
 end
 
 

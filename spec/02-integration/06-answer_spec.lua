@@ -4,8 +4,6 @@ local join = require("spec.testing.fs").join
 local cjson = require "cjson"
 
 describe("doorbell", function()
-  local prefix = os.getenv("DOORBELL_PREFIX") or join(test.ROOT_DIR, "test")
-
   ---@type spec.testing.client
   local client
 
@@ -15,7 +13,7 @@ describe("doorbell", function()
   ---@type spec.testing.nginx
   local nginx
 
-  local notify_log = join(prefix, "notify.log")
+  local notify_log
 
   local res, err
 
@@ -40,10 +38,11 @@ describe("doorbell", function()
   end
 
   lazy_setup(function()
-    local conf = test.config(prefix)
+    local conf = test.config()
     conf.unauthorized = const.unauthorized.request_approval
+    notify_log = join(conf.runtime_path, "notify.log")
 
-    nginx = test.nginx(prefix, conf)
+    nginx = test.nginx(conf)
     nginx:conf_test()
     nginx:start()
 

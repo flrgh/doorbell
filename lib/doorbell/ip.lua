@@ -3,8 +3,10 @@ local _M = {
 }
 
 local log = require "doorbell.log"
-local cache = require "doorbell.cache"
 local util = require "doorbell.util"
+
+---@class doorbell.cache
+local cache
 
 local ipmatcher = require "resty.ipmatcher"
 local split = require("ngx.re").split
@@ -423,6 +425,7 @@ function _M.init(opts)
     trusted = _M.localhost
   end
 
+  cache = require "doorbell.cache"
 end
 
 

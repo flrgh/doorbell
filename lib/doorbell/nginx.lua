@@ -15,6 +15,7 @@ end
 
 local defaults = require "doorbell.nginx.defaults"
 local util = require "doorbell.util"
+local ENV = require "doorbell.env"
 
 ---@param f string|file*
 ---@param mode openmode
@@ -36,9 +37,11 @@ function _M.lua_path(...)
   local path = {}
   for i = 1, select("#", ...) do
     local p = select(i, ...)
-    p = p:gsub("/+$", "")
-    table.insert(path, p .. "/?.lua")
-    table.insert(path, p .. "/?/init.lua")
+    if p then
+      p = p:gsub("/+$", "")
+      table.insert(path, p .. "/?.lua")
+      table.insert(path, p .. "/?/init.lua")
+    end
   end
 
   return table.concat(path, ";")
@@ -67,29 +70,44 @@ function _M.render(input, output, env)
 
   env = env or EMPTY
 
+  local function get_value(var)
+    local name = var:lower():gsub("^doorbell_", "")
+
+    local value = env[name]
+    if value ~= nil then
+      return value
+    end
+
+    value = ENV[name:upper()]
+    if value ~= nil then
+      return value
+    end
+
+    value = os.getenv(var)
+    if value ~= nil then
+      return value
+    end
+
+    value = defaults[name]
+    if value ~= nil then
+      return value
+    end
+
+    util.errorf("template variable %s is undefined", var)
+  end
+
+  local function render_value(var)
+    local value = get_value(var)
+    if type(value) == "table" then
+      value = table.concat(value, "\n")
+    end
+
+    return value
+  end
+
   local buf = {}
   for line in input:lines() do
-    line = line:gsub("%${([^}]+)}", function(var)
-      local name = var:lower():gsub("^doorbell_", "")
-
-      local value = env[name]
-      if value ~= nil then
-        return value
-      end
-
-      value = os.getenv(var)
-      if value ~= nil then
-        return value
-      end
-
-      value = defaults[name]
-      if value ~= nil then
-        return value
-      end
-
-      util.errorf("template variable %s is undefined", var)
-
-    end)
+    line = line:gsub("%${([^}]+)}", render_value)
     table.insert(buf, line)
   end
 

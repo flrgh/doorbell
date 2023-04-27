@@ -671,10 +671,10 @@ end
 
 ---@param conf doorbell.config
 function _M.init(conf)
-  SAVE_PATH = util.join(conf.runtime_dir, "rules.json")
+  SAVE_PATH = util.join(conf.runtime_path, "rules.json")
   stats.init(conf)
 
-  local ok, err = _M.load(conf.runtime_dir)
+  local ok, err = _M.load(conf.runtime_path)
   if not ok then
     log.warn("failed loading rules from disk: ", err)
   end

@@ -2,16 +2,13 @@ local test = require "spec.testing"
 local join = require("spec.testing.fs").join
 
 describe("rule stats", function()
-  local prefix = os.getenv("DOORBELL_PREFIX") or join(test.ROOT_DIR, "test")
-
   ---@type spec.testing.client
   local client
 
   ---@type spec.testing.nginx
   local nginx
 
-  local stats_file = join(prefix, "stats.json")
-
+  local stats_file
 
   local function get_rule_with_stats(rule)
     local id = rule
@@ -33,12 +30,14 @@ describe("rule stats", function()
 
 
   lazy_setup(function()
-    local conf = test.config(prefix)
+    local conf = test.config()
+    stats_file = join(conf.runtime_path, "stats.json")
+
     conf.allow = {
       { ua = "conf-allow" }
     }
 
-    nginx = test.nginx(prefix, conf)
+    nginx = test.nginx(conf)
     nginx:conf_test()
     nginx:start()
   end)

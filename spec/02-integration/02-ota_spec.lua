@@ -1,16 +1,13 @@
 local test = require "spec.testing"
-local join = require("spec.testing.fs").join
 local ms = require "spec.testing.mock-upstream"
 
 describe("OTA updates", function()
-  local prefix = os.getenv("DOORBELL_PREFIX") or join(test.ROOT_DIR, "test")
-
   ---@type spec.testing.client
   local client
   local nginx
 
   lazy_setup(function()
-    local conf = test.config(prefix)
+    local conf = test.config()
     conf.ota = {
       url = ("http://127.0.0.1:%s/ota.json"):format(test.constants.MOCK_UPSTREAM_PORT),
       headers = {
@@ -21,7 +18,7 @@ describe("OTA updates", function()
 
     conf.deny = { { ua = "~.*" } }
 
-    nginx = test.nginx(prefix, conf)
+    nginx = test.nginx(conf)
     nginx:conf_test()
     nginx:start()
 

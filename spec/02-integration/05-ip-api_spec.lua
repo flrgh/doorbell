@@ -1,8 +1,6 @@
 local test = require "spec.testing"
-local join = test.fs.join
 
 describe("IP API", function()
-  local prefix = os.getenv("DOORBELL_PREFIX") or join(test.ROOT_DIR, "test")
   local conf
 
   ---@type spec.testing.nginx
@@ -13,9 +11,9 @@ describe("IP API", function()
 
   describe("/ip/addr", function()
     lazy_setup(function()
-      conf = test.config(prefix)
+      conf = test.config()
       conf.trusted = { "127.0.0.0/8", "::1"}
-      nginx = test.nginx(prefix, conf)
+      nginx = test.nginx(conf)
       nginx:conf_test()
       nginx:start()
       client = test.client()
@@ -118,12 +116,12 @@ describe("IP API", function()
     describe("/ip/info", function()
 
       lazy_setup(function()
-        conf = test.config(prefix)
+        conf = test.config()
         conf.trusted = { "127.0.0.0/8", "::1"}
         conf.geoip_city_db = case.city_db
         conf.geoip_country_db = case.country_db
         conf.geoip_asn_db = case.asn_db
-        nginx = test.nginx(prefix, conf)
+        nginx = test.nginx(conf)
         nginx:conf_test()
         nginx:start()
         client = test.client()
@@ -165,10 +163,10 @@ describe("IP API", function()
 
   describe("/ip/info/:addr [errors]", function()
     lazy_setup(function()
-      conf = test.config(prefix)
+      conf = test.config()
       conf.trusted = { "127.0.0.0/8", "::1"}
       conf.geoip_city_db = test.constants.GEOIP_CITY_DB
-      nginx = test.nginx(prefix, conf)
+      nginx = test.nginx(conf)
       nginx:conf_test()
       nginx:start()
       client = test.client()

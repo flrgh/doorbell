@@ -2,8 +2,7 @@ local test = require "spec.testing"
 local join = test.fs.join
 
 describe("state", function()
-  local prefix = os.getenv("DOORBELL_PREFIX") or join(test.ROOT_DIR, "test")
-  local state_file = join(prefix, "rules.json")
+  local state_file
   local conf
 
   ---@type spec.testing.nginx
@@ -23,10 +22,12 @@ describe("state", function()
   end
 
   before_each(function()
-    conf = test.config(prefix)
+    conf = test.config()
     conf.notify = nil
 
-    nginx = test.nginx(prefix, conf)
+    state_file = join(conf.runtime_path, "rules.json")
+
+    nginx = test.nginx(conf)
     nginx:conf_test()
     nginx:start()
   end)

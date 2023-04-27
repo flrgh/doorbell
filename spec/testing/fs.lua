@@ -82,7 +82,7 @@ function fs.tmpdir()
   local tries = 1000
 
   for _ = 1, tries do
-    local name = fmt("/tmp/doorbell-test-%x", math.random())
+    local name = fmt("/tmp/doorbell-test-%s", math.random())
     if pl_path.mkdir(name) then
       tmp = name
       break
@@ -120,5 +120,16 @@ function fs.mtime(path)
   return -1, err
 end
 
+---@param pat? string
+---@return string[]
+function fs.dir(path, pat)
+  return pl_dir.getfiles(path, pat)
+end
+
+---@param path string
+---@return string
+function fs.basename(path)
+  return pl_path.basename(path)
+end
 
 return fs
