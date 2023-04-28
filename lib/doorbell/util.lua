@@ -244,10 +244,10 @@ function _M.validate_regex(re)
   return re
 end
 
----@param t table<string, any>
----@param sorted boolean
----@return string[]
-function _M.table_keys(t, sorted)
+---@generic T
+---@param t table<T, any>
+---@return T[]
+function _M.table_keys(t)
   local keys = {}
   local n = 0
   for k in pairs(t) do
@@ -255,10 +255,45 @@ function _M.table_keys(t, sorted)
     keys[n] = k
   end
 
-  if sorted then
-    sort(keys)
-  end
+  sort(keys)
+
   return keys
+end
+
+---@generic T
+---@param t table<any, T>
+---@param unique? boolean
+---@return T[]
+function _M.table_values(t, unique)
+  local values = {}
+
+  local seen
+
+  if unique then
+    seen = {}
+  end
+
+  local n = 0
+  for _, value in pairs(t) do
+    local add = true
+
+    if unique and seen[value] then
+      add = false
+    end
+
+    if add then
+      n = n + 1
+      values[n] = value
+
+      if unique then
+        seen[value] = true
+      end
+    end
+  end
+
+  sort(values)
+
+  return values
 end
 
 ---@class doorbell.lock : resty.lock

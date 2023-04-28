@@ -95,4 +95,17 @@ const.shm = {
   locks     = "locks",       -- locks
 }
 
+---@enum doorbell.unauthorized
+const.unauthorized = {
+  return_401            = "return-401",
+  request_approval      = "request-approval",
+  redirect_for_approval = "redirect-for-approval",
+}
+
+const.endpoints = {
+  get_access = "/letmein",
+  ring       = "/ring",
+  answer     = "/answer",
+}
+
 return const

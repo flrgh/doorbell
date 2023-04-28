@@ -1,7 +1,8 @@
 local const = require "doorbell.constants"
-local parse_uri = require("resty.http").parse_uri
 local valid_uuid = require("resty.jit-uuid").is_valid
 local ip = require "doorbell.ip"
+local http = require "doorbell.http"
+local util = require "doorbell.util"
 
 --local generate_validator = require("jsonschema").generate_validator
 local generate_validator = require("resty.ljsonschema").generate_validator
@@ -28,6 +29,81 @@ local function validator(schema)
     return true
   end
 end
+
+---@class doorbell.schema.base : table
+---
+---@field title string
+---
+---@field description string
+---
+---@field allOf doorbell.schema[]
+---
+---@field anyOf doorbell.schema[]
+---
+---@field not doorbell.schema
+---
+---@field extra_validator fun(value:any):boolean?, string?
+--_
+---@field validate fun(value:any):boolean?, string?
+---
+---@field examples any[]
+---
+---@field default any
+
+
+---@class doorbell.schema.object : doorbell.schema.base
+---
+---@field type "object"
+---
+---@field properties table<string, doorbell.schema>
+---
+---@field additionalProperties boolean,
+---
+---@field required string[]
+
+
+---@class doorbell.schema.array : doorbell.schema.base
+---
+---@field type "array"
+---
+---@field items doorbell.schema
+---
+---@field uniqueItems boolean
+
+
+---@class doorbell.schema.string : doorbell.schema.base
+---
+---@field type "string"
+---
+---@field format string
+---
+---@field pattern string
+---
+---@field minLength integer
+---
+---@field maxLength integer
+
+
+---@class doorbell.schema.number : doorbell.schema.base
+---
+---@field type "integer"|"number"
+---
+---@field minimum number
+---@field maximum number
+---@field exclusiveMinimum boolean
+---@field exclusiveMaximum boolean
+
+
+---@class doorbell.schema.boolean : doorbell.schema.base
+---
+---@field type "boolean"
+
+---@alias doorbell.schema
+---| doorbell.schema.object
+---| doorbell.schema.array
+---| doorbell.schema.string
+---| doorbell.schema.boolean
+---| doorbell.schema.number
 
 
 ---@param cidr string|string[]
@@ -140,7 +216,7 @@ local function validate_config(config)
   end
 
   if config.base_url then
-    ok, err = parse_uri(nil, config.base_url)
+    ok, err = http.parse_url(config.base_url)
     if not ok then
       return nil, "invalid base_url: " .. tostring(err)
     end
@@ -165,31 +241,22 @@ local function validate_config(config)
 end
 
 
----@param t table<string, any>
----@return string[]
-local function keys(t)
-  local _keys = {}
-  for k in pairs(t) do
-    table.insert(_keys, k)
-  end
-
-  table.sort(_keys)
-
-  return _keys
-end
-
 local rule = {}
+
+---@type table<string, doorbell.schema>
 rule.fields = {}
+
+
 rule.fields.action = {
   description = "Action to take when the rule matches a request",
   type = "string",
-  enum = keys(const.actions),
+  enum = util.table_values(const.actions),
 }
 
 rule.fields.source = {
   description = "Origin of the rule",
   type = "string",
-  enum = keys(const.sources),
+  enum = util.table_values(const.sources),
 }
 
 rule.fields.expires = {
@@ -201,7 +268,8 @@ rule.fields.expires = {
 rule.fields.ttl = {
   description = "Relative timestamp (in seconds) of the rule's expiration",
   type = "number",
-  exclusiveMinimum = 0,
+  minimum = 0,
+  exclusiveMinimum = true,
 }
 
 rule.fields.uuid = {
@@ -278,7 +346,7 @@ rule.fields.method = {
 rule.fields.deny_action = {
   description = "Specific action to take when the rule matches a request and the action is 'deny'",
   type = "string",
-  enum = keys(const.deny_actions),
+  enum = util.table_values(const.deny_actions),
 }
 
 rule.fields.created = {
@@ -304,7 +372,7 @@ rule.fields.country = {
   minLength = 1,
   maxLength = 2,
   pattern = "^[A-Z][A-Z]$",
-  enum = keys(require("doorbell.ip.countries")),
+  enum = util.table_keys(require("doorbell.ip.countries")),
 }
 
 rule.fields.hash = {
@@ -341,7 +409,9 @@ local function required(name)
   }
 end
 
+---@type table<string, doorbell.schema>
 rule.policy = {}
+
 rule.policy.at_least_one_condition = {
   description = "Require at least one condition",
   anyOf = {
@@ -392,6 +462,7 @@ rule.policy.deny_action_deny = {
 }
 
 
+---@type doorbell.schema
 rule.entity = {
   title = "rule",
   description  = "Doorbell rule object",
@@ -469,6 +540,7 @@ rule.create = {
 }
 rule.create.validate = validator(rule.create)
 
+---@type doorbell.schema
 rule.patch = {
   title = "doorbell.rule.patch",
   description = "schema for rule PATCH request body",
@@ -502,6 +574,7 @@ rule.patch.validate = validator(rule.patch)
 
 local config = {}
 
+---@type doorbell.schema
 local conf_rule = {
   type = "object",
   properties = {
@@ -530,6 +603,7 @@ local conf_rule = {
   }
 }
 
+---@type table<string, doorbell.schema>
 config.fields = {}
 config.fields.allow = {
   description = "static allow rules",
@@ -560,7 +634,8 @@ config.fields.base_url = {
 config.fields.cache_size = {
   description = "Dictates the number of items kept in the application's LRU cache",
   type = "integer",
-  exclusiveMinimum = 1000,
+  minimum = 1000,
+  maximum = 100000,
   default = 1000,
 }
 
@@ -606,13 +681,14 @@ config.fields.ota = {
       description = "Headers that will be sent with update requests",
       type = "object",
       properties = {},
-      additionalProperties = {},
+      additionalProperties = true,
     },
 
     interval = {
       description = "How often (in seconds) to check for remote updates",
       type = "number",
-      exclusiveMinimum = 0,
+      minimum = 0,
+      exclusiveMinimum = true,
       default = 60,
     }
   },
@@ -632,7 +708,7 @@ config.fields.metrics = {
     interval = {
       description = "How often (in seconds) to measure and evaluate things",
       type = "number",
-      exclusiveMinimum = 0,
+      minimum = 1,
       default = 5,
     }
   },
@@ -705,6 +781,14 @@ config.fields.geoip_city_db = {
   pattern = ".+[.]mmdb$",
 }
 
+config.fields.unauthorized = {
+  description = "How to handle incoming requests that don't match a rule",
+  type = "string",
+  enum = util.table_values(const.unauthorized),
+  default = const.unauthorized.return_401,
+}
+
+---@type doorbell.schema
 config.object = {
   description = "Doorbell runtime configuration object",
   type = "object",
@@ -737,6 +821,7 @@ config.object = {
   }
 }
 
+---@type doorbell.schema
 config.input = {
   title = "doorbell.config",
   description = "Doorbell runtime configuration input",

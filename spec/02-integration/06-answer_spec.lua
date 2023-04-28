@@ -41,6 +41,7 @@ describe("doorbell", function()
 
   lazy_setup(function()
     local conf = test.config(prefix)
+    conf.unauthorized = const.unauthorized.request_approval
 
     nginx = test.nginx(prefix, conf)
     nginx:conf_test()
