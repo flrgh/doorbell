@@ -73,6 +73,8 @@ dependencies = {
   "luasocket",
   "nginx-lua-prometheus == 0.20221218",
   "penlight >= 1.0.0",
+  "lua-resty-openidc == 1.7.6",
+  "lua-resty-jwt == 0.2.3",
 }
 
 test_dependencies = {
