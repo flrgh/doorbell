@@ -225,11 +225,13 @@ function _M.filter(t, fn, ...)
   return t
 end
 
+
 ---@param path string
 ---@return boolean
 function _M.is_regex(path)
   return byte(path, 1) == TILDE
 end
+
 
 ---@param re string
 ---@return string? regex
@@ -243,6 +245,7 @@ function _M.validate_regex(re)
   end
   return re
 end
+
 
 ---@generic T
 ---@param t table<T, any>
@@ -259,6 +262,7 @@ function _M.table_keys(t)
 
   return keys
 end
+
 
 ---@generic T
 ---@param t table<any, T>
@@ -296,6 +300,7 @@ function _M.table_values(t, unique)
   return values
 end
 
+
 ---@class doorbell.lock : resty.lock
 ---@field _name string
 ---@field _action string
@@ -318,6 +323,7 @@ local function _unlock(lock, ...)
 
   return ...
 end
+
 
 ---@param ns string
 ---@param key string
@@ -373,6 +379,7 @@ end
 ---@return string
 _M.uuid = uuid
 
+
 ---@generic T : table
 ---@param t T
 ---@return T
@@ -407,5 +414,22 @@ function _M.truthy(value)
       or value == true
       or value == 1
 end
+
+
+---@generic T
+---@param t? T[]
+---@return T[]
+function _M.array(t)
+  if t == nil then
+    t = {}
+  end
+
+  if type(t) == "table" then
+    setmetatable(t, cjson.array_mt)
+  end
+
+  return t
+end
+
 
 return _M

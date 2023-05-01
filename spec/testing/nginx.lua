@@ -30,29 +30,33 @@ local function alive(pid)
 end
 
 
-local TEMPLATE_PATH = join(const.FIXTURES_DIR, "busted.nginx.conf")
+local TEMPLATE_PATH = join(const.ASSET_PATH, "nginx.template.conf")
 
----@param prefix string
 ---@param conf doorbell.config
-local function prepare(prefix, conf)
-  fs.reset_dir(prefix)
-  fs.reset_dir(conf.log_dir)
+local function prepare(conf)
+  fs.reset_dir(conf.runtime_path)
+  fs.reset_dir(conf.log_path)
+
+  for _, inc in ipairs(fs.dir(const.FIXTURES_PATH, "nginx.include.*.conf")) do
+    local link = join(conf.runtime_path, fs.basename(inc))
+    assert(os.execute(fmt("ln -sf %q %q", inc, link)))
+  end
 
   render(
     TEMPLATE_PATH,
-    join(prefix, "nginx.conf"),
+    join(conf.runtime_path, "nginx.conf"),
     {
-       -- at the moment this populates the lua package path, so it needs to be
-       -- relative to the repository root
-      prefix = const.ROOT_DIR,
+      log_path = conf.log_path,
+      worker_processes = 2,
       daemon = "on",
-      test_fixtures_dir = const.FIXTURES_DIR,
-      worker_processes = 1,
-      log_dir = conf.log_dir,
+      runtime_path = conf.runtime_path,
+      asset_path = const.ASSET_PATH,
+      lua_path = const.LUA_PATH,
     }
   )
+
   fs.write_json_file(
-    join(prefix, "config.json"),
+    join(conf.runtime_path, "config.json"),
     conf
   )
 end
@@ -179,7 +183,7 @@ end
 ---@return string? contents
 ---@return string? error
 function nginx:read_error_log()
-  local fname = fs.join(self.config.log_dir, "error.log")
+  local fname = fs.join(self.config.log_path, "error.log")
   if not fs.exists(fname) then
     return nil, fname .. " not found"
   end
@@ -190,13 +194,17 @@ end
 
 nginx.__index = nginx
 
----@param prefix string
 ---@param conf doorbell.config
 ---@return spec.testing.nginx
-function _M.new(prefix, conf)
-  prepare(prefix, conf)
-  local pidfile = join(prefix, "logs", "nginx.pid")
-  local self = { prefix = prefix, config = conf, pidfile = pidfile }
+function _M.new(conf)
+  prepare(conf)
+
+  local self = {
+    prefix = conf.runtime_path,
+    config = conf,
+    pidfile = join(conf.runtime_path, "logs", "nginx.pid"),
+  }
+
   return setmetatable(self, nginx)
 end
 

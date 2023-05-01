@@ -4,22 +4,29 @@ local ip = require "doorbell.ip"
 local http = require "doorbell.http"
 local util = require "doorbell.util"
 
+local NULL = ngx.null
+local re_match = ngx.re.match
+
 --local generate_validator = require("jsonschema").generate_validator
 local generate_validator = require("resty.ljsonschema").generate_validator
 
+local function is_set(value)
+  return value ~= nil and value ~= NULL
+end
 
 local function noop(_) return true end
 
 local function validator(schema)
   local name = assert(schema.title)
+  local post_validate = schema.post_validate or noop
+
   local validate_schema = assert(generate_validator(schema, { name = name }))
-  local extra_validator = schema.extra_validator or noop
 
   return function(value)
     local ok, err = validate_schema(value)
 
-    if ok then
-      ok, err = extra_validator(value)
+    if ok and is_set(value) then
+      ok, err = post_validate(value)
     end
 
     if not ok then
@@ -117,15 +124,31 @@ local function validate_cidr(cidr)
         return nil, err
       end
     end
+
+    return true
   end
 
-  local addr, mask = cidr:match("(.+)/(.+)")
+  local addr, mask
+  local m = re_match(cidr, "([^/]+)(/(.+))?")
+
+  if m then
+    addr = m[1]
+    mask = m[3]
+  end
 
   local typ = ip.is_valid(addr)
 
   if not typ then
     return nil, "invalid CIDR: " .. cidr
   end
+
+  if typ == 4 then
+    mask = mask or 32
+
+  elseif typ == 6 then
+    mask = mask or 128
+  end
+
 
   mask = tonumber(mask)
   if not mask then
@@ -143,62 +166,23 @@ local function validate_cidr(cidr)
 end
 
 
----@param rule doorbell.rule.new.opts
----@return boolean? ok
----@return string? error
-local function validate_rule(rule)
-  if rule.id and not valid_uuid(rule.id) then
-    return nil, "invalid id"
-  end
-
-  if rule.addr and not ip.is_valid(rule.addr) then
-    return nil, "invalid IP address: " .. rule.addr
-  end
-
-  if rule.cidr then
-    local ok, err = validate_cidr(rule.cidr)
-    if not ok then
-      return nil, "invalid cidr: " .. tostring(err)
-    end
-  end
-
-  if rule.terminate then
-    if require("doorbell.rules").count_conditions(rule) > 1 then
-      return nil, "can only have one match condition with `terminate`"
-    end
-  end
-
-  if rule.expires and rule.expires > 0 then
-    ngx.update_time()
-    if rule.expires <= ngx.now() then
-      return nil, "rule is already expired"
-    end
+local function validate_expires(expires)
+  if expires > 0 and expires <= ngx.now() then
+    return nil, "rule is already expired"
   end
 
   return true
 end
 
 
----@param config doorbell.config
----@param field string
-local function validate_config_file_exists(config, field)
-  local value = config[field]
-
-  if value == nil then
+---@param addr string
+---@return boolean? ok
+---@return string? error
+local function validate_ip_addr(addr)
+  if ip.is_valid(addr) then
     return true
-
-  else
-    assert(type(value) == "string", "unreachable")
   end
-
-  local fh, err = io.open(value, "rb")
-  if not fh then
-    return nil, "couldn't open " .. field .. " file: " .. tostring(err)
-  end
-
-  fh:close()
-
-  return true
+  return nil, "invalid IP address: " .. addr
 end
 
 
@@ -220,21 +204,6 @@ local function validate_config(config)
     if not ok then
       return nil, "invalid base_url: " .. tostring(err)
     end
-  end
-
-  ok, err = validate_config_file_exists(config, "geoip_country_db")
-  if not ok then
-    return nil, err
-  end
-
-  ok, err = validate_config_file_exists(config, "geoip_city_db")
-  if not ok then
-    return nil, err
-  end
-
-  ok, err = validate_config_file_exists(config, "geoip_asn_db")
-  if not ok then
-    return nil, err
   end
 
   return true
@@ -263,21 +232,23 @@ rule.fields.expires = {
   description = "Absolute timestamp (as a Unix epoch) that dictates when the rule expires",
   type = "number",
   minimum = 0,
+  post_validate = validate_expires,
 }
 
 rule.fields.ttl = {
   description = "Relative timestamp (in seconds) of the rule's expiration",
   type = "number",
-  minimum = 0,
   exclusiveMinimum = true,
+  minimum = 0,
 }
 
-rule.fields.uuid = {
+rule.fields.id = {
   description = "Universally unique identifier (UUID) for this rule",
   type = "string",
   minLength = 36,
   maxLength = 36,
   pattern = "^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$",
+  post_validate = valid_uuid,
 }
 
 rule.fields.host = {
@@ -315,6 +286,7 @@ rule.fields.addr = {
     "1.2.3.4",
     "2607:f8b0:400a:800::200e",
   },
+  post_validate = validate_ip_addr,
 }
 
 rule.fields.cidr = {
@@ -325,6 +297,7 @@ rule.fields.cidr = {
   examples = {
     "1.2.3.0/24",
   },
+  post_validate = validate_cidr,
 }
 
 rule.fields.method = {
@@ -397,12 +370,16 @@ rule.fields.org = {
   type = "string",
 }
 
+for name, field in pairs(rule.fields) do
+  field.title = name
+  field.validate = validator(field)
+end
 
 local function required(name)
   return {
     type = "object",
     properties = {
-      [name] = assert(rule.fields[name]),
+      [name] = { type = assert(assert(rule.fields[name]).type) },
     },
     required = { name },
     additionalProperties = true,
@@ -432,12 +409,12 @@ rule.policy.expires_or_ttl = {
   oneOf = {
     {
       properties = { expires = { type = "null" },
-                         ttl = rule.fields.ttl },
+                         ttl = { type = "number" } },
       required = { "ttl" },
       additionalProperties = true
     },
     {
-      properties = { expires = rule.fields.expires,
+      properties = { expires = { type = "number" },
                          ttl = { type = "null" } },
       required = { "expires" },
       additionalProperties = true
@@ -454,12 +431,44 @@ rule.policy.deny_action_deny = {
   description = "`deny_action` is only valid when `action` is `deny`",
   ["not"] = {
     properties = {
-      action = { enum = { const.actions.allow } },
+      action      = { const = const.actions.allow, enum = { const.actions.allow } },
       deny_action = { type = "string" },
     },
     required = { "deny_action", "action" },
   },
 }
+
+
+---@param obj doorbell.rule.new.opts
+---@return boolean? ok
+---@return string? error
+local function validate_rule(obj)
+  local errors = {}
+  local fail = false
+
+  for name, value in pairs(obj) do
+    local field_schema = assert(rule.fields[name],
+                                "no schema found for field: " .. name)
+    local ok, err = field_schema.validate(value)
+    if not ok then
+      fail = true
+      errors[name] = err or "validation failed"
+    end
+  end
+
+  if obj.terminate then
+    if require("doorbell.rules").count_conditions(obj) > 1 then
+      fail = true
+      errors.terminate = "can only have one match condition with `terminate`"
+    end
+  end
+
+  if fail then
+    return nil, "validation failed", errors
+  end
+
+  return true
+end
 
 
 ---@type doorbell.schema
@@ -480,7 +489,7 @@ rule.entity = {
     expires     = rule.fields.expires,
     hash        = rule.fields.hash,
     host        = rule.fields.host,
-    id          = rule.fields.uuid,
+    id          = rule.fields.id,
     method      = rule.fields.method,
     org         = rule.fields.org,
     path        = rule.fields.path,
@@ -489,54 +498,59 @@ rule.entity = {
     ua          = rule.fields.ua,
   },
 
+  additionalProperties = false,
+
   required = {
     "action",
     "source",
     "id",
   },
+
   allOf = {
     rule.policy.deny_action_deny,
     rule.policy.at_least_one_condition,
   },
-  extra_validator = validate_rule,
+
+  post_validate = validate_rule,
 }
 rule.entity.validate = validator(rule.entity)
 
 rule.create = {
   title = "doorbell.rule.create",
   description = "Schema for rule creation",
+  type = "object",
+  required = { "action", "source" },
+
+  properties = {
+    action      = rule.fields.action,
+    asn         = rule.fields.asn,
+    deny_action = rule.fields.deny_action,
+    addr        = rule.fields.addr,
+    cidr        = rule.fields.cidr,
+    comment     = rule.fields.comment,
+    created     = rule.fields.created,
+    country     = rule.fields.country,
+    expires     = rule.fields.expires,
+    host        = rule.fields.host,
+    id          = rule.fields.id,
+    method      = rule.fields.method,
+    org         = rule.fields.org,
+    path        = rule.fields.path,
+    source      = rule.fields.source,
+    terminate   = rule.fields.terminate,
+    ttl         = rule.fields.ttl,
+    ua          = rule.fields.ua,
+  },
+
+  additionalProperties = false,
+
   allOf = {
-    {
-      description = "Core properties",
-      type = "object",
-      required = { "action", "source" },
-      properties = {
-        action      = rule.fields.action,
-        asn         = rule.fields.asn,
-        deny_action = rule.fields.deny_action,
-        addr        = rule.fields.addr,
-        cidr        = rule.fields.cidr,
-        comment     = rule.fields.comment,
-        created     = rule.fields.created,
-        country     = rule.fields.country,
-        expires     = rule.fields.expires,
-        host        = rule.fields.host,
-        id          = rule.fields.uuid,
-        method      = rule.fields.method,
-        org         = rule.fields.org,
-        path        = rule.fields.path,
-        source      = rule.fields.source,
-        terminate   = rule.fields.terminate,
-        ttl         = rule.fields.ttl,
-        ua          = rule.fields.ua,
-      },
-      additionalProperties = false,
-    },
     rule.policy.at_least_one_condition,
     rule.policy.expires_or_ttl,
     rule.policy.deny_action_deny,
   },
-  extra_validator = validate_rule,
+
+  post_validate = validate_rule,
 }
 rule.create.validate = validator(rule.create)
 
@@ -567,7 +581,7 @@ rule.patch = {
     rule.policy.expires_or_ttl,
     rule.policy.deny_action_deny,
   },
-  extra_validator = validate_rule,
+  post_validate = validate_rule,
 }
 rule.patch.validate = validator(rule.patch)
 
@@ -575,7 +589,7 @@ rule.patch.validate = validator(rule.patch)
 local config = {}
 
 ---@type doorbell.schema
-local conf_rule = {
+local config_rule = {
   type = "object",
   properties = {
     addr        = rule.fields.addr,
@@ -591,35 +605,32 @@ local conf_rule = {
     deny_action = rule.fields.deny_action,
     terminate   = rule.fields.terminate,
   },
+
   additionalProperties = false,
-  anyOf = {
-    required("addr"),
-    required("cidr"),
-    required("host"),
-    required("country"),
-    required("method"),
-    required("path"),
-    required("ua"),
-  }
+
+  allOf = {
+    rule.policy.at_least_one_condition,
+  },
 }
 
 ---@type table<string, doorbell.schema>
 config.fields = {}
+
 config.fields.allow = {
   description = "static allow rules",
   type = "array",
-  items = conf_rule,
-  default = {},
+  items = config_rule,
+  default = util.array(),
 }
 
 config.fields.deny = {
   description = "static deny rules",
   type = "array",
-  items = conf_rule,
-  default = {},
+  items = config_rule,
+  default = util.array(),
 }
 
-config.fields.asset_dir = {
+config.fields.asset_path = {
   description = "Directory containing static assets for the application",
   type = "string",
   default = "/usr/local/share/doorbell",
@@ -629,6 +640,7 @@ config.fields.base_url = {
   description = "External URL for the application (used to generate hyperlinks)",
   type = "string",
   minLength = 1,
+  default = "http://127.0.0.1",
 }
 
 config.fields.cache_size = {
@@ -650,22 +662,31 @@ config.fields.trusted = {
   minLength = 1,
   examples = {
     { "127.0.0.1", "10.0.3.1", "10.0.4.0/24" },
-  }
+  },
+  default = util.array({ "127.0.0.1/32" }),
 }
 
-config.fields.log_dir = {
+config.fields.log_path = {
   description = "Path to the directory where log files will be stored",
   type = "string",
   minLength = 1,
   default = "/var/log/doorbell",
 }
 
-config.fields.runtime_dir = {
-  description = "State directory (where nginx.conf and rules state are stored)",
+config.fields.runtime_path = {
+  description = "Directory for NGINX-related files (and the default state path)",
   type = "string",
   minLength = 1,
   default = "/var/run/doorbell",
 }
+
+config.fields.state_path = {
+  description = "State directory, where rules and stat data are persisted",
+  type = "string",
+  minLength = 1,
+  default = "/var/run/doorbell",
+}
+
 
 config.fields.ota = {
   description = "OTA configuration",
@@ -687,8 +708,8 @@ config.fields.ota = {
     interval = {
       description = "How often (in seconds) to check for remote updates",
       type = "number",
-      minimum = 0,
       exclusiveMinimum = true,
+      minimum = const.testing and 0 or 60,
       default = 60,
     }
   },
@@ -708,7 +729,7 @@ config.fields.metrics = {
     interval = {
       description = "How often (in seconds) to measure and evaluate things",
       type = "number",
-      minimum = 1,
+      exclusiveMinimum = true,
       default = 5,
     }
   },
@@ -789,67 +810,76 @@ config.fields.unauthorized = {
 }
 
 ---@type doorbell.schema
-config.object = {
+config.entity = {
+  title = "doorbell.config",
   description = "Doorbell runtime configuration object",
   type = "object",
+
   properties = {
-    allow              = config.fields.allow,
-    asset_dir          = config.fields.asset_dir,
-    base_url           = config.fields.base_url,
-    cache_size         = config.fields.cache_size,
-    deny               = config.fields.deny,
-    geoip_asn_db       = config.fields.geoip_asn_db,
-    geoip_city_db      = config.fields.geoip_city_db,
-    geoip_country_db   = config.fields.geoip_country_db,
-    host               = config.fields.host,
-    log_dir            = config.fields.log_dir,
-    metrics            = config.fields.metrics,
-    notify             = config.fields.notify,
-    ota                = config.fields.ota,
-    runtime_dir        = config.fields.runtime_dir,
-    trusted            = config.fields.trusted,
+    allow                = config.fields.allow,
+    asset_path           = config.fields.asset_path,
+    base_url             = config.fields.base_url,
+    cache_size           = config.fields.cache_size,
+    deny                 = config.fields.deny,
+    geoip_asn_db         = config.fields.geoip_asn_db,
+    geoip_city_db        = config.fields.geoip_city_db,
+    geoip_country_db     = config.fields.geoip_country_db,
+    host                 = config.fields.host,
+    log_path             = config.fields.log_path,
+    metrics              = config.fields.metrics,
+    notify               = config.fields.notify,
+    ota                  = config.fields.ota,
+    runtime_path         = config.fields.runtime_path,
+    state_path           = config.fields.state_path,
+    trusted              = config.fields.trusted,
+    unauthorized         = config.fields.unauthorized,
   },
+
   additionalProperties = false,
+
   required = {
-    "asset_dir",
+    "asset_path",
     "base_url",
     "cache_size",
     "host",
-    "log_dir",
-    "runtime_dir",
+    "log_path",
+    "runtime_path",
     "trusted",
   }
 }
+config.entity.validate = validator(config.entity)
 
 ---@type doorbell.schema
 config.input = {
   title = "doorbell.config",
   description = "Doorbell runtime configuration input",
   type = "object",
+
   properties = {
     allow              = config.fields.allow,
-    asset_dir          = config.fields.asset_dir,
+    asset_path         = config.fields.asset_path,
     base_url           = config.fields.base_url,
     cache_size         = config.fields.cache_size,
     deny               = config.fields.deny,
     geoip_asn_db       = config.fields.geoip_asn_db,
     geoip_city_db      = config.fields.geoip_city_db,
     geoip_country_db   = config.fields.geoip_country_db,
-    host               = config.fields.host,
-    log_dir            = config.fields.log_dir,
+    log_path           = config.fields.log_path,
     metrics            = config.fields.metrics,
     notify             = config.fields.notify,
     ota                = config.fields.ota,
-    runtime_dir        = config.fields.runtime_dir,
+    runtime_path       = config.fields.runtime_path,
+    state_path         = config.fields.state_path,
     trusted            = config.fields.trusted,
+    unauthorized       = config.fields.unauthorized,
   },
+
   additionalProperties = false,
-  required = {
-    "base_url",
-  },
-  extra_validator = validate_config,
+
+  post_validate = validate_config,
 }
 config.input.validate = validator(config.input)
+
 
 return {
   rule = rule,

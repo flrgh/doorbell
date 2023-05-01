@@ -1,10 +1,8 @@
 local test = require "spec.testing"
-local join = require("spec.testing.fs").join
 local const = require "doorbell.constants"
 local http = require "doorbell.http"
 
 describe("/ring", function()
-  local prefix = os.getenv("DOORBELL_PREFIX") or join(test.ROOT_DIR, "test")
 
   ---@type spec.testing.client
   local client
@@ -16,13 +14,13 @@ describe("/ring", function()
   local conf
 
   lazy_setup(function()
-    conf = test.config(prefix)
+    conf = test.config()
     conf.allow = { { ua = "allow" } }
     conf.deny  = { { ua = "deny" } }
   end)
 
   before_each(function()
-    nginx = test.nginx(prefix, conf)
+    nginx = test.nginx(conf)
     nginx:conf_test()
     nginx:start()
 

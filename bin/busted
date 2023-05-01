@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+export _DOORBELL_TEST=1
+
 exec -a busted \
     resty \
     -I "$PWD/lib" \

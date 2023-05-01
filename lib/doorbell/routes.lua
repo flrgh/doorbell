@@ -13,11 +13,31 @@ local views   = require "doorbell.views"
 local rules   = require "doorbell.rules.api"
 local ip      = require "doorbell.ip"
 local stats   = require "doorbell.rules.stats"
+local schema  = require "doorbell.schema"
 
 local safe_decode = require("cjson.safe").decode
 
 local send       = http.send
 local shared     = ngx.shared
+
+---@param t any
+---@return any
+local function drop_functions(t)
+  local typ = type(t)
+
+  if typ == "table" then
+    local new = {}
+    for k, v in pairs(t) do
+      new[k] = drop_functions(v)
+    end
+    t = new
+
+  elseif typ == "function" then
+    t = nil
+  end
+
+  return t
+end
 
 
 ---@param config doorbell.config
@@ -38,7 +58,7 @@ function _M.init(config)
     metrics_enabled = false,
     content_type    = "text/plain",
     POST = function()
-      local ok, err = manager.load(config.runtime_dir)
+      local ok, err = manager.load(config.runtime_path)
       if ok then
         return send(201, "success")
       end
@@ -299,6 +319,54 @@ function _M.init(config)
     end,
   }
 
+
+  ---@param obj table
+  local function schema_api(obj)
+    local serialized = drop_functions(obj)
+    local api = {
+      metrics_enabled = true,
+      log_enabled = false,
+      allow_untrusted = false,
+      content_type = "application/json",
+      GET = function()
+        return send(200, serialized)
+      end,
+    }
+
+    if type(obj.validate) == "function" then
+      api.PUT = function()
+        local body = http.get_json_request_body()
+        local ok, err = obj.validate(body)
+
+        if ok then
+          send(200, body)
+        else
+          send(400, { message = err })
+        end
+      end
+    end
+
+    return api
+  end
+
+  router["/schema/config"]        = schema_api(schema.config)
+  router["/schema/config/fields"] = schema_api(schema.config.fields)
+  router["/schema/config/input"]  = schema_api(schema.config.fields)
+  router["/schema/config/entity"] = schema_api(schema.config.entity)
+
+  for name, field in pairs(schema.config.fields) do
+    router["/schema/config/fields/" .. name] = schema_api(field)
+  end
+
+  router["/schema/rule"]          = schema_api(schema.rule)
+  router["/schema/rule/fields"]   = schema_api(schema.rule.fields)
+  router["/schema/rule/patch"]    = schema_api(schema.rule.patch)
+  router["/schema/rule/create"]   = schema_api(schema.rule.create)
+  router["/schema/rule/entity"]   = schema_api(schema.rule.entity)
+
+  for name, field in pairs(schema.rule.fields) do
+    router["/schema/rule/fields/" .. name] = schema_api(field)
+  end
 end
 
 return _M

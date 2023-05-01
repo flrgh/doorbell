@@ -6,8 +6,6 @@ local const = require "doorbell.constants"
 local util  = require "doorbell.util"
 local schema = require "doorbell.schema"
 
-local validate = schema.rule.create.validate
-
 local cjson = require "cjson"
 
 local uuid         = require("resty.jit-uuid").generate_v4
@@ -338,7 +336,7 @@ _M.populate = populate
 ---@return string?        error
 function _M.new(opts)
   opts = deep_copy(opts)
-  local valid, err = validate(opts)
+  local valid, err = schema.rule.create.validate(opts)
 
   if not valid then
     return nil, err

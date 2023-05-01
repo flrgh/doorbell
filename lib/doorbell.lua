@@ -19,6 +19,7 @@ local routes  = require "doorbell.routes"
 local router  = require "doorbell.router"
 local http    = require "doorbell.http"
 local ota     = require "doorbell.ota"
+local env     = require "doorbell.env"
 
 local proc       = require "ngx.process"
 
@@ -53,6 +54,7 @@ local MAX_QUERY_ARGS = 20
 
 
 function _M.init()
+  env.init()
   config.init()
 
   metrics.init(config)

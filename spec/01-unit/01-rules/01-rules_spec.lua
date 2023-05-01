@@ -8,205 +8,235 @@ describe("doorbell.rules", function()
       {
         desc = "ttl cannot be negative",
         input = {
-          ua = "test",
           ttl = -1,
         },
-        expect = "`ttl` must be > 0",
+        expect = "property ttl validation failed",
+      },
+
+      {
+        desc = "ttl cannot be 0",
+        input = {
+          ttl = 0,
+        },
+        expect = "property ttl validation failed",
       },
 
       {
         desc = "ttl and expires are mutually-exclusive",
         input = {
-          ua = "test",
           ttl = 10,
           expires = ngx.now() + 10,
         },
-        expect = "only one of `ttl` and `expires` allowed",
+        expect = "",
+        --expect = "only one of `ttl` and `expires` allowed",
       },
 
       {
         desc = "expires must be > ngx.now()",
         input = {
-          ua = "test",
           expires = ngx.now() - 1,
         },
-        expect = "rule is already expired",
+        expect = "",
+        --expect = "property expires validation failed",
       },
 
       {
         desc = "expires cannot be negative",
         input = {
-          ua = "test",
           expires = -1,
         },
-        expect = "`expires` must be >= 0",
+        expect = "property expires validation failed",
       },
 
       {
         desc = "at least one condition is required",
-        input = {},
-        expect = "at least one of .* required",
+        input = { action = "allow", source = "api" },
+        expect = "",
+        --expect = "at least one of .* required",
+        fill_required_fields = false,
       },
 
       {
         desc = "action is required",
-        input = {},
-        expect = "`action` is required and cannot be empty",
+        input = { source = "api", ua = "" },
+        expect = "property action is required",
+        fill_required_fields = false,
       },
 
       {
         desc = "action cannot be empty",
         input = { action = "" },
-        expect = "`action` cannot be empty",
+        expect = "property action validation failed",
       },
 
       {
         desc = "source is required",
-        input = {},
-        expect = "`source` is required and cannot be empty",
+        input = { action = "allow", ua = "" },
+        expect = "property source is required",
+        fill_required_fields = false,
       },
 
       {
         desc = "source cannot be empty",
         input = { source = "" },
-        expect = "`source` cannot be empty",
+        expect = "property source validation failed",
       },
 
       {
         desc = "expires must be a number",
         input = { expires = false },
-        expect = "invalid `expires` (expected number, got: boolean)",
+        expect = "property expires validation failed",
         plain  = true,
       },
 
       {
         desc = "ttl must be a number",
         input = { ttl = false },
-        expect = "invalid `ttl` (expected number, got: boolean)",
+        expect = "property ttl validation failed",
         plain  = true,
       },
 
       {
         desc = "addr must be a string",
         input = { addr = false },
-        expect = "invalid `addr` (expected string, got: boolean)",
+        expect = "property addr validation failed",
         plain  = true,
       },
 
       {
         desc = "cidr must be a string",
         input = { cidr = false },
-        expect = "invalid `cidr` (expected string, got: boolean)",
+        expect = "property cidr validation failed",
         plain  = true,
       },
 
       {
         desc = "path must be a string",
         input = { path = false },
-        expect = "invalid `path` (expected string, got: boolean)",
+        expect = "property path validation failed",
         plain  = true,
       },
 
       {
         desc = "host must be a string",
         input = { host = false },
-        expect = "invalid `host` (expected string, got: boolean)",
+        expect = "property host validation failed",
         plain  = true,
       },
 
       {
         desc = "method must be a string",
         input = { method = false },
-        expect = "invalid `method` (expected string, got: boolean)",
+        expect = "property method validation failed",
         plain  = true,
       },
 
       {
         desc = "ua must be a string",
         input = { ua = false },
-        expect = "invalid `ua` (expected string, got: boolean)",
+        expect = "property ua validation failed",
         plain  = true,
       },
 
       {
         desc = "country must be a string",
         input = { country = false },
-        expect = "invalid `country` (expected string, got: boolean)",
+        expect = "property country validation failed",
         plain  = true,
       },
 
       {
         desc = "deny_action must be a string",
         input = { deny_action = false },
-        expect = "invalid `deny_action` (expected string, got: boolean)",
+        expect = "property deny_action validation failed",
         plain  = true,
       },
-
 
       {
         desc = "terminate must be a boolean",
         input = { terminate = "False" },
-        expect = "invalid `terminate` (expected boolean, got: string)",
+        expect = "property terminate validation failed",
         plain  = true,
       },
 
       {
         desc = "action must be one of deny/allow",
         input = { action = "nope" },
-        expect = 'invalid `action` (expected: "allow"|"deny", got: "nope")',
+        expect = "property action validation failed",
         plain = true,
       },
 
       {
         desc = "source must be one of config/user/ota/api",
         input = { source = "nope" },
-        expect = 'invalid `source` (expected: "api"|"config"|"ota"|"user", got: "nope")',
+        expect = "property source validation failed",
         plain = true,
       },
 
       {
         desc = "deny_action must be one of exit/tarpit",
         input = { deny_action = "nope" },
-        expect = 'invalid `deny_action` (expected: "exit"|"tarpit", got: "nope")',
+        expect = "property deny_action validation failed",
         plain = true,
       },
 
       {
         desc = "deny_action is only allowed when action == `deny`",
         input = { action = "allow", deny_action = "tarpit" },
-        expect = "`deny_action` cannot be used when `action` is 'allow'",
+        expect = "",
+        --expect = "`deny_action` cannot be used when `action` is 'allow'",
         plain = true,
       },
 
       {
         desc = "country must be a valid country code",
-        input = { action = "allow", country = "NOPE" },
-        expect = "`country` must be a valid, two letter country code",
+        input = { action = "allow", country = "XX" },
+        expect = "property country validation failed",
         plain = true,
       },
 
       {
         desc = "asn must be a number",
-        input = { action = "allow", asn = "NOPE" },
+        input = { asn = "NOPE" },
+        expect = "property asn validation failed",
+        plain = true,
       },
 
       {
         desc = "asn must be >= 0",
-        input = { action = "allow", asn = -1 },
+        input = { asn = -1 },
+        expect = "property asn validation failed",
+        plain = true,
       },
 
       {
         desc = "org must be a string",
-        input = { action = "allow", org = false },
+        input = { org = false },
+        expect = "property org validation failed",
+        plain = true,
       },
     }
 
     for _, case in ipairs(validation) do
       it("validation: " .. case.desc, function()
+        if case.fill_required_fields ~= false then
+          if case.input.action == nil then
+            case.input.action = "allow"
+          end
+
+          if case.input.source == nil then
+            case.input.source = "api"
+          end
+
+          if rules.count_conditions(case.input) == 0 then
+            case.input.ua = "test"
+          end
+        end
+
         local ok, err = new(case.input)
         assert.falsy(ok)
         assert.is_string(err)
-        --assert.matches(case.expect, err, 1, case.plain)
+        assert.matches(case.expect, err, 1, case.plain)
       end)
     end
 

@@ -31,4 +31,5 @@ return {
   worker_processes = "auto",
   ca_certs         = find_ca_certs(),
   daemon           = "off",
+  main             = {},
 }
