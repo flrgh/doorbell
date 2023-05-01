@@ -149,6 +149,7 @@ function _M.request(req)
       return lock:unlock(false)
     end
   end
+
   local token
   token, err = generate_request_token(req)
   if not token then

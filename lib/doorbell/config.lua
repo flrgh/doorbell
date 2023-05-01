@@ -15,14 +15,17 @@
 ---@field trusted          string[]
 ---@field metrics          doorbell.metrics.config
 ---@field ota?             doorbell.ota.config
+---@field unauthorized     doorbell.unauthorized
 local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
 local util = require "doorbell.util"
 local http = require "doorbell.http"
+local const = require "doorbell.constants"
 local pl_path = require "pl.path"
 local cjson_safe = require "cjson.safe"
+local schema = require "doorbell.schema"
 
 local getenv = os.getenv
 local fmt = string.format
@@ -325,6 +328,23 @@ local FIELDS = {
 
   { name = "ota",
     _validate = is_type("table"),
+  },
+
+  { name = "unauthorized",
+    from_env = true,
+    default = assert(schema.config.fields.unauthorized.default),
+    _validate = all {
+      is_type("string"),
+      function(value)
+        for _, policy in pairs(const.unauthorized) do
+          if value == policy then
+            return true
+          end
+        end
+
+        return nil, "unknown unauthorized policy"
+      end
+    },
   },
 }
 
