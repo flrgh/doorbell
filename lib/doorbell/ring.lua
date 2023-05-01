@@ -123,6 +123,13 @@ function _M.GET(ctx)
   then
     log.debugf("allowing request to %s endpoint", ENDPOINTS.answer)
     return http.send(200)
+
+  elseif UNAUTHORIZED == POLICY.redirect_for_approval
+    and req.host == config.host
+    and req.path == ENDPOINTS.get_access
+  then
+    log.debugf("allowing request to %s endpoint", ENDPOINTS.get_access)
+    return http.send(200)
   end
 
   local state = auth.get_state(req, ctx)
