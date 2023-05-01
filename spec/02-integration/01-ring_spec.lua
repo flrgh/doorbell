@@ -283,6 +283,20 @@ describe("/ring", function()
       local query = ngx.decode_args(parsed.query)
       local next_url = assert.is_string(query.next)
       assert.same(url, next_url)
-     end)
+    end)
+
+    it("allows access to the approval endpoint", function()
+      client.headers["user-agent"] = "nope"
+
+      client:add_x_forwarded_headers("1.2.3.4", "GET", conf.base_url .. "letmein")
+      client:send()
+      assert.is_nil(client.err)
+      assert.equals(200, client.response.status)
+
+      client:add_x_forwarded_headers("1.2.3.4", "POST", conf.base_url .. "letmein")
+      client:send()
+      assert.is_nil(client.err)
+      assert.equals(200, client.response.status)
+    end)
   end)
 end)
