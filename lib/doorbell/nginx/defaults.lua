@@ -31,5 +31,9 @@ return {
   worker_processes = "auto",
   ca_certs         = find_ca_certs(),
   daemon           = "off",
-  main             = {},
+  nginx_main       = {},
+  nginx_events     = {},
+  nginx_http       = {},
+  nginx_location   = {},
+  nginx_server     = {},
 }

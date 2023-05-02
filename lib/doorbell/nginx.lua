@@ -63,22 +63,22 @@ end
 
 ---@param input string|file*
 ---@param output string|file*
----@param env? table
-function _M.render(input, output, env)
+---@param overrides? table<string, string>
+function _M.render(input, output, overrides)
   input = get_file_handle(input, "r")
   output = get_file_handle(output, "w+")
 
-  env = env or EMPTY
+  overrides = overrides or EMPTY
 
   local function get_value(var)
-    local name = var:lower():gsub("^doorbell_", "")
+    local name = var:lower()
 
-    local value = env[name]
+    local value = overrides[name]
     if value ~= nil then
       return value
     end
 
-    value = ENV[name:upper()]
+    value = ENV.or_default[name:upper()]
     if value ~= nil then
       return value
     end
