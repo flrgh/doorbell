@@ -25,7 +25,7 @@ end
 
 return {
   log_level        = "debug",
-  listen           = "9876",
+  listen           = "0.0.0.0:9876",
   resolver         = "8.8.8.8",
   user             = "nobody",
   worker_processes = "auto",
