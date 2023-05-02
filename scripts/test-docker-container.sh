@@ -31,18 +31,17 @@ read-container-logs() {
 }
 
 stop-container() {
-    read-container-logs
-
     push-group "stopping container"
     docker container rm -f doorbell || true
     sleep 1
     pop-group
 }
 
-trap stop-container EXIT SIGINT
-
 fail() {
     echo "::error::${1}"
+
+    read-container-logs
+
     exit 1
 }
 
@@ -56,7 +55,7 @@ await() {
     local now; now=$(date +%s)
     local deadline=$((now + timeout))
 
-    push-group "awaiting ${cond} (timeout: $timeout)"
+    push-group "await ${cond} (timeout: $timeout)"
 
     while ! "$@"; do
         now=$(date +%s)
@@ -77,6 +76,16 @@ readonly RUNTIME=$TMP/runtime
 readonly LOGS=$TMP/logs
 
 mkdir -p "$LOGS" "$RUNTIME"
+
+
+cleanup() {
+    stop-container
+
+    group "cleanup temp dir" rm -rfv "$TMP" || true
+}
+
+trap cleanup EXIT SIGINT
+
 
 group "temp directories" \
     printf 'log: %s\nruntime: %s\n' "$LOGS" "$RUNTIME"
@@ -175,5 +184,3 @@ fi
 
 await 5 "doorbell.json.log is present" \
     test -s "$LOGS/doorbell.json.log"
-
-stop-container
