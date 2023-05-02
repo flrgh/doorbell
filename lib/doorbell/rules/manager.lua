@@ -626,16 +626,13 @@ function _M.init_worker()
     metrics.add_hook(function()
       -- rule counts
       do
-        local counts = {
-          allow = {
-            config = 0,
-            user   = 0,
-          },
-          deny = {
-            config = 0,
-            user =  0,
-          }
-        }
+        local counts = {}
+        for _, action in pairs(const.actions) do
+          counts[action] = {}
+          for _, source in pairs(const.sources) do
+            counts[action][source] = 0
+          end
+        end
 
         for _, rule in ipairs(get_all_rules()) do
           counts[rule.action][rule.source] = counts[rule.action][rule.source] + 1
