@@ -1,5 +1,15 @@
-spec/
-test/
-*.tar.gz
-*.tgz
+# ignore test resources
+spec
+.busted
+test
 geoip
+
+# ignore rust build artifacts
+target
+
+# misc files we probably don't care about
+*.md
+.luacheckrc
+.envrc
+.github
+.git
