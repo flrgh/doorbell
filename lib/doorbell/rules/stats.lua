@@ -219,7 +219,9 @@ function _M.load(rules)
   local stats, err = util.read_json_file(SAVE_PATH)
 
   if not stats then
-    log.errf("failed loading stats from %s: %s", SAVE_PATH, err)
+    if err and not err:lower():find("no such file or directory") then
+      log.errf("failed loading stats from %s: %s", SAVE_PATH, err)
+    end
     return
   end
 

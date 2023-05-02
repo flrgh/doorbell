@@ -43,6 +43,7 @@ function env.init()
     if name and value and value ~= "" and value ~= defaults[name] then
       log.debugf("Setting %s from env var: %q", name, value)
       env[name] = value
+      env.or_default[name] = value
     end
     i = i + 1
   end

@@ -21,10 +21,18 @@ if [[ ${1:-} = start ]]; then
         ln -sf /dev/stdout "${DOORBELL_LOG_PATH}/logs/access.log"
     fi
 
+    if [[ -n ${DOORBELL_USER:-} ]]; then
+        chown -R "$DOORBELL_USER:$DOORBELL_USER" \
+            "$DOORBELL_RUNTIME_PATH" \
+            "$DOORBELL_LOG_PATH"
+    fi
+
+    echo "Rendering NGINX template to ${DOORBELL_RUNTIME_PATH}/nginx.conf"
     "$DOORBELL_LIBEXEC_PATH"/render-nginx-template \
         < "$DOORBELL_ASSET_PATH"/nginx.template.conf \
         > "$DOORBELL_RUNTIME_PATH"/nginx.conf
 
+    echo "Starting up..."
     exec nginx \
         -p "$DOORBELL_RUNTIME_PATH" \
         -c "$DOORBELL_RUNTIME_PATH"/nginx.conf

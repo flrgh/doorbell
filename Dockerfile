@@ -28,7 +28,25 @@ COPY ./lib/ ${DOORBELL_LIB_PATH}/
 COPY ./assets/ ${DOORBELL_ASSET_PATH}/
 COPY ./bin/render-nginx-template ${DOORBELL_LIBEXEC_PATH}/
 
-RUN mkdir -p "${DOORBELL_RUNTIME_PATH}/logs" "${DOORBELL_LOG_PATH}"
+ARG NGINX_USER=doorbell
+ARG NGINX_USER_ID=9876
+
+ENV DOORBELL_USER=${NGINX_USER}
+
+RUN adduser \
+        -s /sbin/nologin \
+        -g "" \
+        -h "$DOORBELL_RUNTIME_PATH" \
+        -D \
+        -u "$NGINX_USER_ID" \
+        "$NGINX_USER" \
+        "$NGINX_USER" \
+    && mkdir -p \
+        "${DOORBELL_RUNTIME_PATH}/logs" \
+        "${DOORBELL_LOG_PATH}" \
+    && chown -R "${NGINX_USER_ID}:${NGINX_USER_ID}" \
+        "${DOORBELL_RUNTIME_PATH}/logs" \
+        "${DOORBELL_LOG_PATH}"
 
 # this has to be hard-coded
 COPY ./entrypoint.sh /usr/local/libexec/doorbell/entrypoint.sh

@@ -25,11 +25,15 @@ end
 
 return {
   log_level        = "debug",
-  listen           = "9876",
+  listen           = "0.0.0.0:9876",
   resolver         = "8.8.8.8",
   user             = "nobody",
   worker_processes = "auto",
   ca_certs         = find_ca_certs(),
   daemon           = "off",
-  main             = {},
+  nginx_main       = {},
+  nginx_events     = {},
+  nginx_http       = {},
+  nginx_location   = {},
+  nginx_server     = {},
 }
