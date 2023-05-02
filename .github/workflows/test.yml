@@ -169,3 +169,28 @@ jobs:
 
       - name: Integration Tests
         run: busted --run integration
+
+  docker-test:
+    runs-on: ubuntu-latest
+    name: Docker Image Tests
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build image
+        run: docker build -t doorbell .
+
+      - name: Start Container
+        run: >
+          docker run \
+            --detach \
+            --rm \
+            --name doorbell \
+            --publish 9876:9876 \
+            doorbell
+
+      - name: Test Container
+        run: curl --fail http://127.0.0.1:9876/rules
+
+      - name: Stop Container
+        if: always()
+        run: docker rm -f doorbell
