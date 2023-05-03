@@ -620,14 +620,14 @@ config.fields.allow = {
   description = "static allow rules",
   type = "array",
   items = config_rule,
-  default = util.array(),
+  default = {},
 }
 
 config.fields.deny = {
   description = "static deny rules",
   type = "array",
   items = config_rule,
-  default = util.array(),
+  default = {},
 }
 
 config.fields.asset_path = {
@@ -663,7 +663,7 @@ config.fields.trusted = {
   examples = {
     { "127.0.0.1", "10.0.3.1", "10.0.4.0/24" },
   },
-  default = util.array({ "127.0.0.1/32" }),
+  default = { "127.0.0.1/32" },
 }
 
 config.fields.log_path = {
