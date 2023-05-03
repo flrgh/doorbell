@@ -205,6 +205,114 @@ describe("doorbell.config", function()
         assert.error_matches(function()
           config.init()
         end, [[property notify validation failed: wrong type: expected object, got number]], nil, true)
+
+        env.CONFIG_STRING = json {
+          base_url = "http://localhost",
+          notify = {},
+        }
+
+        assert.no_error(function() config.init() end)
+      end)
+
+      describe(".strategy", function()
+        it("must be a string", function()
+          env.CONFIG_STRING = json {
+            base_url = "http://localhost",
+            notify = {
+              strategy = 123,
+            },
+          }
+          assert.error_matches(function()
+            config.init()
+          end, [[property strategy validation failed]], nil, true)
+        end)
+      end)
+
+      describe(".config", function()
+        it("must be a table (object)", function()
+          env.CONFIG_STRING = json {
+            base_url = "http://localhost",
+            notify = {
+              strategy = "custom",
+              config   = 123,
+            },
+          }
+
+          assert.error_matches(function()
+            config.init()
+          end, [[property config validation failed]], nil, true)
+
+
+          env.CONFIG_STRING = json {
+            base_url = "http://localhost",
+            notify = {
+              strategy = "custom",
+              config = {
+                a = 1,
+                b = 2,
+              },
+            },
+          }
+
+          assert.no_error(function() config.init() end)
+        end)
+      end)
+
+      describe(".periods", function()
+        it("must be a table (array)", function()
+          env.CONFIG_STRING = json {
+            base_url = "http://localhost",
+            notify = {
+              strategy = "custom",
+              periods  = 123,
+            },
+          }
+
+          assert.error_matches(function()
+            config.init()
+          end, [[property periods validation failed]], nil, true)
+
+          env.CONFIG_STRING = json {
+            base_url = "http://localhost",
+            notify = {
+              strategy = "custom",
+              periods  = { a = 1, b = 2 },
+            },
+          }
+
+          assert.error_matches(function()
+            config.init()
+          end, [[property periods validation failed]], nil, true)
+        end)
+
+        it("at least one of to/from must be defined", function()
+          env.CONFIG_STRING = json {
+            base_url = "http://localhost",
+            notify = {
+              strategy = "custom",
+              periods  = {
+                {},
+              },
+            },
+          }
+
+          assert.error_matches(function()
+            config.init()
+          end, [[property periods validation failed]], nil, true)
+
+          env.CONFIG_STRING = json {
+            base_url = "http://localhost",
+            notify = {
+              strategy = "custom",
+              periods  = {
+                { from = 15 },
+                { to   = 15 },
+              },
+            },
+          }
+
+          assert.no_error(function() config.init() end)
+        end)
       end)
     end)
   end)

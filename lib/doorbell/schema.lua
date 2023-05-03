@@ -3,9 +3,65 @@ local valid_uuid = require("resty.jit-uuid").is_valid
 local ip = require "doorbell.ip"
 local http = require "doorbell.http"
 local util = require "doorbell.util"
+local isarray = require "table.isarray"
 
 local NULL = ngx.null
 local re_match = ngx.re.match
+
+
+---@param s doorbell.schema
+---@param value any
+---@param cb fun(s:doorbell.schema, value:any)
+local function map_schema(s, value, cb)
+  value = cb(s, value)
+
+  if value == nil then
+    return
+  end
+
+  if type(value) == "table" then
+    if s.type == "object" then
+      assert(type(s.properties) == "table")
+
+      for name, sub in pairs(s.properties) do
+        value[name] = map_schema(sub, value[name], cb)
+      end
+
+    elseif s.type == "array" then
+      assert(type(s.items) == "table")
+
+      for i = 1, #value do
+        value[i] = map_schema(s.items, value[i], cb)
+      end
+    end
+  end
+
+  return value
+end
+
+
+---@generic T
+---@param s doorbell.schema
+---@param t T[]
+---@return T[]
+local function arrayify(s, t)
+  if s.type == "array" and type(t) == "table" and isarray(t) then
+    t = util.array(t)
+  end
+
+  return t
+end
+
+
+---@generic T
+---@param s doorbell.schema
+---@param t T
+---@return T
+local function convert_arrays(s, t)
+  return map_schema(s, t, arrayify)
+end
+
+
 
 --local generate_validator = require("jsonschema").generate_validator
 local generate_validator = require("resty.ljsonschema").generate_validator
@@ -23,6 +79,7 @@ local function validator(schema)
   local validate_schema = assert(generate_validator(schema, { name = name }))
 
   return function(value)
+    value = convert_arrays(schema, value)
     local ok, err = validate_schema(value)
 
     if ok and is_set(value) then
@@ -76,6 +133,8 @@ end
 ---@field items doorbell.schema
 ---
 ---@field uniqueItems boolean
+---
+---@field minItems boolean
 
 
 ---@class doorbell.schema.string : doorbell.schema.base
@@ -738,6 +797,8 @@ config.fields.metrics = {
 config.fields.notify = {
   description = "Notification subsystem configuration",
   type = "object",
+  title = "config.fields.notify",
+  additionalProperties = false,
   properties = {
     strategy = {
       description = "Notification provider",
@@ -756,12 +817,14 @@ config.fields.notify = {
     periods = {
       description = "Time periods when notifications can be sent",
       type = "array",
+      minItems = 1,
       items = {
         type = "object",
         properties = {
           from = {
             description = "Start of the period (HH)",
             type = "integer",
+            default = 0,
             minimum = 0,
             maximum = 23,
           },
@@ -771,12 +834,28 @@ config.fields.notify = {
             type = "integer",
             minimum = 0,
             maximum = 23,
+            default = 0,
           },
-        }
+        },
+
+        additionalProperties = false,
+
+        anyOf = {
+          { required = { "to"   } },
+          { required = { "from" } },
+        },
+
+        examples = {
+          { from = 21,          ["#"] = "send notifications between 9pm and midnight" },
+          { from = 13, to = 0,  ["#"] = "send notifications between 1pm and midnight" },
+          { from = 8,  to = 18, ["#"] = "send notifications between 8am and 6pm" },
+          { from = 20, to = 22, ["#"] = "send notifactions between 8pm and 10pm" },
+        },
       }
     },
   }
 }
+config.fields.notify.validate = validator(config.fields.notify)
 
 config.fields.host = {
   description = "Server Hostname",

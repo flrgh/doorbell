@@ -1,0 +1,88 @@
+local util = require "doorbell.util"
+
+describe("doorbell.util", function()
+  describe("current_time()", function()
+    it("returns a table of integers", function()
+      local t = util.current_time()
+      assert.is_table(t)
+      assert.is_number(t.year)
+      assert.is_number(t.month)
+      assert.is_number(t.day)
+      assert.is_number(t.hour)
+      assert.is_number(t.minute)
+      assert.is_number(t.second)
+    end)
+
+    it("can return a single component", function()
+      assert.is_number(util.current_time("year"))
+      assert.is_number(util.current_time("month"))
+      assert.is_number(util.current_time("day"))
+      assert.is_number(util.current_time("hour"))
+      assert.is_number(util.current_time("minute"))
+      assert.is_number(util.current_time("second"))
+    end)
+
+    it("throws on invalid part input", function()
+      assert.has_error(function()
+        util.current_time("nope")
+      end)
+    end)
+  end)
+
+  describe("truthy()", function()
+    it("returns true for explicit truthy values", function()
+      assert.is_true(util.truthy("yes"))
+      assert.is_true(util.truthy("YES"))
+      assert.is_true(util.truthy("YeS"))
+      assert.is_true(util.truthy("1"))
+      assert.is_true(util.truthy("true"))
+      assert.is_true(util.truthy("True"))
+      assert.is_true(util.truthy(true))
+      assert.is_true(util.truthy(1))
+    end)
+
+    it("returns false for falsy values", function()
+      assert.is_false(util.truthy("no"))
+      assert.is_false(util.truthy(""))
+      assert.is_false(util.truthy("false"))
+      assert.is_false(util.truthy(false))
+      assert.is_false(util.truthy(0))
+      assert.is_false(util.truthy(-1))
+      assert.is_false(util.truthy(nil))
+      assert.is_false(util.truthy({}))
+    end)
+  end)
+
+  describe("table_values()", function()
+    it("returns table values", function()
+      assert.same({ 1, 2, 3 }, util.table_values({ a = 1, b = 2, c = 3 }))
+    end)
+
+    it("sorts the output", function()
+      assert.same({ "a", "b", "c" }, util.table_values({ "b", "c", "a" }))
+    end)
+
+    it("can de-duplicate the output", function()
+      assert.same({ "a", "a", "b", "c" },
+                  util.table_values({ "b", "c", "a", "a" }))
+
+      assert.same({ "a", "b", "c" },
+                  util.table_values({ "b", "c", "a", "a" }, true))
+    end)
+  end)
+
+  describe("table_keys()", function()
+    it("returns keys for hash-like tables", function()
+      assert.same({ "a", "b" }, util.table_keys({ a = 1, b = 2 }))
+    end)
+
+    it("returns keys for array-like tables", function()
+      assert.same({ 1, 2 }, util.table_keys({ "a", "b" }))
+    end)
+
+    it("sorts its output", function()
+      assert.same({ "a", "b" }, util.table_keys({ b = 1, a = 2 }))
+    end)
+
+  end)
+end)

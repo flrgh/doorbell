@@ -7,6 +7,7 @@ local log     = require "doorbell.log"
 local cjson = require "cjson.safe"
 local resty_lock = require "resty.lock"
 local uuid = require("resty.jit-uuid").generate_v4
+local clone = require "table.clone"
 
 local encode  = cjson.encode
 local decode  = cjson.decode
@@ -431,5 +432,49 @@ function _M.array(t)
   return t
 end
 
+
+do
+  local tbuf = {
+    year   = nil,
+    month  = nil,
+    day    = nil,
+    hour   = nil,
+    minute = nil,
+    second = nil,
+  }
+
+  ---@class doorbell.time_t : table
+  ---
+  ---@field year   integer
+  ---@field month  integer
+  ---@field day    integer
+  ---@field hour   integer
+  ---@field minute integer
+  ---@field second integer
+
+  ---@alias doorbell.time_t.part "year"|"month"|"day"|"hour"|"minute"|"second"
+
+  ---@param part doorbell.time_t.part
+  ---@return integer
+  ---
+  ---@overload fun():doorbell.time_t
+  function _M.current_time(part)
+    --    1234567890123456789
+    local yyyy_mm_dd_hh_mm_ss = utctime()
+
+    tbuf.year   = tonumber(yyyy_mm_dd_hh_mm_ss:sub(1, 4))
+    tbuf.month  = tonumber(yyyy_mm_dd_hh_mm_ss:sub(6, 7))
+    tbuf.day    = tonumber(yyyy_mm_dd_hh_mm_ss:sub(9, 10))
+    tbuf.hour   = tonumber(yyyy_mm_dd_hh_mm_ss:sub(12, 13))
+    tbuf.minute = tonumber(yyyy_mm_dd_hh_mm_ss:sub(15, 16))
+    tbuf.second = tonumber(yyyy_mm_dd_hh_mm_ss:sub(18, 19))
+
+    if part then
+      return assert(tbuf[part], "unknown time component: " .. tostring(part))
+    end
+
+    return clone(tbuf)
+  end
+end
 
 return _M

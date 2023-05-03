@@ -5,8 +5,6 @@ local _M = {
 local log = require "doorbell.log"
 local util = require "doorbell.util"
 
-local utctime = ngx.utctime
-
 local STRATEGIES = {
   pushover = true,
 }
@@ -51,13 +49,14 @@ local metric
 ---@field config   doorbell.notify.strategy.config
 
 ---@type doorbell.notify.period[]
-local periods
+local PERIODS
 
 ---@class doorbell.notify.strategy
 ---@field init fun(conf:doorbell.notify.strategy.config)
 ---@field ring fun(req:doorbell.request, url:string):boolean?, string?, string|table|nil
 ---@field send fun(msg:doorbell.notify.message):boolean?, string?, string|table|nil
 local strategy
+
 
 ---@param conf doorbell.config
 function _M.init(conf)
@@ -83,13 +82,14 @@ function _M.init(conf)
 
   strategy.init(notify.config)
 
-  periods = conf.notify.periods
-  if not periods then
+  PERIODS = conf.notify.periods
+  if not PERIODS then
     log.warn("no notify periods configured; auth requests will be sent at all hours")
   end
 
   _M.strategy = strat
 end
+
 
 ---@param  req               doorbell.request
 ---@param  url               string
@@ -99,6 +99,7 @@ end
 function _M.ring(req, url)
   return strategy.ring(req, url)
 end
+
 
 function _M.send(msg)
   assert(type(msg) == "table")
@@ -118,24 +119,47 @@ function _M.send(msg)
   return strategy.send(msg)
 end
 
+
+---@param periods? doorbell.notify.period[]
+---@param hour?    integer
 ---@return boolean
-function _M.in_notify_period()
+function _M.in_notify_period(periods, hour)
+  periods = periods or PERIODS
+
   if not periods then
     return true
   end
 
-  --    1234567890123456789
-  local yyyy_mm_dd_hh_mm_ss = utctime()
-  local hours = tonumber(yyyy_mm_dd_hh_mm_ss:sub(12, 13))
+  if hour then
+    assert(type(hour) == "number", "hour must be a number")
+    assert(hour >= 0 and hour < 24, "hour is out of expected range")
+
+  else
+    hour = util.current_time("hour")
+  end
 
   for _, p in ipairs(periods) do
-    if hours >= p.from and hours < p.to then
+    assert(p.from or p.to,
+           "period must have at least one of 'from' or 'to'")
+
+    local in_period = true
+
+    if p.from and p.from > 0 and hour < p.from then
+      in_period = false
+    end
+
+    if p.to and p.to > 0 and hour >= p.to then
+      in_period = false
+    end
+
+    if in_period then
       return true
     end
   end
 
   return false
 end
+
 
 ---@param status "sent"|"failed"|"snoozed"|"answered"
 function _M.inc(status)
@@ -153,6 +177,7 @@ function _M.inc(status)
   metric:inc(1, STATUS[status])
 end
 
+
 function _M.init_worker()
   if not strategy then return end
 
@@ -166,8 +191,10 @@ function _M.init_worker()
   end
 end
 
+
 function _M.enabled()
   return strategy ~= nil
 end
+
 
 return _M
