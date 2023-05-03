@@ -94,6 +94,12 @@ local function validator(schema)
   end
 end
 
+---@class doorbell.schema.example : table
+---
+---@field comment string
+---@field value   any
+
+
 ---@class doorbell.schema.base : table
 ---
 ---@field title string
@@ -107,10 +113,10 @@ end
 ---@field not doorbell.schema
 ---
 ---@field extra_validator fun(value:any):boolean?, string?
---_
+---
 ---@field validate fun(value:any):boolean?, string?
 ---
----@field examples any[]
+---@field examples doorbell.schema.example[]
 ---
 ---@field default any
 
@@ -322,8 +328,14 @@ rule.fields.ua = {
   type = "string",
   minLength = 0,
   examples = {
-    "my specific user agent",
-    "~.*my regex user agent match version: [0-9]+.*",
+    {
+      comment = "match 'my specific user agent' exactly",
+      value   = "my specific user agent",
+    },
+    {
+      comment = "regex match",
+      value   = "~.*my regex user agent match version: [0-9]+.*",
+    },
   }
 }
 
@@ -332,8 +344,8 @@ rule.fields.path = {
   type = "string",
   minLength = 1,
   examples = {
-    "/foo",
-    "~^/foo/.+",
+    { comment = "match '/foo' exactly", value = "/foo" },
+    { comment = "match paths that start with '/foo'", value = "~^/foo/.+" },
   }
 }
 
@@ -342,8 +354,8 @@ rule.fields.addr = {
   type = "string",
   minLength = 1,
   examples = {
-    "1.2.3.4",
-    "2607:f8b0:400a:800::200e",
+    { comment = "IPv4", value = "1.2.3.4" },
+    { comment = "IPv6", value = "2607:f8b0:400a:800::200e" },
   },
   post_validate = validate_ip_addr,
 }
@@ -354,7 +366,8 @@ rule.fields.cidr = {
   minLength = 1,
   pattern = ".+/([0-9]+)$",
   examples = {
-    "1.2.3.0/24",
+    { comment = "match IPv4 addresses 1.2.3.0-1.2.3.255",
+      value = "1.2.3.0/24" },
   },
   post_validate = validate_cidr,
 }
@@ -609,6 +622,46 @@ rule.create = {
     rule.policy.deny_action_deny,
   },
 
+  examples = {
+    {
+      comment = "allow requests to foo.com from 1.2.3.4",
+      value = {
+        addr   = "1.2.3.4",
+        host   = "foo.com",
+        action = "allow",
+      },
+    },
+
+    {
+      comment = "allow all GET requests foo.com/public/*",
+      value = {
+        host   = "foo.com",
+        method = "GET",
+        path   = "~^/public/.+",
+        action = "allow",
+      },
+    },
+
+    {
+      comment = "explicitly deny access from a particular subnet",
+      value = {
+        cidr   = "4.2.3.0/24",
+        action = "deny",
+      },
+    },
+
+    {
+      comment = "allow an IP to access all hosts for the next hour",
+      value = {
+        addr   = "1.2.3.4",
+        ttl    = 60 * 60,
+        action = "allow",
+      },
+    },
+
+
+  },
+
   post_validate = validate_rule,
 }
 rule.create.validate = validator(rule.create)
@@ -618,6 +671,7 @@ rule.patch = {
   title = "doorbell.rule.patch",
   description = "schema for rule PATCH request body",
   type = "object",
+
   properties = {
     action      = rule.fields.action,
     asn         = rule.fields.asn,
@@ -635,11 +689,39 @@ rule.patch = {
     ttl         = rule.fields.ttl,
     ua          = rule.fields.ua,
   },
+
   additionalProperties = false,
+
   allOf = {
     rule.policy.expires_or_ttl,
     rule.policy.deny_action_deny,
   },
+
+  examples = {
+    {
+      comment = "change a rule action from deny to allow",
+      value = {
+        action = "allow",
+      }
+    },
+
+    {
+      comment = "update the expiration time for a rule to 10 minutes from now",
+      value = {
+        ttl = 10 * 60,
+      }
+    },
+
+    {
+      comment = "remove the host condition from a rule and add/update a method condition",
+      value = {
+        host = ngx.null,
+        method = "GET",
+      }
+    },
+
+  },
+
   post_validate = validate_rule,
 }
 rule.patch.validate = validator(rule.patch)
@@ -680,6 +762,19 @@ config.fields.allow = {
   type = "array",
   items = config_rule,
   default = {},
+  examples = {
+    {
+      comment = "allow requests to all hosts from private networks",
+      value = {
+        {
+          cidr = "10.0.0.0/8",
+        },
+        {
+          cidr = "192.168.0.0/16",
+        },
+      },
+    },
+  },
 }
 
 config.fields.deny = {
@@ -687,6 +782,16 @@ config.fields.deny = {
   type = "array",
   items = config_rule,
   default = {},
+  examples = {
+    {
+      comment = "deny requests from a pesky bot",
+      value = {
+        {
+          ua = "Super Duper Crawler v1.0",
+        },
+      },
+    },
+  },
 }
 
 config.fields.asset_path = {
@@ -720,7 +825,14 @@ config.fields.trusted = {
   },
   minLength = 1,
   examples = {
-    { "127.0.0.1", "10.0.3.1", "10.0.4.0/24" },
+    { comment = "trust localhost and two private networks",
+      value   = { "127.0.0.1", "10.0.3.1", "10.0.4.0/24" },
+    },
+
+    { comment = "trust localhost only",
+      value   = { "127.0.0.1" },
+    },
+
   },
   default = { "127.0.0.1/32" },
 }
@@ -773,6 +885,28 @@ config.fields.ota = {
     }
   },
   required = { "url" },
+
+  examples = {
+    {
+      comment = "update rules from https://foo.com/rules.json every 15 minutes",
+      value = {
+        url = "https://foo.com/rules.json",
+        interval = 60 * 15,
+      },
+    },
+
+    {
+      comment = "sending additional headers with the request",
+      value = {
+        url = "https://foo.com/rules",
+        headers = {
+          Accept = "application/json",
+        },
+      },
+    },
+
+
+  },
 }
 
 config.fields.metrics = {
@@ -844,16 +978,46 @@ config.fields.notify = {
           { required = { "to"   } },
           { required = { "from" } },
         },
+      },
 
-        examples = {
-          { from = 21,          ["#"] = "send notifications between 9pm and midnight" },
-          { from = 13, to = 0,  ["#"] = "send notifications between 1pm and midnight" },
-          { from = 8,  to = 18, ["#"] = "send notifications between 8am and 6pm" },
-          { from = 20, to = 22, ["#"] = "send notifactions between 8pm and 10pm" },
+      examples = {
+        {
+          comment = "send notifications between 9pm and midnight",
+          value = { { from = 21 } },
         },
-      }
+
+        {
+          comment = "send notifications between 8am and 6pm",
+          value = { { from = 8,  to = 18 } },
+        },
+
+        {
+          comment = "send notifactions between 9am-1pm and 8pm-10pm",
+          value = {
+            { from = 9, to = 13 },
+            { from = 20, to = 22 },
+          },
+        },
+
+        {
+          comment = "send notifactions between 11pm and 3am",
+          value = {
+            { from = 23, to = 0 },
+            { from = 0,  to = 3 },
+          },
+        },
+      },
     },
-  }
+  },
+
+  examples = {
+    {
+      comment = "explicitly disable notifications",
+      value = {
+        strategy = "none",
+      },
+    },
+  },
 }
 config.fields.notify.validate = validator(config.fields.notify)
 
