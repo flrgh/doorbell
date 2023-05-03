@@ -26,6 +26,7 @@ local http = require "doorbell.http"
 local cjson_safe = require "cjson.safe"
 local env = require "doorbell.env"
 local schema = require "doorbell.schema"
+local isarray = require "table.isarray"
 
 local prefix = ngx.config.prefix()
 
@@ -96,6 +97,51 @@ local function get_user_config()
   return config
 end
 
+
+---@param s doorbell.schema
+---@param value any
+---@param cb fun(s:doorbell.schema, value:any)
+local function map_schema(s, value, cb)
+  value = cb(s, value)
+
+  if value == nil then
+    return
+  end
+
+  if type(value) == "table" then
+    if s.type == "object" then
+      assert(type(s.properties) == "table")
+
+      for name, sub in pairs(s.properties) do
+        value[name] = map_schema(sub, value[name], cb)
+      end
+
+    elseif s.type == "array" then
+      assert(type(s.items) == "table")
+
+      for i = 1, #value do
+        value[i] = map_schema(s.items, value[i], cb)
+      end
+    end
+  end
+
+  return value
+end
+
+
+---@generic T
+---@param s doorbell.schema
+---@param t T[]
+---@return T[]
+local function arrayify(s, t)
+  if s.type == "array" and type(t) == "table" and isarray(t) then
+    t = util.array(t)
+  end
+
+  return t
+end
+
+
 function _M.init()
   local config = {}
 
@@ -116,13 +162,7 @@ function _M.init()
     end
   end
 
-  for name, field in pairs(schema.config.fields) do
-    -- wtf
-    if field.type == "array" then
-      config[name] = util.array(config[name])
-    end
-  end
-
+  map_schema(schema.config.entity, config, arrayify)
   assert(schema.config.input.validate(config))
 
   do
