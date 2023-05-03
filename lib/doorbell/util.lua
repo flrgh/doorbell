@@ -8,6 +8,9 @@ local cjson = require "cjson.safe"
 local resty_lock = require "resty.lock"
 local uuid = require("resty.jit-uuid").generate_v4
 local clone = require "table.clone"
+local clear_tab = require "table.clear"
+local nkeys = require "table.nkeys"
+local isarray = require "table.isarray"
 
 local encode  = cjson.encode
 local decode  = cjson.decode
@@ -474,6 +477,166 @@ do
     end
 
     return clone(tbuf)
+  end
+end
+
+
+do
+  local buf = {}
+  local n = 0
+  local max_n = 1000
+  local i_level = 0
+  local i_char  = "  "
+
+  local rep = string.rep
+  local json = require("cjson").new()
+  json.encode_escape_forward_slash(false)
+  local encode = cjson.encode
+  local NULL = json.null
+  local array_mt = json.array_mt
+  local empty_array_mt = json.empty_array_mt
+
+  local function is_array(t)
+    local mt = getmetatable(t)
+    return mt == array_mt
+        or mt == empty_array_mt
+        or isarray(t)
+  end
+
+  local function reset()
+    n = 0
+    clear_tab(buf)
+  end
+
+  ---@return string
+  local function render()
+    local s = concat(buf, "", 1, n)
+    reset()
+    return s
+  end
+
+  local function put(s)
+    n = n + 1
+    buf[n] = s
+    if n >= max_n then
+      put(render())
+    end
+  end
+
+  ---@param s string
+  ---@param ... any
+  local function putf(s, ...)
+    put(fmt(s, ...))
+  end
+
+  ---@param l string
+  local function add_line(l)
+    putf("%s%s\n", rep(i_char, i_level), l)
+  end
+
+  local function put_indent()
+    put(rep(i_char, i_level))
+  end
+
+  local function start_line()
+    put("\n")
+    put_indent()
+  end
+
+  local function indent()
+    i_level = i_level + 1
+  end
+
+  local function dedent()
+    i_level = i_level - 1
+  end
+
+  local function format_json(v)
+    local typ = type(v)
+
+    if typ == "table" then
+      local len = nkeys(v)
+
+      if is_array(v) then
+        if len == 0 then
+          put("[]")
+
+        else
+          put("[")
+          indent()
+
+          for i = 1, len -1 do
+            start_line()
+            format_json(v[i])
+            put(",")
+          end
+
+          start_line()
+          format_json(v[len])
+
+          dedent()
+          start_line()
+          put("]")
+        end
+      else
+        if len == 0 then
+          put("{}")
+
+        else
+          put("{")
+          indent()
+
+          local keys = _M.table_keys(v)
+
+          for i = 1, len - 1 do
+            local key = keys[i]
+            local value = v[key]
+            start_line()
+
+            format_json(key)
+            put(": ")
+
+            format_json(value)
+            put(",")
+          end
+
+          start_line()
+          format_json(keys[len])
+          put(": ")
+
+          format_json(v[keys[len]])
+
+          dedent()
+          start_line()
+          put("}")
+        end
+      end
+
+    elseif typ == "string" then
+      put(encode(v))
+
+    elseif typ == "number" then
+      put(encode(v))
+
+    elseif typ == "boolean" then
+      put(encode(v))
+
+    elseif v == "nil" then
+      put(encode(NULL))
+
+    elseif v == NULL then
+      put(encode(v))
+
+    else
+      error("unknown type: " .. typ)
+    end
+  end
+
+  ---@param v any
+  ---@return string
+  function _M.pretty_json(v)
+    format_json(v)
+    return render()
   end
 end
 
