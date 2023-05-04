@@ -1052,6 +1052,13 @@ config.fields.unauthorized = {
   default = const.unauthorized.return_401,
 }
 
+config.fields.redirect_uri = {
+  description = "URI to redirect unauthorized requests to.",
+  type = "string",
+  default = const.endpoints.get_access,
+}
+
+
 ---@type doorbell.schema
 config.entity = {
   title = "doorbell.config",
@@ -1072,6 +1079,7 @@ config.entity = {
     metrics              = config.fields.metrics,
     notify               = config.fields.notify,
     ota                  = config.fields.ota,
+    redirect_uri         = config.fields.redirect_uri,
     runtime_path         = config.fields.runtime_path,
     state_path           = config.fields.state_path,
     trusted              = config.fields.trusted,
@@ -1111,6 +1119,7 @@ config.input = {
     metrics            = config.fields.metrics,
     notify             = config.fields.notify,
     ota                = config.fields.ota,
+    redirect_uri       = config.fields.redirect_uri,
     runtime_path       = config.fields.runtime_path,
     state_path         = config.fields.state_path,
     trusted            = config.fields.trusted,

@@ -35,11 +35,17 @@ do
   ---@param req doorbell.request
   ---@return string
   function get_redir_location(req)
-    local base = join(config.base_url, ENDPOINTS.get_access)
+    local uri
+
+    if config.redirect_uri then
+      uri = config.redirect_uri
+    else
+      uri = join(config.base_url, ENDPOINTS.get_access)
+    end
 
     arg_t.next = fmt("%s://%s%s", req.scheme, req.host, req.uri)
 
-    return base .. "?" .. encode_args(arg_t)
+    return uri .. "?" .. encode_args(arg_t)
   end
 end
 

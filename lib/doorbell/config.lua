@@ -17,6 +17,7 @@
 ---@field metrics          doorbell.metrics.config
 ---@field ota?             doorbell.ota.config
 ---@field unauthorized     doorbell.unauthorized
+---@field redirect_uri     string
 local _M = {
   _VERSION = require("doorbell.constants").version,
 }

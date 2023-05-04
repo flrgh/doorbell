@@ -266,6 +266,7 @@ describe("/ring", function()
   describe("policy: redirect-for-approval", function()
     lazy_setup(function()
       conf.unauthorized = const.unauthorized.redirect_for_approval
+      conf.redirect_uri = "http://lolololo.test/"
     end)
 
     it("redirects the client to the request approval endpoint", function()
@@ -277,7 +278,7 @@ describe("/ring", function()
       assert.is_nil(client.err)
       assert.same(302, client.response.status)
       local location = assert.is_string(client.response.headers.location)
-      assert.matches("http://127.0.0.1" .. const.endpoints.get_access, location, nil, true)
+      assert.matches(conf.redirect_uri, location, nil, true)
 
       local parsed = assert(http.parse_url(location))
       local query = ngx.decode_args(parsed.query)
