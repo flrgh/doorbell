@@ -1344,6 +1344,7 @@ do
   }
 
   api.components.responses.Rule = {
+    description = "current Rule object",
     content = {
       [JSON] = { schema = ref("schemas", "Rule") },
     }
