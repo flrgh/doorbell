@@ -1,5 +1,7 @@
 #!/usr/bin/env resty
 
+setmetatable(_G, nil)
+
 local schema = require "doorbell.schema"
 local cjson = require "cjson"
 

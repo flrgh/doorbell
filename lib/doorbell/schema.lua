@@ -1176,7 +1176,7 @@ local api = {}
 
 do
   local JSON = "application/json"
-  local TEXT = "text/plain"
+  local PLAIN = "text/plain"
   local REF = "$ref"
 
   local TAG = {
