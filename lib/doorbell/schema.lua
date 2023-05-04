@@ -162,8 +162,8 @@ end
 ---
 ---@field minimum number
 ---@field maximum number
----@field exclusiveMinimum boolean
----@field exclusiveMaximum boolean
+---@field exclusiveMinimum number
+---@field exclusiveMaximum number
 
 
 ---@class doorbell.schema.boolean : doorbell.schema.base
@@ -325,14 +325,15 @@ rule.fields.expires = {
   type = "number",
   minimum = 0,
   post_validate = validate_expires,
-  example = ngx.now() + (60 * 60 * 24),
+  example = 1683229474.686,
 }
 
 rule.fields.ttl = {
   description = "Relative timestamp (in seconds) of the rule's expiration",
   type = "number",
-  exclusiveMinimum = true,
+  exclusiveMinimum = 0,
   minimum = 0,
+  example = 3600,
 }
 
 rule.fields.id = {
@@ -432,7 +433,7 @@ rule.fields.created = {
   description = "A Unix epoch timestamp of when the rule was created",
   type = "number",
   minimum = 0,
-  example = ngx.now(),
+  example = 1683229474.686,
 }
 
 rule.fields.terminate = {
@@ -917,7 +918,7 @@ config.fields.ota = {
     interval = {
       description = "How often (in seconds) to check for remote updates",
       type = "number",
-      exclusiveMinimum = true,
+      exclusiveMinimum = const.testing and 0 or 60,
       minimum = const.testing and 0 or 60,
       default = 60,
     }
@@ -960,7 +961,7 @@ config.fields.metrics = {
     interval = {
       description = "How often (in seconds) to measure and evaluate things",
       type = "number",
-      exclusiveMinimum = true,
+      exclusiveMinimum = 5,
       default = 5,
     }
   },
@@ -1175,6 +1176,7 @@ local api = {}
 
 do
   local JSON = "application/json"
+  local TEXT = "text/plain"
   local REF = "$ref"
 
   local TAG = {
@@ -1355,9 +1357,7 @@ do
   api.components.responses.ServerError = {
     description = "Internal Server Error",
     content = {
-      [JSON] = {
-        schema = { schema = ref("schemas", "ApiError") },
-      }
+      [JSON] = { schema = ref("schemas", "ApiError") }
     }
   }
 
@@ -1499,7 +1499,7 @@ do
         ["200"] = {
           description = "The IP Address",
           content = {
-            ["text/plain"] = { schema = ref("schemas", "IpAddr") },
+            [PLAIN] = { schema = ref("schemas", "IpAddr") },
           },
         }
       }
