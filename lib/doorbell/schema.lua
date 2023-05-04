@@ -96,7 +96,7 @@ end
 
 ---@class doorbell.schema.example : table
 ---
----@field comment string
+---@field summary string
 ---@field value   any
 
 
@@ -140,7 +140,7 @@ end
 ---
 ---@field uniqueItems boolean
 ---
----@field minItems boolean
+---@field minItems integer
 
 
 ---@class doorbell.schema.string : doorbell.schema.base
@@ -176,6 +176,33 @@ end
 ---| doorbell.schema.string
 ---| doorbell.schema.boolean
 ---| doorbell.schema.number
+
+
+---@generic T
+---@param t T
+---@return T
+local function serialize(t)
+  local typ = type(t)
+
+  if typ == "table" then
+    local new = {}
+
+    for k, v in pairs(t) do
+      local sk = serialize(k)
+
+      if sk ~= nil then
+        new[sk] = serialize(v)
+      end
+    end
+
+    t = new
+
+  elseif typ == "function" then
+    t = nil
+  end
+
+  return t
+end
 
 
 ---@param cidr string|string[]
@@ -298,6 +325,7 @@ rule.fields.expires = {
   type = "number",
   minimum = 0,
   post_validate = validate_expires,
+  example = ngx.now() + (60 * 60 * 24),
 }
 
 rule.fields.ttl = {
@@ -314,6 +342,7 @@ rule.fields.id = {
   maxLength = 36,
   pattern = "^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$",
   post_validate = valid_uuid,
+  example = "92f05a2a-0310-45c6-842f-c34d16363051",
 }
 
 rule.fields.host = {
@@ -321,6 +350,7 @@ rule.fields.host = {
   type = "string",
   minLength = 1,
   format = "hostname",
+  example = "example.com",
 }
 
 rule.fields.ua = {
@@ -329,14 +359,15 @@ rule.fields.ua = {
   minLength = 0,
   examples = {
     {
-      comment = "match 'my specific user agent' exactly",
+      summary = "match 'my specific user agent' exactly",
       value   = "my specific user agent",
     },
     {
-      comment = "regex match",
+      summary = "regex match",
       value   = "~.*my regex user agent match version: [0-9]+.*",
     },
-  }
+  },
+  example = "curl/7.85.0",
 }
 
 rule.fields.path = {
@@ -344,9 +375,10 @@ rule.fields.path = {
   type = "string",
   minLength = 1,
   examples = {
-    { comment = "match '/foo' exactly", value = "/foo" },
-    { comment = "match paths that start with '/foo'", value = "~^/foo/.+" },
-  }
+    { summary = "match '/foo' exactly", value = "/foo" },
+    { summary = "match paths that start with '/foo'", value = "~^/foo/.+" },
+  },
+  example = "~^/api/.+",
 }
 
 rule.fields.addr = {
@@ -354,10 +386,11 @@ rule.fields.addr = {
   type = "string",
   minLength = 1,
   examples = {
-    { comment = "IPv4", value = "1.2.3.4" },
-    { comment = "IPv6", value = "2607:f8b0:400a:800::200e" },
+    { summary = "IPv4", value = "1.2.3.4" },
+    { summary = "IPv6", value = "2607:f8b0:400a:800::200e" },
   },
   post_validate = validate_ip_addr,
+  example = "10.11.12.13",
 }
 
 rule.fields.cidr = {
@@ -366,10 +399,11 @@ rule.fields.cidr = {
   minLength = 1,
   pattern = ".+/([0-9]+)$",
   examples = {
-    { comment = "match IPv4 addresses 1.2.3.0-1.2.3.255",
+    { summary = "match IPv4 addresses 1.2.3.0-1.2.3.255",
       value = "1.2.3.0/24" },
   },
   post_validate = validate_cidr,
+  example = "10.0.0.0/24",
 }
 
 rule.fields.method = {
@@ -398,6 +432,7 @@ rule.fields.created = {
   description = "A Unix epoch timestamp of when the rule was created",
   type = "number",
   minimum = 0,
+  example = ngx.now(),
 }
 
 rule.fields.terminate = {
@@ -409,6 +444,7 @@ rule.fields.comment = {
   description = "An informative comment about the rule",
   type = "string",
   minLength = 1,
+  example = "Allow access to ^/api/+ for 10.0.3.2",
 }
 
 rule.fields.country = {
@@ -423,6 +459,7 @@ rule.fields.country = {
 rule.fields.hash = {
   description = "(generated) hash of a rule's match conditions",
   type = "string",
+  example = "8e195d0137c229447f423ffd83a1858b",
 }
 
 rule.fields.conditions = {
@@ -440,6 +477,7 @@ rule.fields.asn = {
 rule.fields.org = {
   description = "Network Org",
   type = "string",
+  example = "GOOGLE-CLOUD-PLATFORM",
 }
 
 for name, field in pairs(rule.fields) do
@@ -624,7 +662,7 @@ rule.create = {
 
   examples = {
     {
-      comment = "allow requests to foo.com from 1.2.3.4",
+      summary = "allow requests to foo.com from 1.2.3.4",
       value = {
         addr   = "1.2.3.4",
         host   = "foo.com",
@@ -633,7 +671,7 @@ rule.create = {
     },
 
     {
-      comment = "allow all GET requests foo.com/public/*",
+      summary = "allow all GET requests foo.com/public/*",
       value = {
         host   = "foo.com",
         method = "GET",
@@ -643,7 +681,7 @@ rule.create = {
     },
 
     {
-      comment = "explicitly deny access from a particular subnet",
+      summary = "explicitly deny access from a particular subnet",
       value = {
         cidr   = "4.2.3.0/24",
         action = "deny",
@@ -651,7 +689,7 @@ rule.create = {
     },
 
     {
-      comment = "allow an IP to access all hosts for the next hour",
+      summary = "allow an IP to access all hosts for the next hour",
       value = {
         addr   = "1.2.3.4",
         ttl    = 60 * 60,
@@ -699,21 +737,21 @@ rule.patch = {
 
   examples = {
     {
-      comment = "change a rule action from deny to allow",
+      summary = "change a rule action from deny to allow",
       value = {
         action = "allow",
       }
     },
 
     {
-      comment = "update the expiration time for a rule to 10 minutes from now",
+      summary = "update the expiration time for a rule to 10 minutes from now",
       value = {
         ttl = 10 * 60,
       }
     },
 
     {
-      comment = "remove the host condition from a rule and add/update a method condition",
+      summary = "remove the host condition from a rule and add/update a method condition",
       value = {
         host = ngx.null,
         method = "GET",
@@ -764,7 +802,7 @@ config.fields.allow = {
   default = {},
   examples = {
     {
-      comment = "allow requests to all hosts from private networks",
+      summary = "allow requests to all hosts from private networks",
       value = {
         {
           cidr = "10.0.0.0/8",
@@ -784,7 +822,7 @@ config.fields.deny = {
   default = {},
   examples = {
     {
-      comment = "deny requests from a pesky bot",
+      summary = "deny requests from a pesky bot",
       value = {
         {
           ua = "Super Duper Crawler v1.0",
@@ -825,11 +863,11 @@ config.fields.trusted = {
   },
   minLength = 1,
   examples = {
-    { comment = "trust localhost and two private networks",
+    { summary = "trust localhost and two private networks",
       value   = { "127.0.0.1", "10.0.3.1", "10.0.4.0/24" },
     },
 
-    { comment = "trust localhost only",
+    { summary = "trust localhost only",
       value   = { "127.0.0.1" },
     },
 
@@ -888,7 +926,7 @@ config.fields.ota = {
 
   examples = {
     {
-      comment = "update rules from https://foo.com/rules.json every 15 minutes",
+      summary = "update rules from https://foo.com/rules.json every 15 minutes",
       value = {
         url = "https://foo.com/rules.json",
         interval = 60 * 15,
@@ -896,7 +934,7 @@ config.fields.ota = {
     },
 
     {
-      comment = "sending additional headers with the request",
+      summary = "sending additional headers with the request",
       value = {
         url = "https://foo.com/rules",
         headers = {
@@ -982,17 +1020,17 @@ config.fields.notify = {
 
       examples = {
         {
-          comment = "send notifications between 9pm and midnight",
+          summary = "send notifications between 9pm and midnight",
           value = { { from = 21 } },
         },
 
         {
-          comment = "send notifications between 8am and 6pm",
+          summary = "send notifications between 8am and 6pm",
           value = { { from = 8,  to = 18 } },
         },
 
         {
-          comment = "send notifactions between 9am-1pm and 8pm-10pm",
+          summary = "send notifactions between 9am-1pm and 8pm-10pm",
           value = {
             { from = 9, to = 13 },
             { from = 20, to = 22 },
@@ -1000,7 +1038,7 @@ config.fields.notify = {
         },
 
         {
-          comment = "send notifactions between 11pm and 3am",
+          summary = "send notifactions between 11pm and 3am",
           value = {
             { from = 23, to = 0 },
             { from = 0,  to = 3 },
@@ -1012,7 +1050,7 @@ config.fields.notify = {
 
   examples = {
     {
-      comment = "explicitly disable notifications",
+      summary = "explicitly disable notifications",
       value = {
         strategy = "none",
       },
@@ -1133,7 +1171,361 @@ config.input = {
 config.input.validate = validator(config.input)
 
 
+local api = {}
+
+do
+  local JSON = "application/json"
+  local REF = "$ref"
+
+  local TAG = {
+    RULES  = {
+      name = "rules",
+      description = "CRUD operations for Doorbell rule objects",
+    },
+
+    SCHEMA = {
+      name = "schema",
+      description = "JSONSchema and OpenAPI endpoints",
+    },
+
+    IP_INFO = {
+      name = "ip-info",
+      description = "Endpoints for retrieving IP address information",
+    },
+  }
+
+  local OP_ID = {
+    LIST_RULES         = "list-rules",
+    CREATE_RULE        = "create-rule",
+    GET_RULE           = "get-rule",
+    UPDATE_RULE        = "update-rule",
+    DELETE_RULE        = "delete-rule",
+    GET_CLIENT_IP      = "get-client-ip-addr",
+    GET_CLIENT_IP_INFO = "get-client-ip-addr-info",
+    GET_IP_INFO        = "get-ip-addr-info",
+  }
+
+  api.openapi = "3.0.3"
+
+  api.info = {
+    title = "Doorbell API",
+    description = "_A forward auth server for the rest of us._",
+    version = const.version,
+    license = nil,
+  }
+
+  api.tags = {
+    TAG.RULES,
+    TAG.SCHEMA,
+    TAG.IP_INFO,
+  }
+
+  api.components = {
+    headers       = {},
+    links         = {},
+    parameters    = {},
+    requestBodies = {},
+    responses     = {},
+    schemas       = {},
+  }
+
+  ---@param typ "headers"|"links"|"parameters"|"requestBodies"|"responses"|"schemas"
+  ---@param id string
+  ---@return table
+  local function ref(typ, id)
+    assert(api.components[typ], "Unknown component type: " .. typ)
+    assert(api.components[typ][id], "Unknown " .. typ .. " id: " .. id)
+    return { [REF] = "#/components/" .. typ .. "/" .. id }
+  end
+
+  api.components.schemas.Rule = serialize(rule.entity)
+  api.components.schemas.RuleCreate = serialize(rule.create)
+  api.components.schemas.RuleUpdate = serialize(rule.patch)
+
+  api.components.schemas.IpAddr = {
+    type = "string",
+    description = "An IPv4 or IPv6 address",
+    examples = {
+      { summary = "ipv4", value = "10.11.12.13" },
+      { summary = "ipv6", value = "2607:f8b0:400a:80b::200e" },
+    }
+  }
+
+  local optional_string = {
+    type = "string",
+    --required = false,
+    nullable = true,
+  }
+
+  local optional_number = {
+    type = "number",
+    --required = false,
+    nullable = true,
+  }
+
+
+  api.components.schemas.IpInfo = {
+    description = "GeoIP information about an IP address",
+    type = "object",
+    properties = {
+      addr           = ref("schemas", "IpAddr"),
+      asn            = { type = "integer", nullable = true },
+      city           = optional_string,
+      continent      = optional_string,
+      continent_code = optional_string,
+      country        = optional_string,
+      country_code   = optional_string,
+      latitude       = optional_number,
+      longitude      = optional_number,
+      org            = optional_string,
+      postal_code    = optional_string,
+      region         = optional_string,
+      region_code    = optional_string,
+      time_zone      = optional_string,
+    },
+    examples = {
+      {
+        value = {
+          addr           = "87.236.176.241",
+          asn            = 211298,
+          continent      = "Europe",
+          continent_code = "EU",
+          country        = "United Kingdom",
+          country_code   = "GB",
+          latitude       = 51.4964,
+          longitude      = -0.1224,
+          org            = "Constantine Cybersecurity Ltd.",
+          time_zone      = "Europe/London"
+        },
+      },
+
+      {
+        value = {
+          addr           = "99.196.130.195",
+          asn            = 7155,
+          continent      = "North America",
+          continent_code = "NA",
+          country        = "United States",
+          country_code   = "US",
+          latitude       = 37.751,
+          longitude      = -97.822,
+          org            = "VIASAT-SP-BACKBONE",
+          time_zone      = "America/Chicago",
+        },
+      },
+    },
+  }
+
+
+  api.components.schemas.ApiError = {
+    type = "object",
+    properties = {
+      error = {
+        type = "string",
+      }
+    },
+    additionalProperties = true,
+  }
+
+  api.components.responses.NotFound = {
+    description = "Not Found",
+    content = {
+      [JSON] = { schema = ref("schemas", "ApiError") },
+    }
+  }
+
+  api.components.responses.BadRequest = {
+    description = "Bad Request/Invalid Input",
+    content = {
+      [JSON] = { schema = ref("schemas", "ApiError") },
+    }
+  }
+
+  api.components.responses.Rule = {
+    content = {
+      [JSON] = { schema = ref("schemas", "Rule") },
+    }
+  }
+
+  api.components.responses.NoContent = {
+    description = "No Content",
+    content = {},
+  }
+
+  api.components.responses.ServerError = {
+    description = "Internal Server Error",
+    content = {
+      [JSON] = {
+        schema = { schema = ref("schemas", "ApiError") },
+      }
+    }
+  }
+
+  api.components.responses.IpInfo = {
+    description = "GeoIP Address Info",
+    content = {
+      [JSON] = { schema = ref("schemas", "IpInfo") },
+    }
+  }
+
+  api.components.parameters.RuleId = {
+    name            = "rule_id_or_hash",
+    ["in"]          = "path",
+    required        = true,
+    description     = "A rule UUID or or 32 character hash",
+    deprecated      = false,
+    allowEmptyValue = false,
+    schema          = {
+      type = "string",
+    },
+    examples = {
+      uuid = {
+        summary = "uuid",
+        value = "0289a45a-2c32-48f0-9fee-559c5ab73c27",
+      },
+
+      hash = {
+        summary = "hash",
+        value = "8e195d0137c229447f423ffd83a1858b",
+      }
+    }
+  }
+
+
+  api.paths = {}
+  api.paths["/rules"] = {
+    description = "List and create rule objects",
+  }
+
+  api.paths["/rules"].get = {
+    tags        = { TAG.RULES.name },
+    description = "List all rule objects",
+    operationId = OP_ID.LIST_RULES,
+    responses   = {
+      ["200"] = {
+        description = "List of all current rules",
+        content = {
+          [JSON] = {
+            schema = {
+              type = "object",
+              properties = {
+                data = {
+                  type = "array",
+                  items = ref("schemas", "Rule"),
+                }
+              },
+            },
+          }
+        }
+      },
+    },
+    deprecated  = false,
+  }
+
+  api.paths["/rules"].post = {
+    tags        = { TAG.RULES.name },
+    description = "Create a new rule",
+    operationId = OP_ID.CREATE_RULE,
+    requestBody = {
+      description = "Rule object to create",
+      required    = true,
+      content     = {
+        [JSON] = { schema = ref("schemas", "RuleCreate") },
+      },
+    },
+    responses = {
+      ["201"] = ref("responses", "Rule"),
+      ["400"] = ref("responses", "BadRequest"),
+      ["500"] = ref("responses", "ServerError"),
+    },
+    deprecated  = false,
+  }
+
+  api.paths["/rules/{rule_id_or_hash}"] = {
+    description = "CRUD operations for individual rule objects",
+    parameters  = { ref("parameters", "RuleId") },
+  }
+
+  api.paths["/rules/{rule_id_or_hash}"].get = {
+    tags        = { TAG.RULES.name },
+    description = "Retrieve a rule object by ID or hash",
+    operationId = OP_ID.GET_RULE,
+    responses   = {
+      ["200"] = ref("responses", "Rule"),
+      ["404"] = ref("responses", "NotFound"),
+    },
+    deprecated  = false,
+  }
+
+  api.paths["/rules/{rule_id_or_hash}"].patch = {
+    tags        = { TAG.RULES.name },
+    description = "Update rule object by ID or hash",
+    operationId = OP_ID.UPDATE_RULE,
+    requestBody = {
+      description = "Updates to the rule object",
+      required    = true,
+      content     = {
+        [JSON] = { schema = ref("schemas", "RuleUpdate") },
+      },
+    },
+    responses   = {
+      ["200"] = ref("responses", "Rule"),
+      ["400"] = ref("responses", "BadRequest"),
+      ["404"] = ref("responses", "NotFound"),
+    },
+    deprecated  = false,
+  }
+
+  api.paths["/rules/{rule_id_or_hash}"].delete = {
+    tags        = { TAG.RULES.name },
+    description = "Delete rule object by ID or hash",
+    operationId = OP_ID.DELETE_RULE,
+    responses   = {
+      ["404"] = ref("responses", "NotFound"),
+      ["204"] = ref("responses", "NoContent"),
+      ["500"] = ref("responses", "ServerError"),
+    },
+    deprecated  = false,
+  }
+
+
+  api.paths["/ip/addr"] = {
+    get = {
+      description = "Retrieve the client IP address",
+      operationId = OP_ID.GET_CLIENT_IP,
+      tags        = { TAG.IP_INFO.name },
+      deprecated  = false,
+      responses = {
+        ["200"] = {
+          description = "The IP Address",
+          content = {
+            ["text/plain"] = { schema = ref("schemas", "IpAddr") },
+          },
+        }
+      }
+    }
+  }
+
+  api.paths["/ip/info"] = {
+    get = {
+      description = "Retrieve client IP address info",
+      operationId = OP_ID.GET_CLIENT_IP_INFO,
+      tags        = { TAG.IP_INFO.name },
+      deprecated  = false,
+      responses = {
+        ["200"] = {
+          description = "GeoIP Address Info",
+          content = {
+            [JSON] = { schema = ref("schemas", "IpInfo") },
+          }
+        }
+      }
+    }
+  }
+end
+
 return {
   rule = rule,
   config = config,
+  api = api,
 }

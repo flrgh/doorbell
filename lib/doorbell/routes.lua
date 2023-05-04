@@ -295,7 +295,7 @@ function _M.init(config)
         return send(200, info)
 
       else
-        return send(status or 500, { message = err or "unknown error" })
+        return send(status or 500, { error = err or "unknown error" })
       end
     end,
   }
@@ -367,6 +367,17 @@ function _M.init(config)
   for name, field in pairs(schema.rule.fields) do
     router["/schema/rule/fields/" .. name] = schema_api(field)
   end
+
+  router["/schema/openapi"] = {
+    description = "OpenApi spec for the Doorbell API",
+    metrics_enabled = true,
+    log_enabled = false,
+    allow_untrusted = false,
+    content_type = "application/json",
+    GET = function()
+      return send(200, schema.api)
+    end,
+  }
 end
 
 return _M
