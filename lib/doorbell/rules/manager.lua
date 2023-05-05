@@ -52,6 +52,8 @@ local RULES_BY_ID = {}
 ---@type table<string, doorbell.rule>
 local RULES_BY_HASH = {}
 
+local NEG_CACHE_TTL = 60
+
 local function update_local_rules()
   local version = shm.update_current_version()
   if version == RULES_VERSION then
@@ -437,7 +439,11 @@ function _M.match(req)
   ---@type doorbell.rule
   local rule = cache:get("req", key)
 
-  if not rule then
+  -- negative cache
+  if rule == false then
+    return nil, true
+
+  elseif not rule then
     cached = false
     rule = check_match(req)
   end
@@ -451,6 +457,9 @@ function _M.match(req)
     if not cached then
       cache:set("req", key, rule, rule:remaining_ttl(time))
     end
+
+  else
+    cache:set("req", key, false, NEG_CACHE_TTL)
   end
 
   return rule, cached
