@@ -166,6 +166,9 @@ group "check allowed /ring request" \
         "${ring_args[@]}" \
         http://localhost:9876/ring
 
+await 5 "doorbell.json.log written" \
+    test -s "$LOGS/doorbell.json.log"
+
 push-group "check for container errors"
 if docker logs doorbell 2>&1 | grep -E '\[(error|crit|emerg|alert)\]'; then
     pop-group
