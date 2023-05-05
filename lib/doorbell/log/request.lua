@@ -6,12 +6,17 @@ local log = require "doorbell.log"
 local util = require "doorbell.util"
 
 local sem      = require "ngx.semaphore"
-local encode   = require("cjson.safe").new().encode
+local cjson    = require("cjson.safe").new()
+local encode   = cjson.encode
 local open     = io.open
 local fmt      = string.format
 local concat   = table.concat
 local timer_at = ngx.timer.at
 local exiting  = ngx.worker.exiting
+
+cjson.encode_keep_buffer(true)
+cjson.encode_number_precision(16)
+cjson.encode_escape_forward_slash(false)
 
 ---@type ngx.semaphore
 local SEM
