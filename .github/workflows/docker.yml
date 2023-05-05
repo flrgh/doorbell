@@ -16,6 +16,7 @@ on:
       - Dockerfile
       - 'assets/**'
       - 'entrypoint.sh'
+      - 'scripts/**'
 
 defaults:
   run:
