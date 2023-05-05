@@ -1,0 +1,31 @@
+name: Docker Integration Tests
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - '*'
+    paths:
+      - '*.rockspec'
+      - '.github/**'
+      - 'bin/**'
+      - 'lib/**'
+      - Dockerfile
+      - 'assets/**'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  docker-test:
+    runs-on: ubuntu-latest
+    name: Docker Image Tests
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Run Tests
+        run: ./scripts/test-docker-container.sh
