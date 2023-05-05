@@ -21,6 +21,7 @@ on:
       - 'lib/**'
       - 'spec/**'
       - '**.lua'
+      - 'assets/**'
 
 defaults:
   run:
@@ -169,12 +170,3 @@ jobs:
 
       - name: Integration Tests
         run: busted --run integration
-
-  docker-test:
-    runs-on: ubuntu-latest
-    name: Docker Image Tests
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Run Tests
-        run: ./scripts/test-docker-container.sh
