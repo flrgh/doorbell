@@ -21,6 +21,7 @@ local tonumber         = tonumber
 local get_country      = ip.get_country
 local tostring         = tostring
 local get_net_info     = ip.get_net_info
+local update_time      = ngx.update_time
 
 local pool    = "doorbell.request"
 local narr    = 0
@@ -154,10 +155,12 @@ function _M.log(ctx)
   end
 
   local start = start_time()
+
+  update_time()
   local log_time = now()
 
-  local duration
-  if start then
+  local duration = tonumber(var.request_time)
+  if not duration then
     duration = log_time - start
   end
 
@@ -178,6 +181,7 @@ function _M.log(ctx)
     request_headers     = ctx.request_headers or get_headers(1000),
     request_uri         = var.request_uri,
     response_headers    = get_resp_headers(1000),
+    ring                = ctx.request,
     rule                = ctx.rule,
     scheme              = var.scheme,
     start_time          = start,
