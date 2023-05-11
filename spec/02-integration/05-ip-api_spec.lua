@@ -98,6 +98,12 @@ describe("IP API", function()
           accept = "foo/bar, baz/bat",
           expect = "plain",
         },
+
+        {
+          title  = "bug #1",
+          accept = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+          expect = "plain",
+        },
       }
 
       local res, err, content_type
