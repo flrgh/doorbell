@@ -309,8 +309,8 @@ do
         -- check if the type the client requested is available
         if type_match(typ, av) then
           count = count + 1
-
           buf[count] = { av, weight, i }
+          break
         end
       end
     end
