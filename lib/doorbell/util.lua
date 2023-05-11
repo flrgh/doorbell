@@ -477,4 +477,16 @@ do
   end
 end
 
+---@param t table
+---@param label string
+function _M.error_on_missing_key(t, label)
+  assert(type(t) == "table")
+  assert(type(label == "string"))
+  setmetatable(t, {
+    __index = function(_, key)
+      error(label .. ": missing key: " .. tostring(key), 2)
+    end,
+  })
+end
+
 return _M

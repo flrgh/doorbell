@@ -89,11 +89,12 @@ end
 ---@field need_connect boolean
 ---@field timeout      number
 ---
----@field get    spec.testing.client.method
----@field post   spec.testing.client.method
----@field put    spec.testing.client.method
----@field patch  spec.testing.client.method
----@field delete spec.testing.client.method
+---@field get     spec.testing.client.method
+---@field post    spec.testing.client.method
+---@field put     spec.testing.client.method
+---@field patch   spec.testing.client.method
+---@field delete  spec.testing.client.method
+---@field options spec.testing.client.method
 local client = {}
 client.__index = client
 
@@ -189,7 +190,7 @@ function client:add_x_forwarded_headers(addr, method, url)
   headers.x_forwarded_uri   = parsed[4]
 end
 
-for _, method in ipairs({"get", "put", "post", "delete", "patch"}) do
+for _, method in ipairs({"get", "put", "post", "delete", "patch", "options"}) do
   ---@param self spec.testing.client
   ---@param path string
   ---@param params spec.testing.client.request

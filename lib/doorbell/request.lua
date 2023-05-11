@@ -1,152 +1,70 @@
-local _M = {
-  _VERSION = require("doorbell.constants").version,
-}
+local _M = {}
 
-local ip = require "doorbell.ip"
-local logger = require "doorbell.log.request"
+local ip      = require "doorbell.ip"
+local logger  = require "doorbell.log.request"
+local context = require "doorbell.request.context"
+local const   = require "doorbell.constants"
 
-local tb = require "tablepool"
 
 local ngx              = ngx
 local var              = ngx.var
 local now              = ngx.now
-local get_headers      = ngx.req.get_headers
 local http_version     = ngx.req.http_version
 local start_time       = ngx.req.start_time
 local get_resp_headers = ngx.resp.get_headers
-local get_method       = ngx.req.get_method
-local get_uri_args     = ngx.req.get_uri_args
-local exiting          = ngx.worker.exiting
 local tonumber         = tonumber
-local get_country      = ip.get_country
 local tostring         = tostring
-local get_net_info     = ip.get_net_info
 local update_time      = ngx.update_time
-
-local pool    = "doorbell.request"
-local narr    = 0
-local nrec    = 8
-local fetch   = tb.fetch
-local release = tb.release
 
 local WORKER_ID, WORKER_PID
 local LOG = true
 
----@type prometheus.counter
+---@type PrometheusCounter
 local counter
----@type prometheus.counter
+
+---@type PrometheusGauge
 local countries
 
+_M.new = context.new
+_M.get_headers = context.get_request_headers
+_M.get_query_args = context.get_query_args
+_M.get_json_body = context.get_json_body
+_M.get_query_arg = context.get_query_arg
 
----@class doorbell.request : table
----@field addr     string
----@field asn?     integer
----@field scheme   string
----@field host     string
----@field uri      string
----@field org?     string
----@field path     string
----@field method   string
----@field ua       string
----@field country? string
+---@type table<string, doorbell.middleware>
+_M.middleware = {}
 
-
----@param  ctx               doorbell.ctx
----@param  headers?          table
----@return doorbell.request? request
----@return string?           error
-function _M.new(ctx, headers)
-  if not ctx.trusted_ip then
-    return nil, "untrusted client IP address"
-  end
-
-  local r = fetch(pool, narr, nrec)
-  ctx.request = r
-
-  headers = headers or get_headers(1000)
-  ctx.request_headers = headers
-
-  local addr = headers["x-forwarded-for"]
-  if not addr then
-    return nil, "missing x-forwarded-for"
-  end
-  r.addr = addr
-
-  local scheme = headers["x-forwarded-proto"]
-  if not scheme then
-    return nil, "missing x-forwarded-proto"
-  end
-  r.scheme = scheme
-
-  local host = headers["x-forwarded-host"]
-  if not host then
-    return nil, "missing x-forwarded-host"
-  end
-  r.host = host
-
-  local uri = headers["x-forwarded-uri"]
-  if not uri then
-    return nil, "missing x-forwarded-uri"
-  end
-  r.uri = uri
-  r.path = uri:gsub("?.*", "")
-
-  local method = headers["x-forwarded-method"]
-  if not method then
-    return nil, "missing x-forwarded-method"
-  end
-  r.method = method
-
-  r.ua = headers["user-agent"]
-
-  local code, name_or_err = get_country(addr)
-  r.country = code
-  ctx.country_code = code
-
-  if code then
-    ctx.country_name = name_or_err
-  else
-    ctx.geoip_error = name_or_err
-  end
-
-  local asn, org, err = get_net_info(addr)
-  if err then
-    ctx.geoip_asn_error = err
-  else
-    r.asn = asn
-    r.org = org
-    ctx.asn = asn
-    ctx.org = org
-  end
-
-  return r
-end
 
 ---@param ctx doorbell.ctx
-function _M.release(ctx)
-  local r = ctx.request
-  if r then
-    release(pool, r, true)
+---@param route doorbell.route
+function _M.middleware.pre_handler(ctx, route)
+  if route.metrics_enabled == false then
+    ctx.no_metrics = true
   end
 end
 
----@param ctx doorbell.ctx
-function _M.no_metrics(ctx)
-  ctx.no_metrics = true
-end
 
 ---@param ctx doorbell.ctx
-function _M.no_log(ctx)
+function _M.middleware.disable_logging(ctx)
+  var.doorbell_log = 0
   ctx.no_log = true
 end
+
+
+function _M.middleware.enable_logging(ctx)
+  var.doorbell_log = 1
+  ctx.no_log = false
+end
+
+
 
 ---@param ctx doorbell.ctx
 function _M.log(ctx)
   if counter and not ctx.no_metrics then
     counter:inc(1, { tostring(ngx.status) })
 
-    if countries and ctx.country_code then
-      countries:inc(1, { ctx.country_code })
+    if countries and ctx.geoip_country_code then
+      countries:inc(1, { ctx.geoip_country_code })
     end
   end
 
@@ -164,36 +82,63 @@ function _M.log(ctx)
     duration = log_time - start
   end
 
+  local res_size = tonumber(var.bytes_sent)
+  local res_body_size
+  if res_size then
+    res_body_size = tonumber(var.body_bytes_sent)
+  end
+
   local entry = {
-    addr                = var.remote_addr,
-    client_addr         = var.realip_remote_addr,
-    connection          = var.connection,
+    -- client info
+    addr                = ctx.forwarded_addr,
+    client_addr         = ctx.client_addr,
+    country_code        = ctx.geoip_country_code,
+    is_trusted_proxy    = ctx.is_trusted_proxy,
+
+    -- connection data
+    connection          = tonumber(var.connection),
     connection_requests = tonumber(var.connection_requests),
-    connection_time     = var.connection_time,
-    duration            = duration,
-    host                = var.host,
-    http_version        = http_version(),
-    log_time            = log_time,
-    method              = get_method(),
-    path                = var.uri:gsub("?.*", ""),
-    query               = get_uri_args(1000),
-    remote_port         = tonumber(var.remote_port),
-    request_headers     = ctx.request_headers or get_headers(1000),
-    request_uri         = var.request_uri,
-    response_headers    = get_resp_headers(1000),
-    ring                = ctx.request,
-    rule                = ctx.rule,
-    scheme              = var.scheme,
+    connection_time     = tonumber(var.connection_time),
+
+    -- timings
     start_time          = start,
-    status              = ngx.status,
-    uri                 = var.uri,
-    country_code        = ctx.country_code,
-    geoip_error         = ctx.geoip_error,
-    worker = {
-      id = WORKER_ID,
-      pid = WORKER_PID,
-      exiting = exiting()
-    },
+    log_time            = log_time,
+    duration            = duration,
+
+    -- request
+    request_id             = ctx.id,
+    request_http_version   = http_version(),
+    request_http_method    = ctx.method,
+    request_scheme         = ctx.scheme,
+    request_http_host      = var.host,
+    request_path           = ctx.path,
+    request_query          = context.get_query_args(ctx),
+    request_headers        = context.get_request_headers(ctx),
+    request_uri            = ctx.uri,
+    request_normalized_uri = var.uri,
+    request_total_bytes    = tonumber(var.request_length),
+
+    -- routing
+    route_path = ctx.route and ctx.route.path,
+    route_id   = ctx.route and ctx.route.id,
+
+    -- response
+    status               = ngx.status,
+    response_headers     = get_resp_headers(1000),
+    response_total_bytes = res_size,
+    response_body_bytes  = res_body_size,
+
+    -- rule match info
+    rule                = ctx.rule,
+    rule_cache_hit      = ctx.rule_cache_hit,
+    forwarded_request   = ctx.forwarded_request,
+
+    -- debug things
+    worker_id           = WORKER_ID,
+    worker_pid          = WORKER_PID,
+
+    -- meta
+    version = const.version,
   }
 
   logger.add(entry)

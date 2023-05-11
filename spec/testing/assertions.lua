@@ -1,5 +1,6 @@
 local luassert = require "luassert"
 local util = require "luassert.util"
+local say = require "say"
 
 local function deep_copy(t)
   local new
@@ -122,3 +123,52 @@ local function table_shape(state, arguments)
 end
 
 luassert:register("assertion", "table_shape", table_shape, "assertion.same.positive", "assertion.same.negative")
+
+
+local function modifier_response(state, arguments)
+  local t = arguments[1]
+  luassert.is_table(t, "expected a table for argument #1")
+  rawset(state, "test-response", t)
+  return state
+end
+
+luassert:register("modifier", "response", modifier_response)
+
+local function assert_header(state, arguments)
+  ---@type spec.testing.client.response
+  local res = rawget(state, "test-response")
+  luassert.is_table(res, "no response in assertion state")
+
+  local name = arguments[1]
+  luassert.is_string(name, "expected a string header name for argument #1")
+
+  local headers = luassert.is_table(res.headers, "no headers in response")
+  local value = headers[name]
+
+  table.insert(arguments, 1, res.headers)
+  table.insert(arguments, 1, name)
+  arguments.n = 2
+
+  if not value then
+    return false
+  end
+
+  return true, {value}
+end
+
+say:set("assertion.header.negative", [[
+Expected header:
+%s
+But it was not found in:
+%s
+]])
+say:set("assertion.header.positive", [[
+Did not expect header:
+%s
+But it was found in:
+%s
+]])
+
+luassert:register("assertion", "header", assert_header,
+                  "assertion.header.negative",
+                  "assertion.header.positive")

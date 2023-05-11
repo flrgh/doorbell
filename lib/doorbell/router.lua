@@ -1,6 +1,4 @@
-local _M = {
-  _VERSION = require("doorbell.constants").version,
-}
+local _M = {}
 
 local util = require "doorbell.util"
 
@@ -9,10 +7,12 @@ local cache = require("doorbell.cache").new("routes", 1000)
 local re_match = ngx.re.match
 local assert   = assert
 local type     = type
+local set_response_header = require("doorbell.http").response.set_header
 
 ---@alias doorbell.route.handler fun(ctx:table, match:table)
 
 ---@class doorbell.route : table
+---@field id              string
 ---@field path            string
 ---@field description     string
 ---@field metrics_enabled boolean
@@ -25,6 +25,7 @@ local type     = type
 ---@field DELETE          doorbell.route.handler
 ---@field PUT             doorbell.route.handler
 ---@field PATCH           doorbell.route.handler
+---@field middleware      table<doorbell.middleware.phase, doorbell.middleware[]>
 
 ---@class doorbell.route_list : table
 ---@field [1] string
@@ -41,6 +42,8 @@ local regex = { n = 0 }
 function _M.add(path, route)
   assert(type(path) == "string", "path must be a string")
   assert(type(route) == "table", "route must be a table")
+
+  route.path = path
 
   if util.is_regex(path) then
     local re, err = util.validate_regex(path)
@@ -100,6 +103,15 @@ function _M.match(path)
     end
   end
 end
+
+
+function _M.on_match(_, route)
+  local ct = route.content_type
+  if ct then
+    set_response_header("content-type", ct)
+  end
+end
+
 
 setmetatable(_M, {
   __newindex = function(_, path, route)

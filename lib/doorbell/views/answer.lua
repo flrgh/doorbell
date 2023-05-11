@@ -5,6 +5,7 @@ local ip      = require "doorbell.ip"
 local notify  = require "doorbell.notify"
 local http    = require "doorbell.http"
 local api     = require "doorbell.rules.api"
+local request = require "doorbell.request"
 
 local var = ngx.var
 local fmt = string.format
@@ -13,7 +14,7 @@ local SCOPES = const.scopes
 local SUBJECTS = const.subjects
 local PERIODS = const.periods
 
----@param req doorbell.request
+---@param req doorbell.forwarded_request
 local function render_form(tpl, req, errors, current)
   local country = ip.get_country_name(req.country) or req.country or "Unknown"
 
@@ -35,14 +36,14 @@ end
 ---@type doorbell.view
 ---@param ctx doorbell.ctx
 return function(ctx)
-  local t = var.arg_t
+  local t = request.get_query_arg(ctx, "t")
   if not t then
     log.notice("/answer accessed with no token")
     return http.send(400)
   end
 
   if t == "TEST" then
-    ---@type doorbell.request
+    ---@type doorbell.forwarded_request
     local req = {
       addr = "178.45.6.125",
       ua = "Mozilla/5.0 (X11; Ubuntu; Linux i686) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2830.76 Safari/537.36",

@@ -60,6 +60,24 @@ describe("rules API", function()
       client:reset()
     end)
 
+    describe("OPTIONS", function()
+      it("handles CORS pre-flight requests", function()
+        client:options("/rules")
+        assert.is_nil(client.err)
+        assert.same(200, client.response.status)
+
+        assert.response(client.response).header("access-control-allow-credentials")
+        assert.response(client.response).header("access-control-allow-headers")
+        assert.response(client.response).header("access-control-allow-methods")
+        assert.response(client.response).header("access-control-allow-origin")
+        assert.response(client.response).header("access-control-max-age")
+
+        assert.same("text/plain", client.response.headers["content-type"])
+        assert.same("GET, POST, OPTIONS",
+                    client.response.headers["access-control-allow-methods"])
+      end)
+    end)
+
     describe("GET", function()
       it("returns all current rules", function()
         res, err = client:get("/rules")

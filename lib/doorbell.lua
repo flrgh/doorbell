@@ -20,37 +20,67 @@ local router  = require "doorbell.router"
 local http    = require "doorbell.http"
 local ota     = require "doorbell.ota"
 local env     = require "doorbell.env"
+local middleware = require "doorbell.middleware"
 
 local proc       = require "ngx.process"
 
 local ngx        = ngx
-local header     = ngx.header
 local start_time = ngx.req.start_time
-local get_method = ngx.req.get_method
-local get_query  = ngx.req.get_uri_args
-local var        = ngx.var
 local assert     = assert
 local send       = http.send
+local exec_mw    = middleware.exec
+local new_ctx    = request.new
+local cors_preflight = http.CORS.preflight
+local set_header = http.response.set_header
+
+local PRE_AUTH = middleware.phase.PRE_AUTH
+local PRE_HANDLER = middleware.phase.PRE_HANDLER
+local PRE_LOG = middleware.phase.PRE_LOG
+local POST_LOG = middleware.phase.POST_LOG
+
+local SERVER = "doorbell " .. _M._VERSION
 
 ---@type ngx.shared.DICT
 local SHM = require("doorbell.shm").doorbell
 
-local MAX_QUERY_ARGS = 20
+
+---@type doorbell.middleware[]
+local GLOBAL_MIDDLEWARE = {
+  request.middleware.pre_handler,
+  router.on_match,
+  http.CORS.middleware,
+}
 
 
----@class doorbell.ctx : table
----@field rule            doorbell.rule
----@field request_headers table
----@field trusted_ip      boolean
----@field request         doorbell.request
----@field country_code    string
----@field geoip_error     string
----@field cached          boolean
----@field no_log          boolean
----@field no_metrics      boolean
----@field template        fun(env:table):string
----@field route           doorbell.route
----@field query?          table<string, any>
+---@param phase doorbell.middleware.phase
+---@param ctx doorbell.ctx
+local function exec_route_middleware(phase, ctx)
+  local route = ctx.route
+  if not route then return end
+
+  local mw = route.middleware
+  if not mw then return end
+
+  local phase_mw = mw[phase]
+  if not phase_mw then return end
+
+  exec_mw(phase_mw, ctx, route)
+end
+
+
+local function init_worker()
+  metrics.init_worker()
+  manager.init_worker()
+  request.init_worker()
+  cache.init_worker()
+  notify.init_worker()
+end
+
+
+local function init_agent()
+  manager.init_agent()
+  ota.init_agent()
+end
 
 
 function _M.init()
@@ -73,18 +103,6 @@ function _M.init()
   manager.reload()
 end
 
-local function init_worker()
-  metrics.init_worker()
-  manager.init_worker()
-  request.init_worker()
-  cache.init_worker()
-  notify.init_worker()
-end
-
-local function init_agent()
-  manager.init_agent()
-  ota.init_agent()
-end
 
 function _M.init_worker()
   assert(SHM, "doorbell was not initialized")
@@ -98,52 +116,45 @@ function _M.init_worker()
   return init_worker()
 end
 
+
 function _M.run()
   assert(SHM, "doorbell was not initialized")
-  header.server = "doorbell"
+  set_header("server", SERVER)
 
-  local path = var.uri:gsub("?.*", "")
-  local route, match = router.match(path)
+  local ctx = new_ctx(ngx.ctx)
+
+  local route, match = router.match(ctx.path)
   if not route then
     return send(405)
   end
 
-  ---@type doorbell.ctx
-  local ctx = ngx.ctx
   ctx.route = route
 
-  if route.content_type then
-    header["content-type"] = route.content_type
+  exec_route_middleware(PRE_AUTH, ctx)
+
+  ---@type doorbell.route.handler
+  local handler = route[ctx.method]
+
+  if not handler and ctx.method == "OPTIONS" then
+    handler = cors_preflight
   end
 
-  if route.log_enabled == false then
-    var.doorbell_log = 0
-    request.no_log(ctx)
-  end
+  exec_mw(GLOBAL_MIDDLEWARE, ctx, route, match)
+  exec_route_middleware(PRE_HANDLER, ctx)
 
-  if route.metrics_enabled == false then
-    request.no_metrics(ctx)
-  end
-
-  if not route.allow_untrusted then
-    ip.require_trusted(ctx)
-  end
-
-  local method = get_method()
-  local handler = route[method] or route["*"]
   if not handler then
     send(405)
-  end
-
-  if route.need_query then
-    ctx.query = get_query(MAX_QUERY_ARGS)
   end
 
   return handler(ctx, match)
 end
 
+
 function _M.log()
+  ---@type doorbell.ctx
   local ctx = ngx.ctx
+
+  exec_route_middleware(PRE_LOG, ctx)
 
   local start = start_time()
 
@@ -152,7 +163,9 @@ function _M.log()
   end
 
   request.log(ctx)
-  request.release(ctx)
+
+  exec_route_middleware(POST_LOG, ctx)
 end
+
 
 return _M

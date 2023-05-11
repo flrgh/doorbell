@@ -32,6 +32,99 @@ describe("IP API", function()
       assert.same("text/plain", res.headers.content_type)
     end)
 
+    it("returns CORS headers", function()
+      local res, err = client:get("/ip/addr")
+      assert.is_nil(err)
+      assert.same(200, res.status)
+
+      assert.response(res).header("access-control-allow-credentials")
+      assert.response(res).header("access-control-allow-headers")
+      assert.response(res).header("access-control-allow-origin")
+      assert.response(res).header("access-control-max-age")
+    end)
+
+    it("handles CORS pre-flight OPTIONS requests", function()
+      local res, err = client:options("/ip/addr")
+      assert.is_nil(err)
+      assert.same(200, res.status)
+
+      assert.response(res).header("access-control-allow-credentials")
+      assert.response(res).header("access-control-allow-headers")
+      assert.response(res).header("access-control-allow-methods")
+      assert.response(res).header("access-control-allow-origin")
+      assert.response(res).header("access-control-max-age")
+    end)
+
+    it("reacts to the Accept header", function()
+      local cases = {
+        {
+          title  = "text/plain is the default",
+          accept = nil,
+          expect = "plain"
+        },
+
+        {
+          title  = "JSON is available",
+          accept = "application/json",
+          expect = "json",
+        },
+
+        {
+          title  = "JSON over plain",
+          accept = "application/json, text/plain",
+          expect = "json",
+        },
+
+        {
+          title  = "plain over JSON",
+          accept = "text/plain, application/json",
+          expect = "plain",
+        },
+
+        {
+          title  = "wildcard subtype JSON",
+          accept = "application/*",
+          expect = "json",
+        },
+
+        {
+          title  = "weights",
+          accept = "application/json;q=0.9, text/plain",
+          expect = "plain",
+        },
+
+        {
+          title  = "with no matching types",
+          accept = "foo/bar, baz/bat",
+          expect = "plain",
+        },
+      }
+
+      local res, err, content_type
+
+      for _, case in ipairs(cases) do
+        local desc = string.format("%s (Accept: %q => %s)", case.title, case.accept, case.expect)
+
+        client.headers.accept = case.accept
+        res, err = client:get("/ip/addr")
+        assert.is_nil(err)
+        assert.same(200, res.status)
+
+        content_type = assert.response(res).header("content-type")
+        if case.expect == "json" then
+          assert.same("application/json", content_type, desc)
+          assert.is_table(res.json)
+          assert.is_string(res.json.data)
+
+        else
+          assert(case.expect == "plain")
+
+          assert.same("text/plain", content_type, desc)
+          assert.is_string(res.body)
+        end
+      end
+    end)
+
     for _, header in ipairs({ "X-Forwarded-For", "X-Real-IP" }) do
     it("respects " .. header .. " from trusted client IPs", function()
       client:reset()

@@ -1,6 +1,4 @@
-local _M = {
-  _VERSION = require("doorbell.constants").version,
-}
+local _M = {}
 
 local const   = require "doorbell.constants"
 local http    = require "doorbell.http"
@@ -14,8 +12,13 @@ local rules   = require "doorbell.rules.api"
 local ip      = require "doorbell.ip"
 local stats   = require "doorbell.rules.stats"
 local schema  = require "doorbell.schema"
+local mw      = require "doorbell.middleware"
+local request = require "doorbell.request"
 
 local safe_decode = require("cjson.safe").decode
+local get_json_body = request.get_json_body
+local get_query_arg = request.get_query_arg
+local set_response_header = http.response.set_header
 
 local send       = http.send
 local shared     = ngx.shared
@@ -39,21 +42,28 @@ local function drop_functions(t)
   return t
 end
 
+local IP_MIME_TYPES = { "text/plain", "application/json" }
 
 ---@param config doorbell.config
 function _M.init(config)
 
-  router["/ring"] = require("doorbell.ring")
+  router["/ring"] = require("doorbell.auth.ring")
 
   router["/answer"] = {
+    id              = "answer",
     description     = "who is it?",
-    log_enabled     = true,
     metrics_enabled = true,
+    middleware      = {
+      [mw.phase.PRE_HANDLER] = {
+        request.middleware.enable_logging,
+      },
+    },
     GET             = views.answer,
     POST            = views.answer,
   }
 
   router["/reload"] = {
+    id              = "reload",
     description     = "reload from disk",
     metrics_enabled = false,
     content_type    = "text/plain",
@@ -68,6 +78,7 @@ function _M.init(config)
   }
 
   router["/save"] = {
+    id              = "save",
     description     = "save to disk",
     metrics_enabled = false,
     content_type    = "text/plain",
@@ -82,18 +93,30 @@ function _M.init(config)
   }
 
   router["/shm"] = {
+    id              = "shm-list-zones",
     description = "shm zone list",
     metrics_enabled = false,
     content_type    = "application/json",
+    middleware      = {
+      [mw.phase.PRE_HANDLER] = {
+        request.middleware.enable_logging,
+      },
+    },
     GET = function()
-      return send(200, util.table_keys(shared, true))
+      return send(200, util.table_keys(shared))
     end,
   }
 
   router["~^/shm/(?<name>[^/]+)/?$"] = {
+    id              = "shm-list-keys",
     description = "shm key list",
     metrics_enabled = false,
     content_type    = "application/json",
+    middleware      = {
+      [mw.phase.PRE_HANDLER] = {
+        request.middleware.enable_logging,
+      },
+    },
     GET = function(_, match)
       local name = match.name
       local shm = shared[name]
@@ -106,10 +129,16 @@ function _M.init(config)
   }
 
   router["~^/shm/(?<zone>[^/]+)?(/(?<key>.+))?"] = {
+    id              = "shm-get-key",
     description     = "shm key",
     metrics_enabled = false,
     allow_untrusted = false,
     content_type    = "application/json",
+    middleware      = {
+      [mw.phase.PRE_HANDLER] = {
+        request.middleware.enable_logging,
+      },
+    },
     GET = function(_, match)
       local zone, key = match.zone, match.key
 
@@ -133,9 +162,15 @@ function _M.init(config)
   }
 
   router["/notify/test"] = {
+    id              = "notify-test",
     description     = "send a test notification",
     metrics_enabled = false,
     content_type    = "application/json",
+    middleware      = {
+      [mw.phase.PRE_HANDLER] = {
+        request.middleware.enable_logging,
+      },
+    },
     POST            = function()
       local req = {
         addr    = "178.45.6.125",
@@ -164,35 +199,46 @@ function _M.init(config)
   }
 
   router["/rules.html"] = {
+    id              = "rules-html-report",
     description     = "rules list, in html",
     metrics_enabled = false,
     allow_untrusted = false,
     content_type    = "text/html",
     GET             = views.rule_list,
+    middleware      = {
+      [mw.phase.PRE_HANDLER] = {
+        request.middleware.enable_logging,
+      },
+    },
   }
 
   router["/rules"] = {
+    id              = "rules-collection",
     description     = "rules API",
     metrics_enabled = false,
     allow_untrusted = false,
     content_type    = "application/json",
-    need_query      = true,
-    GET             = function(ctx)
+    middleware      = {
+      [mw.phase.PRE_HANDLER] = {
+        request.middleware.enable_logging,
+      },
+    },
+    GET = function(ctx)
       local list, err = rules.list()
       if not list then
         log.err("failed to list rules for API request: ", err)
         return send(500, { error = "internal server error" })
       end
 
-      if util.truthy(ctx.query.stats) then
+      if util.truthy(get_query_arg(ctx, "stats")) then
         stats.decorate_list(list)
       end
 
       return send(200, { data = list })
     end,
 
-    POST = function()
-      local json = http.get_json_request_body()
+    POST = function(ctx)
+      local json = get_json_body(ctx, "table")
 
       json.source = const.sources.api
 
@@ -213,16 +259,21 @@ function _M.init(config)
   }
 
   router["~^/rules/(?<hash_or_id>[a-z0-9-]+)$"] = {
+    id              = "rules-single",
     description     = "rules API",
     metrics_enabled = false,
     allow_untrusted = false,
     content_type    = "application/json",
-    need_query      = true,
-    GET             = function(ctx, match)
+    middleware      = {
+      [mw.phase.PRE_HANDLER] = {
+        request.middleware.enable_logging,
+      },
+    },
+    GET = function(ctx, match)
       local rule = rules.get(match.hash_or_id)
 
       if rule then
-        if util.truthy(ctx.query.stats) then
+        if util.truthy(get_query_arg(ctx, "stats")) then
           stats.decorate(rule)
         end
 
@@ -233,8 +284,8 @@ function _M.init(config)
       end
     end,
 
-    PATCH          = function(_, match)
-      local json = http.get_json_request_body()
+    PATCH = function(ctx, match)
+      local json = get_json_body(ctx, "table")
 
       local updated, err, status = rules.patch(match.hash_or_id, json)
 
@@ -264,30 +315,57 @@ function _M.init(config)
   }
 
   router["/favicon.ico"] = {
+    id              = "favicon",
     description     = "stop asking me about this, browsers",
     metrics_enabled = false,
-    log_enabled     = false,
+    middleware      = {
+      [mw.phase.PRE_HANDLER] = {
+        request.middleware.disable_logging,
+      },
+    },
     GET             = function() return send(404) end,
   }
 
   router["/ip/addr"] = {
+    id              = "get-forwarded-ip",
     description = "returns the client IP address",
     metrics_enabled = true,
-    log_enabled = false,
     allow_untrusted = true,
-    GET = function()
-      return send(200, ip.get_forwarded_ip())
+    middleware      = {
+      [mw.phase.PRE_HANDLER] = {
+        request.middleware.disable_logging,
+      },
+    },
+    ---@param ctx doorbell.ctx
+    GET = function(ctx)
+      local accept = request.get_headers(ctx).accept
+      local mtype = http.get_mime_type(accept, IP_MIME_TYPES)
+
+      set_response_header("Content-Type", mtype)
+
+      if mtype == "application/json" then
+        return send(200, { data = ctx.forwarded_addr })
+
+      else
+        return send(200, ctx.forwarded_addr)
+      end
     end,
   }
 
   router["/ip/info"] = {
+    id              = "get-forwarded-ip-info",
     description = "returns IP address info",
     metrics_enabled = true,
-    log_enabled = false,
     allow_untrusted = true,
     content_type = "application/json",
-    GET = function()
-      local addr = ip.get_forwarded_ip()
+    middleware      = {
+      [mw.phase.PRE_HANDLER] = {
+        request.middleware.enable_logging,
+      },
+    },
+    ---@param ctx doorbell.ctx
+    GET = function(ctx)
+      local addr = ctx.forwarded_addr
 
       local info, err, status = ip.info_api(addr, ngx.var.arg_raw)
 
@@ -301,11 +379,16 @@ function _M.init(config)
   }
 
   router["~^/ip/info/(?<addr>.+)"] = {
+    id              = "get-ip-info",
     description = "returns IP address info",
     metrics_enabled = true,
-    log_enabled = false,
     allow_untrusted = false,
     content_type = "application/json",
+    middleware      = {
+      [mw.phase.PRE_HANDLER] = {
+        request.middleware.enable_logging,
+      },
+    },
     GET = function(_, match)
       local addr = match.addr
       local info, err, status = ip.info_api(addr, ngx.var.arg_raw)
@@ -325,8 +408,12 @@ function _M.init(config)
     local serialized = drop_functions(obj)
     local api = {
       metrics_enabled = true,
-      log_enabled = false,
-      allow_untrusted = false,
+      middleware      = {
+        [mw.phase.PRE_HANDLER] = {
+          request.middleware.enable_logging,
+        },
+      },
+      allow_untrusted = true,
       content_type = "application/json",
       GET = function()
         return send(200, serialized)
@@ -334,12 +421,13 @@ function _M.init(config)
     }
 
     if type(obj.validate) == "function" then
-      api.PUT = function()
-        local body = http.get_json_request_body()
-        local ok, err = obj.validate(body)
+      api.PUT = function(ctx)
+        local json = get_json_body(ctx, "table")
+
+        local ok, err = obj.validate(json)
 
         if ok then
-          send(200, body)
+          send(200, json)
         else
           send(400, { message = err })
         end
