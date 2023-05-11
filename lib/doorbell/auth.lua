@@ -48,7 +48,7 @@ end
 _M.set_pending = set_pending
 
 
----@param req doorbell.request
+---@param req doorbell.forwarded_request
 ---@return doorbell.auth_state state
 ---@return string? error
 local function get_state(req, ctx)
@@ -56,7 +56,7 @@ local function get_state(req, ctx)
   if rule then
     if ctx then
       ctx.rule = rule
-      ctx.cached = cached
+      ctx.rule_cache_hit = cached
     end
     return rule.action
   end
@@ -70,7 +70,7 @@ end
 _M.get_state = get_state
 
 
----@param req doorbell.request
+---@param req doorbell.forwarded_request
 ---@return string? token
 ---@return string? error
 local function generate_request_token(req)
@@ -87,7 +87,7 @@ end
 
 
 ---@param token string
----@return doorbell.request? req
+---@return doorbell.forwarded_request? req
 ---@return string? error
 function _M.get_token_address(token)
   local key = "token:" .. token
@@ -98,7 +98,7 @@ function _M.get_token_address(token)
 end
 
 
----@param req doorbell.request
+---@param req doorbell.forwarded_request
 ---@param timeout? number
 function _M.await(req, timeout)
   local start = now()
@@ -123,7 +123,7 @@ function _M.await(req, timeout)
 end
 
 
----@param req doorbell.request
+---@param req doorbell.forwarded_request
 ---@return boolean
 function _M.request(req)
   local addr = req.addr

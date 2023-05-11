@@ -1,5 +1,6 @@
 ---@type doorbell.route
 local _M = {
+  id              = "ring",
   description     = "ring ring",
   log_enabled     = true,
   metrics_enabled = true,
@@ -10,10 +11,12 @@ local _M = {
 local log     = require "doorbell.log"
 local const   = require "doorbell.constants"
 local auth    = require "doorbell.auth"
-local request = require "doorbell.request"
+local request = require "doorbell.auth.request"
 local config  = require "doorbell.config"
 local http    = require "doorbell.http"
+local mware   = require "doorbell.middleware"
 local join    = require("doorbell.util").join
+local ip      = require "doorbell.ip"
 
 local TARPIT_INTERVAL = const.periods.minute * 5
 local STATES          = const.states
@@ -32,7 +35,7 @@ do
   local encode_args = ngx.encode_args
   local arg_t = { next = nil }
 
-  ---@param req doorbell.request
+  ---@param req doorbell.forwarded_request
   ---@return string
   function get_redir_location(req)
     local uri
@@ -49,10 +52,10 @@ do
   end
 end
 
----@alias doorbell.handler fun(req:doorbell.request, ctx:doorbell.ctx)
+---@alias doorbell.auth.ring.handler fun(req:doorbell.forwarded_request, ctx:doorbell.ctx)
 
 
----@type table<doorbell.auth_state, doorbell.handler>
+---@type table<doorbell.auth_state, doorbell.auth.ring.handler>
 local UNAUTHORIZED_HANDLERS = {
   [const.unauthorized.return_401] = function()
     return http.send(401, "who are you?")
@@ -77,7 +80,7 @@ local UNAUTHORIZED_HANDLERS = {
   end,
 }
 
----@type table<doorbell.auth_state, doorbell.handler>
+---@type table<doorbell.auth_state, doorbell.auth.ring.handler>
 local HANDLERS = {
   [STATES.allow] = function(req)
     log.debugf("ALLOW %s => %s %s://%s%s", req.addr, req.method, req.scheme, req.host, req.uri)
@@ -142,5 +145,14 @@ function _M.GET(ctx)
 
   return HANDLERS[state](req, ctx)
 end
+
+_M.middleware = {
+  [mware.phase.PRE_HANDLER] = {
+    ip.require_trusted_proxy,
+  },
+  [mware.phase.POST_LOG] = {
+    request.release,
+  }
+}
 
 return _M

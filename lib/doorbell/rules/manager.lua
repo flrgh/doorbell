@@ -130,7 +130,7 @@ local cache_key
 do
   local have_geoip = ip.geoip_enabled()
   --- generate a cache key for a request object
-  ---@param  req doorbell.request
+  ---@param  req doorbell.forwarded_request
   ---@return string
   function cache_key(req)
     local country = (have_geoip and req.country) or "_"
@@ -424,7 +424,7 @@ function _M.upsert(rule, nobuild)
 end
 
 --- get a matching rule for a request
----@param  req            doorbell.request
+---@param  req            doorbell.forwarded_request
 ---@return doorbell.rule? rule
 ---@return boolean?       cache_hit
 function _M.match(req)

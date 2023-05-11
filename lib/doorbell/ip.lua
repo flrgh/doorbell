@@ -59,7 +59,7 @@ local function init_geoip(opts)
     HAVE_COUNTRY_DB = true
     LOCATION_DB_FILE = opts.geoip_country_db
 
-  elseif opts.geoip_db then
+  elseif opts.geoip_db then -- legacy
     HAVE_COUNTRY_DB = true
     LOCATION_DB_FILE = opts.geoip_db
   end
@@ -196,31 +196,38 @@ _M.private_cidrs = {
   "172.16.0.0/12",
   "192.168.0.0/16",
 }
-
-_M.private = ipmatcher.new(_M.private_cidrs)
+local private_matcher = ipmatcher.new(_M.private_cidrs)
+_M.private = private_matcher
 
 _M.localhost_cidrs = { "127.0.0.0/8", "::1/128" }
+local localhost_matcher = ipmatcher.new(_M.localhost_cidrs)
+_M.localhost = localhost_matcher
 
-_M.localhost = ipmatcher.new(_M.localhost_cidrs)
+
+---@param ip string
+---@return boolean
+local function is_private(ip)
+  local private = cache:get("is-private", ip)
+  if private == nil then
+    private = (private_matcher:match(ip)
+               or localhost_matcher:match(ip)
+               and true) or false
+
+    cache:set("is-private", ip, private)
+  end
+
+  return private
+end
+
 
 
 ---@param ctx doorbell.ctx
-function _M.require_trusted(ctx)
-  assert(cache, "doorbell.ip module not initialized")
-
-  local ip = assert(var.realip_remote_addr, "no $realip_remote_addr")
-  local trust = cache:get("trusted", ip)
-  if trust == nil then
-    trust = (trusted:match(ip) and true) or false
-    cache:set("trusted", ip, trust)
-  end
-
-  if not trust then
-    log.warn("denying connection from untrusted IP: ", ip)
+---@param route doorbell.route
+function _M.require_trusted_proxy(ctx, route)
+  if not ctx.is_trusted_proxy and route.allow_untrusted ~= false then
+    log.warn("denying connection from untrusted IP: ", ctx.client_addr)
     return exit(HTTP_FORBIDDEN)
   end
-
-  ctx.trusted_ip = trust
 end
 
 
@@ -256,7 +263,7 @@ end
 ---@param addr string
 ---@return string? country_code
 ---@return string? country_name_or_error
-function _M.get_country(addr)
+local function get_country(addr)
   if not LOCATION_DB then return nil, "geoip not enabled" end
 
   assert(cache, "doorbell.ip module not initialized")
@@ -302,6 +309,7 @@ function _M.get_net_info(addr)
 
   return info.asn, info.org
 end
+local get_net_info = _M.get_net_info
 
 
 local function get_forwarded(forwarded, pos)
@@ -317,22 +325,6 @@ local function get_forwarded(forwarded, pos)
   end
 
   return addr
-end
-
-
----@return string
-function _M.get_forwarded_ip()
-  local client_ip = var.realip_remote_addr or var.remote_addr
-
-  if is_trusted(client_ip) then
-    local header = var.http_x_forwarded_for or var.http_x_real_ip
-    if header then
-      local all = split(header, ", *", nil, nil, 0)
-      return get_forwarded(all) or client_ip
-    end
-  end
-
-  return client_ip
 end
 
 
@@ -384,6 +376,53 @@ function _M.get_raw_ip_info(addr)
   end
 
   return info
+end
+
+--- Decorate the request context with IP-related fields:
+---
+--- - client_addr
+--- - forwarded_addr
+--- - trusted_proxy
+--- - geoip_country_code
+--- - geoip_net_asn
+--- - geoip_net_org
+---
+---@param ctx doorbell.ctx
+function _M.init_request_ctx(ctx)
+  local client_addr = var.realip_remote_addr or var.remote_addr
+  ctx.client_addr = client_addr
+  ctx.is_trusted_proxy = false
+
+  local forwarded_addr = client_addr
+
+  if is_trusted(client_addr) then
+    ctx.is_trusted_proxy = true
+
+    local header = var.http_x_forwarded_for or var.http_x_real_ip
+    if header then
+      local all = split(header, ", *", nil, nil, 0)
+      local forwarded = get_forwarded(all)
+
+      if forwarded then
+        forwarded_addr = forwarded
+      else
+        log.err("failed to parse X-Forwarded-For header: '", header, "'")
+      end
+
+    else
+      log.notice("trusted proxy ", client_addr, " did not send X-Forwarded-For")
+    end
+  end
+
+  ctx.forwarded_addr = forwarded_addr
+
+  if not is_private(forwarded_addr) then
+    ctx.geoip_country_code = get_country(forwarded_addr)
+    ctx.geoip_net_asn, ctx.geoip_net_org = get_net_info(forwarded_addr)
+
+  else
+    ctx.geoip_net_asn = 0
+  end
 end
 
 
