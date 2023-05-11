@@ -382,7 +382,7 @@ end
 ---
 --- - client_addr
 --- - forwarded_addr
---- - trusted_proxy
+--- - is_trusted_proxy
 --- - geoip_country_code
 --- - geoip_net_asn
 --- - geoip_net_org
