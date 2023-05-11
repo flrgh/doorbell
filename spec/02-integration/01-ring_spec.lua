@@ -93,6 +93,20 @@ describe("/ring", function()
     assert.equals(403, client.response.status)
   end)
 
+  it("returns a request ID header with all responses", function()
+    client:add_x_forwarded_headers("1.2.3.4", "GET", "http://test/")
+
+    client.headers["user-agent"] = "allow"
+    client:send()
+    local id = assert.response(client.response)
+                     .has.header(const.headers.request_id)
+
+    client.headers["user-agent"] = "deny"
+    client:send()
+    assert.not_equals(id, assert.response(client.response)
+                                .has.header(const.headers.request_id))
+  end)
+
   it("responds to API updates", function()
     local ua = "api-test"
 

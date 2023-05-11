@@ -39,6 +39,7 @@ local PRE_LOG = middleware.phase.PRE_LOG
 local POST_LOG = middleware.phase.POST_LOG
 
 local SERVER = "doorbell " .. _M._VERSION
+local REQUEST_ID = require("doorbell.constants").headers.request_id
 
 ---@type ngx.shared.DICT
 local SHM = require("doorbell.shm").doorbell
@@ -122,6 +123,8 @@ function _M.run()
   set_header("server", SERVER)
 
   local ctx = new_ctx(ngx.ctx)
+
+  set_header(REQUEST_ID, ctx.id)
 
   local route, match = router.match(ctx.path)
   if not route then
