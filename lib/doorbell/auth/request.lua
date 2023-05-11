@@ -7,10 +7,12 @@ local tb = require "tablepool"
 
 local get_req_headers = request.get_headers
 local get_path        = http.extract_path
+local tostring = tostring
+local sha = require "resty.sha256"
 
 local pool    = "doorbell.auth.forwarded_request"
 local narr    = 0
-local nrec    = 8
+local nrec    = 10
 local fetch   = tb.fetch
 local release = tb.release
 
@@ -25,9 +27,6 @@ local release = tb.release
 ---@field method   string
 ---@field ua       string
 ---@field country? string
----
----@field geoip_country_err? string
----@field geoip_asn_err?     string
 
 
 ---@param  ctx                         doorbell.ctx
@@ -83,6 +82,61 @@ function _M.new(ctx, headers)
   r.org = ctx.geoip_net_org
 
   return r
+end
+
+
+do
+  local pid = ngx.worker.pid
+  local now = ngx.now
+  local random = math.random
+  local update_time = ngx.update_time
+
+  local checksum = sha:new()
+  local to_hex = require("resty.string").to_hex
+  local DELIM = "|"
+
+  local SALT
+
+  local function calculate_salt()
+    update_time()
+    SALT = tostring(pid())
+        .. DELIM
+        .. tostring(random())
+        .. DELIM
+        .. tostring(now())
+        .. DELIM
+        .. tostring(random())
+  end
+
+  calculate_salt()
+
+  --- generate a cache key for a request object
+  ---@param  req doorbell.forwarded_request
+  ---@return string
+  function _M.cache_key(req)
+    checksum:reset()
+    checksum:update(SALT)
+
+    -- scheme and uri are not included for now
+
+    checksum:update(req.method)
+    checksum:update(req.host)
+    checksum:update(req.path)
+    checksum:update(req.ua or "")
+    checksum:update(req.country or "")
+    checksum:update(tostring(req.asn) or "0")
+    checksum:update(req.org or "")
+
+    local final = to_hex(checksum:final())
+
+    return req.addr
+        .. DELIM .. req.host
+        .. DELIM .. final
+  end
+
+  function _M.reset_cache()
+    calculate_salt()
+  end
 end
 
 

@@ -31,6 +31,8 @@ local pairs        = pairs
 local ipairs       = ipairs
 local type         = type
 
+local req_cache_key = require("doorbell.auth.request").cache_key
+local reset_req_cache = require("doorbell.auth.request").reset_cache
 
 local META = require("doorbell.shm").doorbell
 local SAVE_PATH
@@ -126,27 +128,6 @@ local function lock_storage(action, locked)
   end
 end
 
-local cache_key
-do
-  local have_geoip = ip.geoip_enabled()
-  --- generate a cache key for a request object
-  ---@param  req doorbell.forwarded_request
-  ---@return string
-  function cache_key(req)
-    local country = (have_geoip and req.country) or "_"
-    return fmt(
-      "%s||%s||%s||%s||%s||%s||%s||%s",
-      req.addr,
-      country,
-      req.method,
-      req.host,
-      req.path,
-      req.ua,
-      req.asn or 0,
-      req.org or ""
-    )
-  end
-end
 
 ---@param hash_or_id string
 local function get(hash_or_id)
@@ -228,6 +209,7 @@ local function rebuild_matcher()
   update_local_rules()
   local match = matcher.new(RULES)
   cache:flush_all()
+  reset_req_cache()
   check_match = match
 end
 
@@ -434,7 +416,7 @@ function _M.match(req)
   end
 
   local cached = true
-  local key = cache_key(req)
+  local key = req_cache_key(req)
 
   ---@type doorbell.rule
   local rule = cache:get("req", key)
