@@ -1,187 +1,167 @@
-local _M = {
-  _VERSION = require("doorbell.constants").version,
-}
+local _M = {}
 
 local log = require "doorbell.log"
 local util = require "doorbell.util"
 
-local sem      = require "ngx.semaphore"
-local cjson    = require("cjson.safe").new()
-local encode   = cjson.encode
-local open     = io.open
-local fmt      = string.format
-local concat   = table.concat
-local timer_at = ngx.timer.at
-local exiting  = ngx.worker.exiting
+local sem               = require "ngx.semaphore"
+local timer_at          = ngx.timer.at
+local exiting           = ngx.worker.exiting
+local run_worker_thread = ngx.run_worker_thread
+local now               = ngx.now
+local update_time       = ngx.update_time
+local new_tab           = require "table.new"
+local min               = math.min
 
-cjson.encode_keep_buffer(true)
-cjson.encode_number_precision(16)
-cjson.encode_escape_forward_slash(false)
+local flush_in_main_thread = require("doorbell.request.file-logger").write
 
 ---@type ngx.semaphore
 local SEM
 
-local INTERVAL = 1
-local QSIZE    = 5
-local ROUNDS   = 100
+-- flush the log buffer when it reaches MAX_BUFFERED_ENTRIES
+-- *or* when the last flush was FLUSH_INTERVAL seconds ago
+local MAX_BUFFERED_ENTRIES = 100
+local FLUSH_INTERVAL       = 1
+
+-- how many timer loops to execute before re-scheduling a new timer
+local TIMER_ITERATIONS = 1000
+
 
 ---@type string
-local PATH
+local PATH       = nil
+local ENABLED    = false
+
 
 ---@type table[]
-local ENTRIES
+local BUF     = new_tab(MAX_BUFFERED_ENTRIES, 0)
+local BUF_LEN = 0
 
----@type string[]
-local buf = { n = 0 }
+local NEXT_FLUSH = now()
 
----@type string[]
-local errors = { n = 0 }
 
----@param t any[]
----@param value any
-local function append(t, value)
-  local n = t.n + 1
-  t[n] = value
-  t.n = n
+---@return number
+local function get_updated_time()
+  update_time()
+  return now()
 end
 
----@param t any[]
-local function clear(t)
-  local n = t.n
-  if n > 0 then
-    for i = 1, n do
-      t[i] = nil
-    end
-    t.n = 0
-  end
-end
 
----@param t any[]
----@param sep? string
----@param start? number
----@param stop? number
----@return string?
-local function join(t, sep, start, stop)
-  local n = t.n
-  if n == 0 then
-    return
-  end
-  local s = concat(t, sep, start or 1, stop or n)
-  clear(t)
-  return s
-end
-
----@param fh? file*
----@return boolean ok
----@return string? error
----@return number  written
-local function flush(fh)
-  if ENTRIES == nil then
+---@param worker_exiting? boolean
+local function flush(worker_exiting)
+  if not ENABLED then
     return
   end
 
-  local len = ENTRIES.n
-  if len == 0 then
-    return true, nil, 0
+  if BUF_LEN == 0 then
+    return
   end
 
-  local entries = ENTRIES
-  ENTRIES = { n = 0 }
+  NEXT_FLUSH = now() + FLUSH_INTERVAL
 
-  local need_close = false
-  local err
-  if fh then
-    fh:seek("end")
+  local entries = BUF
+  local len = BUF_LEN
+
+  -- Use the high water mark of the previous buffer to determine the size of
+  -- the new buffer. This should cut down on the number of table resize
+  -- operations needed when under high request throughput.
+  local buf_size = min(MAX_BUFFERED_ENTRIES, len)
+  BUF = new_tab(buf_size, 0)
+  BUF_LEN = 0
+
+  local ok, err, count
+
+  local start = get_updated_time()
+  if worker_exiting then
+    log.debug("NGINX is exiting: flushing remaining logs in the main thread")
+
+    ok, err, count = flush_in_main_thread(PATH, entries)
+
   else
-    need_close = true
-
-    fh, err = open(PATH, "a+")
-    if not fh then
-      return nil, err, 0
-    end
-  end
-
-  local n = 0
-  for i = 1, len do
-    local json, jerr = encode(entries[i])
-    if jerr then
-      append(errors, fmt("failed encoding entry #%s: %s", i, jerr))
+    local tok, terr
+    ok, tok, terr, count = run_worker_thread("doorbell.json.log",
+                                             "doorbell.request.file-logger",
+                                             "write",
+                                             PATH,
+                                             entries)
+    if ok then
+      ok = tok
+      err = terr
     else
-      n = n + 1
-      append(buf, json)
-      append(buf, "\n")
+      err = tok
     end
   end
 
-  if n > 0 then
-    local ok, werr = fh:write(join(buf))
-    if not ok then
-      n = 0
-      append(errors, fmt("failed writing to %s: %s", PATH, werr))
-    end
+
+  local duration = get_updated_time() - start
+
+  if count then
+    log.debug("wrote ", count, "/", len, " logs to ", PATH, " in ", duration, "s")
   end
 
-  if need_close then
-    fh:close()
+  if not ok then
+    log.alertf("failed writing logs to file (%s): %s", PATH, err)
   end
-
-  err = join(errors, "\n")
-
-  if err then
-    return nil, err, n
-  end
-
-  return true, err, n
 end
+
 
 ---@param premature boolean
 local function log_writer(premature)
   if premature or exiting() then
-    log.info("NGINX is exiting: flushing remaining logs")
-    flush()
+    flush(true)
     return
   end
 
-  local fh, err = open(PATH, "a+")
-  if not fh then
-    log.alertf("failed opening log path (%s): %s", PATH, err)
-    ENTRIES = nil
-    return
-  end
+  local remaining
+  local need_flush = false
 
-  for _ = 1, ROUNDS do
-    if exiting() then
-      log.info("NGINX is exiting: flushing remaining logs")
-      flush(fh)
+  for _ = 1, TIMER_ITERATIONS do
+    if BUF_LEN == 0 then
+      -- You might be tempted to drastically increase the timeout in this
+      -- branch. However, semaphore:wait() is not guaranteed to wake up our
+      -- thread when NGINX has been signaled to exit, so a long timeout could
+      -- block the shutdown process.
+      SEM:wait(FLUSH_INTERVAL)
+    end
+
+
+    if BUF_LEN >= MAX_BUFFERED_ENTRIES then
+      need_flush = true
+
+    elseif BUF_LEN > 0 then
+      remaining = NEXT_FLUSH - now()
+
+      if remaining < 0.001 then
+        need_flush = true
+
+      -- if semaphore:wait() returns falsy, that means we waited the entire
+      -- `remaining` duration, so we should flush
+      elseif not SEM:wait(remaining) then
+        need_flush = true
+      end
+
+    elseif exiting() then
       break
     end
 
-    if ENTRIES.n < QSIZE then
-      SEM:wait(INTERVAL)
-    end
 
-    local expect = ENTRIES.n
-    local ok, written
-    ok, err, written = flush(fh)
-    if not ok then
-      local failed = expect - written
-      log.alertf("failed writing %s/%s entries to the log: %s", failed, expect, err)
-    elseif written > 0 then
-      log.debugf("wrote %s entries to the log", written)
+    if need_flush then
+      need_flush = false
+      flush()
     end
   end
 
-  fh:close()
 
-  if not exiting() then
-    assert(timer_at(INTERVAL, log_writer))
+  if exiting() then
+    flush(true)
+
+  else
+    assert(timer_at(0, log_writer))
   end
 end
 
+
 ---@param entry table
 function _M.add(entry)
-  if ENTRIES == nil then
-    log.warn("logging is disabled")
+  if not ENABLED then
     return
   end
 
@@ -190,22 +170,26 @@ function _M.add(entry)
     return
   end
 
-  append(ENTRIES, entry)
+  BUF_LEN = BUF_LEN + 1
+  BUF[BUF_LEN] = entry
 
   if SEM:count() < 0 then
     SEM:post(1)
   end
 end
 
+
 ---@param conf doorbell.config
 function _M.init(conf)
   PATH = util.join(conf.log_path, "doorbell.json.log")
-  ENTRIES = { n = 0 }
+  ENABLED = true
 end
+
 
 function _M.init_worker()
   SEM = assert(sem.new())
   assert(timer_at(0, log_writer))
 end
+
 
 return _M
