@@ -60,7 +60,7 @@ _M.await = {
 
 ---@param v any
 function _M.inspect(v)
-  require("doorbell.log").stderr(inspect(v))
+  require("doorbell.log").stderr("\n\n" .. inspect(v) .. "\n\n")
 end
 
 
