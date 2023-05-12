@@ -63,6 +63,7 @@ build = {
 supported_platforms = { "linux" }
 
 dependencies = {
+  "lua_system_constants = 0.1.4",
   "lua-resty-ljsonschema == 1.1.3",
   "lua-cjson >= 2.1.0",
   "lua-resty-http >= 0.16.1-0",
