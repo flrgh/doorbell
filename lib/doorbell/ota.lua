@@ -75,9 +75,7 @@ local function apply(payload)
 end
 
 
-local function update(premature)
-  if premature then return end
-
+local function update()
   local client, err = http:new()
 
   if not client then
@@ -142,18 +140,32 @@ local function update(premature)
 
   log.noticef("updated %s OTA rules from %s", n, config.url)
 
-  if res.headers.etag then
-    state.etag = res.headers.etag
+  if res.headers["Etag"] then
+    state.etag = res.headers["Etag"]
 
-  elseif res.headers["last_modified"] then
-    state.last_modified = res.headers["last_modified"]
+  elseif res.headers["Last-Modified"] then
+    state.last_modified = res.headers["Last-Modified"]
   end
 
-  notify.send({
-    title = "Updated OTA rules",
-    message = fmt([[Updated %s OTA rules from `%s`]], n, config.url),
-    level = notify.level.info,
-  })
+  if notify.in_notify_period() then
+    notify.send({
+      title = "Updated OTA rules",
+      message = fmt([[Updated %s OTA rules from `%s`]], n, config.url),
+      level = notify.level.info,
+    })
+  end
+end
+
+
+---@param premature? boolean
+local function update_timer(premature)
+  if premature then return end
+
+  update()
+
+  if not ngx.worker.exiting() then
+    assert(ngx.timer.at(config.interval, update_timer))
+  end
 end
 
 
@@ -177,7 +189,7 @@ end
 
 function _M.init_agent()
   if not config then return end
-  assert(ngx.timer.every(config.interval, update))
+  assert(ngx.timer.at(0, update_timer))
 end
 
 
