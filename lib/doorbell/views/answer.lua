@@ -9,6 +9,7 @@ local request = require "doorbell.request"
 
 local var = ngx.var
 local fmt = string.format
+local EMPTY = {}
 
 local SCOPES = const.scopes
 local SUBJECTS = const.subjects
@@ -16,19 +17,25 @@ local PERIODS = const.periods
 
 ---@param req doorbell.forwarded_request
 local function render_form(tpl, req, errors, current)
-  local country = ip.get_country_name(req.country) or req.country or "Unknown"
+  local info = ip.get_ip_info(req.addr) or EMPTY
 
   return tpl({
     req = {
-      { "addr",         req.addr   },
-      { "country",      country    },
-      { "user-agent",   req.ua     },
-      { "host",         req.host   },
-      { "method",       req.method },
-      { "uri",          req.uri    },
+      { "addr",         req.addr         },
+      { "country",      info.country     },
+      { "state/region", info.region      },
+      { "city",         info.city        },
+      { "zip",          info.postal_code },
+
+      { "user-agent",   req.ua           },
+      { "host",         req.host         },
+      { "method",       req.method       },
+      { "uri",          req.uri          },
     },
     errors = errors or {},
     current_ip = current,
+    map_link = info.map_link,
+    search_link = info.search_link,
   })
 end
 

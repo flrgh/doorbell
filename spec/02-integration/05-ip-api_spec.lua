@@ -211,6 +211,20 @@ describe("IP API", function()
     },
   }
 
+  local IGNORED_ATTRIBUTES = {
+    "search_link",
+    "map_link",
+  }
+
+  local function removed_ignored(res)
+    if type(res) == "table" then
+      for _, name in ipairs(IGNORED_ATTRIBUTES) do
+        res[name] = nil
+      end
+    end
+  end
+
+
   for _, case in ipairs(GEOIP_CASES) do
     describe("/ip/info", function()
 
@@ -238,6 +252,7 @@ describe("IP API", function()
         assert.is_nil(err)
         assert.same(200, res.status)
         assert.same("application/json", res.headers.content_type)
+        removed_ignored(res.json)
         assert.same(case.exp, res.json)
       end)
 
@@ -247,6 +262,7 @@ describe("IP API", function()
         assert.is_nil(err)
         assert.same(200, res.status)
         assert.same("application/json", res.headers.content_type)
+        removed_ignored(res.json)
         assert.same(case.exp, res.json)
       end)
 

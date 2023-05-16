@@ -16,6 +16,8 @@ local var = ngx.var
 local exit = ngx.exit
 local HTTP_FORBIDDEN = ngx.HTTP_FORBIDDEN
 local EMPTY = {}
+local fmt = string.format
+local encode_args = ngx.encode_args
 
 local parse_ipv4 = ipmatcher.parse_ipv4
 local parse_ipv6 = ipmatcher.parse_ipv6
@@ -112,6 +114,40 @@ local function is_trusted(ip)
 end
 
 
+---@param info doorbell.ip.info
+local function add_map_links(info)
+  if not info then return end
+
+  info.search_link = nil
+  info.map_link    = nil
+
+  if info.city or info.country_code or info.region or info.postal_code then
+    local query = {
+      city         = info.city,
+      country      = info.country or info.country_code,
+      countrycodes = info.country_code,
+      postalcode   = info.postal_code,
+      state        = info.region,
+    }
+
+    info.search_link = "https://nominatim.openstreetmap.org/ui/search.html?"
+                       .. encode_args(query)
+  end
+
+
+  if info.latitude and info.longitude then
+    local zoom = 13
+
+    -- Example:
+    -- https://www.openstreetmap.org/?mlat=45.5760&mlon=-122.7018#map=13/45.5760/-122.7018
+    info.map_link = fmt("https://www.openstreetmap.org/?mlat=%s&mlon=%s#map=%s/%s/%s",
+                        info.latitude, info.longitude,
+                        zoom,
+                        info.latitude, info.longitude)
+  end
+end
+
+
 ---@class doorbell.ip.info : table
 ---
 ---@field addr             string
@@ -123,10 +159,12 @@ end
 ---@field country_code     string
 ---@field latitude         number|nil
 ---@field longitude        number|nil
+---@field map_link         string|nil
 ---@field org              string|nil
 ---@field postal_code      string|nil
 ---@field region           string|nil
 ---@field region_code      string|nil
+---@field search_link      string|nil
 ---@field time_zone        string|nil
 
 
@@ -175,6 +213,8 @@ local function get_ip_info(addr)
     city           = (city.names or EMPTY).en or city.geoname_id,
     latitude       = location.latitude,
     longitude      = location.longitude,
+    map_link       = "", -- placeholder for table size
+    search_link    = "", -- placeholder for table size
     network        = geo.network or asn.network,
     time_zone      = location.time_zone,
     postal_code    = postal.code,
@@ -184,11 +224,12 @@ local function get_ip_info(addr)
     region_code    = subdiv.iso_code or subdiv.geoname_id,
   }
 
+  add_map_links(info)
+
   cache:set("geoip-info", addr, info)
 
   return info
 end
-
 
 
 _M.private_cidrs = {
