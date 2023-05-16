@@ -105,6 +105,7 @@ function _M.ring(req, url)
 end
 
 
+---@param msg doorbell.notify.message
 function _M.send(msg)
   assert(type(msg) == "table")
 
