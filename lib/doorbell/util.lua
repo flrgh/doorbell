@@ -489,4 +489,17 @@ function _M.error_on_missing_key(t, label)
   })
 end
 
+
+---@generic V
+---@param t table<any, V>
+---@return table<V, true>
+function _M.lookup_from_values(t)
+  local lookup = {}
+  for _, v in pairs(t) do
+    lookup[v] = true
+  end
+
+  return lookup
+end
+
 return _M

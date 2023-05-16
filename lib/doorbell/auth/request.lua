@@ -16,18 +16,6 @@ local nrec    = 10
 local fetch   = tb.fetch
 local release = tb.release
 
----@class doorbell.forwarded_request : table
----@field addr     string
----@field asn?     integer
----@field scheme   string
----@field host     string
----@field uri      string
----@field org?     string
----@field path     string
----@field method   string
----@field ua       string
----@field country? string
-
 
 ---@param  ctx                         doorbell.ctx
 ---@param  headers?                    doorbell.http.headers

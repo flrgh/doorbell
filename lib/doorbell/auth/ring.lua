@@ -33,11 +33,18 @@ local fmt = string.format
 local get_redir_location
 do
   local encode_args = ngx.encode_args
-  local arg_t = { next = nil }
+  local arg_t = {
+    next     = nil,
+    token    = nil,
+    scopes   = nil,
+    subjects = nil,
+    max_ttl  = nil,
+  }
 
   ---@param req doorbell.forwarded_request
+  ---@param token string
   ---@return string
-  function get_redir_location(req)
+  function get_redir_location(req, token)
     local uri
 
     if config.redirect_uri then
@@ -47,6 +54,10 @@ do
     end
 
     arg_t.next = fmt("%s://%s%s", req.scheme, req.host, req.uri)
+    arg_t.token = token
+    arg_t.scopes   = config.approvals.allowed_scopes
+    arg_t.subjects = config.approvals.allowed_subjects
+    arg_t.max_ttl  = config.approvals.max_ttl
 
     return uri .. "?" .. encode_args(arg_t)
   end
@@ -73,7 +84,22 @@ local UNAUTHORIZED_HANDLERS = {
   end,
 
   [const.unauthorized.redirect_for_approval] = function(req)
-    local location = get_redir_location(req)
+    local state, token = auth.new_approval(req)
+
+    if state == STATES.allow then
+      return http.send(201, "you may enter")
+
+    elseif state == STATES.deny then
+      return http.send(403, "go away dude")
+
+    elseif state == STATES.error then
+      return http.send(500, "uh oh")
+    end
+
+    assert(state == STATES.pending, "unexpected/invalid state: " .. state)
+    assert(token ~= nil, "empty token returned")
+
+    local location = get_redir_location(req, token)
 
     log.notice("redirecting client to ", location)
     return http.send(302, "there's a system in place", { location = location })

@@ -19,6 +19,7 @@
 ---@field unauthorized     doorbell.unauthorized
 ---@field redirect_uri     string
 ---@field utc_offset       integer
+---@field approvals        doorbell.config.approvals
 local _M = {
   _VERSION = require("doorbell.constants").version,
 }
@@ -100,6 +101,7 @@ end
 
 
 function _M.init()
+  ---@type doorbell.config
   local config = {}
 
   for name, field in pairs(schema.config.fields) do
@@ -116,6 +118,13 @@ function _M.init()
     local value = env[name:upper()]
     if value then
       config[name] = unserialize(field, value)
+    end
+  end
+
+  config.approvals = config.approvals or {}
+  for name, property in pairs(schema.config.fields.approvals.properties) do
+    if config.approvals[name] == nil then
+      config.approvals[name] = property.default
     end
   end
 
