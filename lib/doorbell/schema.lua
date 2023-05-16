@@ -1058,6 +1058,13 @@ config.fields.redirect_uri = {
   default = const.endpoints.get_access,
 }
 
+config.fields.utc_offset = {
+  description = "Offset from UTC time (in hours)",
+  type = "integer",
+  default = 0,
+  minimum = -23,
+  maximum = 23,
+}
 
 ---@type doorbell.schema
 config.entity = {
@@ -1084,6 +1091,7 @@ config.entity = {
     state_path           = config.fields.state_path,
     trusted              = config.fields.trusted,
     unauthorized         = config.fields.unauthorized,
+    utc_offset           = config.fields.utc_offset,
   },
 
   additionalProperties = false,
@@ -1124,6 +1132,7 @@ config.input = {
     state_path         = config.fields.state_path,
     trusted            = config.fields.trusted,
     unauthorized       = config.fields.unauthorized,
+    utc_offset         = config.fields.utc_offset,
   },
 
   additionalProperties = false,

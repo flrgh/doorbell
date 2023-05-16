@@ -5,6 +5,8 @@ local _M = {
 local log = require "doorbell.log"
 local util = require "doorbell.util"
 
+local UTC_OFFSET = 0
+
 local STRATEGIES = {
   pushover = true,
 }
@@ -53,7 +55,7 @@ local PERIODS
 
 ---@class doorbell.notify.strategy
 ---@field init fun(conf:doorbell.notify.strategy.config)
----@field ring fun(req:doorbell.request, url:string):boolean?, string?, string|table|nil
+---@field ring fun(req:doorbell.forwarded_request, url:string):boolean?, string?, string|table|nil
 ---@field send fun(msg:doorbell.notify.message):boolean?, string?, string|table|nil
 local strategy
 
@@ -87,11 +89,13 @@ function _M.init(conf)
     log.warn("no notify periods configured; auth requests will be sent at all hours")
   end
 
+  UTC_OFFSET = conf.utc_offset or 0
+
   _M.strategy = strat
 end
 
 
----@param  req               doorbell.request
+---@param  req               doorbell.forwarded_request
 ---@param  url               string
 ---@return boolean?          ok
 ---@return string?           err
@@ -135,7 +139,13 @@ function _M.in_notify_period(periods, hour)
     assert(hour >= 0 and hour < 24, "hour is out of expected range")
 
   else
-    hour = util.current_time("hour")
+    hour = util.current_time("hour") + UTC_OFFSET
+    if hour < 0 then
+      hour = hour + 24
+
+    elseif hour >= 24 then
+      hour = hour - 24
+    end
   end
 
   for _, p in ipairs(periods) do
