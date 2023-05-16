@@ -1066,6 +1066,55 @@ config.fields.utc_offset = {
   maximum = 23,
 }
 
+---@class doorbell.config.approvals : table
+---
+---@field allowed_scopes doorbell.scope[]
+---
+---@field allowed_subjects doorbell.subject[]
+---
+---@field max_ttl number
+
+
+config.fields.approvals = {
+  description = "Settings for approving access for new clients. These only apply "
+             .. "when `unauthorized` is set to \"" .. const.unauthorized.return_401
+             .. "\"",
+
+  type = "object",
+
+  properties = {
+    allowed_scopes = {
+      description = "types of access that can be granted for clients via the approvals system",
+      type        = "array",
+      items       = {
+        enum      = util.table_values(const.scopes),
+      },
+      default     = util.table_values(const.scopes),
+    },
+
+    allowed_subjects = {
+      description = "subject types that can be granted access via the approvals system",
+      type        = "array",
+      items       = {
+        enum      = util.table_values(const.subjects),
+      },
+      default     = util.table_values(const.subjects),
+    },
+
+    max_ttl = {
+      description = "maximum amount of time (in seconds), that clearance can be "
+                 .. "granted for (0: unlimited)",
+      type        = "number",
+      minimum     = 0,
+      default     = 0,
+    },
+
+  },
+
+  additionalProperties = false,
+}
+
+
 ---@type doorbell.schema
 config.entity = {
   title = "doorbell.config",
@@ -1074,6 +1123,7 @@ config.entity = {
 
   properties = {
     allow                = config.fields.allow,
+    approvals            = config.fields.approvals,
     asset_path           = config.fields.asset_path,
     base_url             = config.fields.base_url,
     cache_size           = config.fields.cache_size,
@@ -1116,6 +1166,7 @@ config.input = {
 
   properties = {
     allow              = config.fields.allow,
+    approvals          = config.fields.approvals,
     asset_path         = config.fields.asset_path,
     base_url           = config.fields.base_url,
     cache_size         = config.fields.cache_size,
@@ -1142,7 +1193,114 @@ config.input = {
 config.input.validate = validator(config.input)
 
 
+local auth = {}
+
+---@class doorbell.forwarded_request : table
+---@field addr     string
+---@field asn?     integer
+---@field scheme   string
+---@field host     string
+---@field uri      string
+---@field org?     string
+---@field path     string
+---@field method   string
+---@field ua       string
+---@field country? string
+
+
+auth.forwarded_request = {
+  description = "summary of a request submitted via the forward auth endpoint",
+  type = "object",
+
+  properties = {
+    addr    = { type = "string" },
+    asn     = { type = "intger" },
+    country = { type = "string" },
+    host    = { type = "string" },
+    method  = { type = "string" },
+    org     = { type = "string" },
+    path    = { type = "string" },
+    scheme  = { type = "string" },
+    ua      = { type = "string" },
+    uri     = { type = "string" },
+  },
+
+  required = {
+    "addr",
+    "scheme",
+    "host",
+    "uri",
+    "path",
+    "method",
+  },
+
+  additionalProperties = false,
+
+}
+
+auth.approval = {}
+
+---@class doorbell.auth.approval.request
+---
+---@field request doorbell.forwarded_request
+---
+---@field created number
+---
+---@field token string
+
+
+auth.approval.request = {
+  description = "represents a pending access request",
+  type = "object",
+
+  properties = {
+    token = { type = "string" },
+    created = { type = "number" },
+    request = auth.forwarded_request,
+  },
+
+  required = { "token", "created", "request" },
+
+  additionalProperties = false,
+}
+
+---@class doorbell.auth.approval.answer
+---
+---@field action doorbell.action
+---@field scope doorbell.scope
+---@field subject doorbell.subject
+---@field token string
+---@field ttl number
+
+
+auth.approval.answer = {
+  title = "doorbell.auth.approval.answer",
+  description = "approves or denies an access request",
+  type = "object",
+
+  properties = {
+    action  = { enum = util.table_values(const.actions) },
+    scope   = { enum = util.table_values(const.scopes) },
+    subject = { enum = util.table_values(const.subjects) },
+    token   = { type = "string" },
+    ttl     = { type = "number" },
+  },
+
+  required = {
+    "token",
+    "action",
+    "ttl",
+    "scope",
+    "subject",
+  },
+
+  additionalProperties = false,
+}
+auth.approval.answer.validate = validator(auth.approval.answer)
+
+
 return {
+  auth = auth,
   rule = rule,
   config = config,
 }

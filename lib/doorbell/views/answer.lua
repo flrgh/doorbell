@@ -4,7 +4,6 @@ local auth    = require "doorbell.auth"
 local ip      = require "doorbell.ip"
 local notify  = require "doorbell.notify"
 local http    = require "doorbell.http"
-local api     = require "doorbell.rules.api"
 local request = require "doorbell.request"
 
 local var = ngx.var
@@ -74,12 +73,14 @@ return function(ctx)
               { ["content-type"] = "text/html" })
   end
 
-  local req = auth.get_token_address(t)
+  local approval = auth.get_approval(t)
 
-  if not req then
+  if not approval then
     log.noticef("/answer token %s not found", t)
     return http.send(404)
   end
+
+  local req = approval.request
 
   req.url = req.scheme .. "://" .. req.host .. req.uri
 
@@ -122,49 +123,40 @@ return function(ctx)
                      { ["content-type"] = "text/plain" })
   end
 
-  local terminate = false
-  local host, path = req.host, req.path
-  if scope == SCOPES.global then
-    host = nil
-    path = nil
-    terminate = true
-  elseif scope == SCOPES.host then
-    path = nil
+  if action == "approve" then
+    action = "allow"
   end
 
-  local addr, ua = req.addr, req.ua
-  if subject == SUBJECTS.addr then
-    ua = nil
-  elseif subject == SUBJECTS.ua then
-    addr = nil
-  end
+  ---@type doorbell.auth.approval.answer
+  local ans = {
+    action  = action,
+    token   = approval.token,
+    scope   = scope,
+    subject = subject,
+    ttl     = PERIODS[period],
+  }
 
-  local rule
-  rule, err = api.insert({
-    action    = (action == "approve" and "allow") or "deny",
-    source    = "user",
-    addr      = addr,
-    host      = host,
-    path      = path,
-    ua        = ua,
-    ttl       = PERIODS[period],
-    terminate = terminate,
-  })
+  local status, rule
+  status, err, rule = auth.answer(ans)
 
-  if not rule then
+  if status >= 500 then
     log.errf("POST /answer failed to insert rule: %s", err)
     return http.send(500)
-  end
 
+  elseif status >= 400 then
+    log.errf("POST /answer with invalid input: %s", err)
+    return http.send(status, err)
+
+  else
+    assert(status == 201, "unexpected status: " .. tostring(status))
+  end
 
   notify.inc("answered")
 
-  auth.set_pending(req.addr, false)
-
   local msg = fmt(
     "%s access for %q to %s %s",
-    (action == "approve" and "Approved") or "Denied",
-    (addr or ua),
+    (rule.action == "allow" and "Approved") or "Denied",
+    (rule.addr or rule.ua),
     (scope == SCOPES.global and "all apps.") or (scope == SCOPES.host and req.host) or req.url,
     (PERIODS[period] == PERIODS.forever and "for all time") or ("for one " .. period)
   )

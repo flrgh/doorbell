@@ -76,6 +76,16 @@ end
 ---@field headers spec.testing.client.headers
 
 
+---@class spec.testing.client.status.assertion : table
+---
+---@field gt     integer
+---@field gte    integer
+---@field lt     integer
+---@field lte    integer
+---@field eq     integer
+---@field one_of integer[]
+
+
 ---@class spec.testing.client : table
 ---
 ---@field httpc        resty.http.client
@@ -88,6 +98,12 @@ end
 ---@field headers      spec.testing.client.headers
 ---@field need_connect boolean
 ---@field timeout      number
+---
+---@field raise_on_request_error     boolean
+---@field raise_on_connect_error     boolean
+---@field reopen                     boolean
+---
+---@field assert_status? table<ngx.http.method|string, spec.testing.client.status.assertion>
 ---
 ---@field get     spec.testing.client.method
 ---@field post    spec.testing.client.method
@@ -123,10 +139,19 @@ function client:send()
     })
 
     self.err = err
-    if not ok then return nil, err end
+
+    if not ok then
+      if self.raise_on_connect_error then
+        error("resty.http.client:connect() failed: " .. tostring(err))
+      end
+
+      return nil, err
+    end
+
     self.need_connect = false
   end
 
+  ---@type spec.testing.client.request
   local req = clone(self.request)
   req.headers = req.headers or _M.headers()
   prepare(req)
@@ -140,9 +165,24 @@ function client:send()
   local res, err = self.httpc:request(req)
   self.err = err
 
+  if err == "closed" and self.reopen then
+    self.need_connect = true
+    self.reopen = false
+    self:send()
+
+    res = self.response
+    err = self.err
+    self.reopen = true
+  end
+
   if not res then
     self:close()
     self.need_connect = true
+
+    if self.raise_on_request_error then
+      error("failed to send request: " .. tostring(err))
+    end
+
     return nil, err
   end
 
@@ -167,6 +207,55 @@ function client:send()
     body    = body,
     json    = json,
   }
+
+  do
+    local method = req.method or "GET"
+    local check = self.assert_status[method]
+
+    if check then
+      local status = res.status
+
+      if check.gt then
+        assert(status > check.gt,
+               "status code " .. status .. " is <= " .. check.gt)
+      end
+
+      if check.gte then
+        assert(status >= check.gte,
+               "status code " .. status .. " is < " .. check.gte)
+      end
+
+      if check.lt then
+        assert(status < check.lt,
+               "status code " .. status .. " is >= " .. check.lt)
+      end
+
+      if check.lte then
+        assert(status <= check.lte,
+               "status code " .. status .. " is > " .. check.lte)
+      end
+
+
+      if check.eq then
+        assert(status == check.eq,
+               "status code " .. status .. " != " .. check.eq)
+      end
+
+      if check.one_of then
+        local found = false
+        for _, exp in ipairs(check.one_of) do
+          if exp == status then
+            found = true
+            break
+          end
+        end
+
+        assert(found, "status code " .. status .. " was not one of "
+                   .. table.concat(check.one_of, ", "))
+      end
+
+    end
+  end
 
   return self.response
 end
@@ -218,13 +307,17 @@ function _M.new(url)
   local parsed = assert(http:parse_uri(url))
 
   local self = {
-    httpc        = assert(http.new()),
-    scheme       = parsed[1],
-    host         = parsed[2],
-    port         = parsed[3],
-    headers      = _M.headers(),
-    need_connect = true,
-    request      = {},
+    httpc                  = assert(http.new()),
+    scheme                 = parsed[1],
+    host                   = parsed[2],
+    port                   = parsed[3],
+    headers                = _M.headers(),
+    need_connect           = true,
+    request                = {},
+    raise_on_request_error = false,
+    raise_on_connect_error = true,
+    assert_status          = {},
+    reopen                 = false,
   }
 
   return setmetatable(self, client)

@@ -285,7 +285,7 @@ describe("/ring", function()
 
     it("redirects the client to the request approval endpoint", function()
       local url = "http://test/?a=1&b=2"
-      client:add_x_forwarded_headers("1.2.3.4", "GET", url)
+      client:add_x_forwarded_headers(test.random_ipv4(), "GET", url)
       client.headers["user-agent"] = "unknown"
 
       client:send()
@@ -302,16 +302,12 @@ describe("/ring", function()
 
     it("allows access to the approval endpoint", function()
       client.headers["user-agent"] = "nope"
-
-      client:add_x_forwarded_headers("1.2.3.4", "GET", conf.base_url .. "letmein")
-      client:send()
-      assert.is_nil(client.err)
-      assert.equals(200, client.response.status)
-
-      client:add_x_forwarded_headers("1.2.3.4", "POST", conf.base_url .. "letmein")
-      client:send()
-      assert.is_nil(client.err)
-      assert.equals(200, client.response.status)
+      for _, method in ipairs({ "GET", "POST" }) do
+        client:add_x_forwarded_headers(test.random_ipv4(), method, conf.base_url .. "letmein")
+        client:send()
+        assert.is_nil(client.err)
+        assert.equals(200, client.response.status)
+      end
     end)
   end)
 end)

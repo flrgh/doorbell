@@ -14,6 +14,7 @@ local stats   = require "doorbell.rules.stats"
 local schema  = require "doorbell.schema"
 local mw      = require "doorbell.middleware"
 local request = require "doorbell.request"
+local auth    = require "doorbell.auth"
 
 local safe_decode = require("cjson.safe").decode
 local get_json_body = request.get_json_body
@@ -455,6 +456,37 @@ function _M.init(config)
   for name, field in pairs(schema.rule.fields) do
     router["/schema/rule/fields/" .. name] = schema_api(field)
   end
+
+  router["/approvals"] = {
+    id              = "approvals-collection",
+    description = "list pending access requests",
+    metrics_enabled = true,
+    allow_untrusted = false,
+    content_type = "application/json",
+    middleware      = {
+      [mw.phase.PRE_HANDLER] = {
+        request.middleware.enable_logging,
+      },
+    },
+
+    GET = function()
+      local list = auth.list_approvals()
+      return send(200, { data = list })
+    end,
+
+    POST = function(ctx)
+      local json = get_json_body(ctx, "table")
+      local status, err = auth.answer(json)
+      if status >= 400 then
+        return send(status, { error = err })
+      end
+
+      return send(status, { message = "OK" })
+    end,
+
+  }
+
+
 end
 
 return _M
