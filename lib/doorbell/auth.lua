@@ -97,6 +97,7 @@ _M.set_pending = set_pending
 ---@param req doorbell.forwarded_request
 ---@return doorbell.auth_state state
 ---@return string? error
+---@return string? token
 local function get_state(req, ctx)
   local rule, cached = rules.match(req)
   if rule then
@@ -107,8 +108,9 @@ local function get_state(req, ctx)
     return rule.action
   end
 
-  if is_pending(req.addr) then
-    return STATES.pending
+  local pending, token = is_pending(req.addr)
+  if pending then
+    return STATES.pending, nil, token
   end
 
   return STATES.none

@@ -300,6 +300,23 @@ describe("/ring", function()
       assert.same(url, next_url)
     end)
 
+    it("redirects the client even when an access request is pending", function()
+      local url = "http://test/?a=1&b=2"
+      local addr = test.random_ipv4()
+      client:add_x_forwarded_headers(addr, "GET", url)
+      client.headers["user-agent"] = "unknown"
+
+      client:send()
+      assert.is_nil(client.err)
+      assert.same(302, client.response.status)
+
+      client:add_x_forwarded_headers(addr, "GET", "http://other.test/")
+      client:send()
+      assert.is_nil(client.err)
+      assert.same(302, client.response.status)
+    end)
+
+
     it("allows access to the approval endpoint", function()
       client.headers["user-agent"] = "nope"
       for _, method in ipairs({ "GET", "POST" }) do

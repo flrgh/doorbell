@@ -63,7 +63,7 @@ do
   end
 end
 
----@alias doorbell.auth.ring.handler fun(req:doorbell.forwarded_request, ctx:doorbell.ctx)
+---@alias doorbell.auth.ring.handler fun(req:doorbell.forwarded_request, ctx:doorbell.ctx, token:string|nil)
 
 
 ---@type table<doorbell.auth_state, doorbell.auth.ring.handler>
@@ -106,6 +106,30 @@ local UNAUTHORIZED_HANDLERS = {
   end,
 }
 
+
+---@type table<doorbell.auth_state, doorbell.auth.ring.handler>
+local PENDING_HANDLERS = {
+  [const.unauthorized.return_401] = function()
+    return http.send(401, "who are you?")
+  end,
+
+  [const.unauthorized.request_approval] = function(req)
+    log.notice("awaiting access for ", req.addr)
+    if auth.await(req) then
+      return http.send(201, "access approved, c'mon in")
+    end
+
+    return http.send(401, "I dunno man")
+  end,
+
+  [const.unauthorized.redirect_for_approval] = function(req, _, token)
+    local location = get_redir_location(req, token)
+
+    log.notice("redirecting client to ", location)
+    return http.send(302, "there's a system in place", { location = location })
+  end,
+}
+
 ---@type table<doorbell.auth_state, doorbell.auth.ring.handler>
 local HANDLERS = {
   [STATES.allow] = function(req)
@@ -123,18 +147,14 @@ local HANDLERS = {
     return http.send(403, "access denied, go away")
   end,
 
-  [STATES.none] = function(req)
+  [STATES.none] = function(req, ctx)
     local handler = assert(UNAUTHORIZED_HANDLERS[config.unauthorized])
-    return handler(req)
+    return handler(req, ctx)
   end,
 
-  [STATES.pending] = function(req)
-    log.notice("awaiting access for ", req.addr)
-    if auth.await(req) then
-      return http.send(201, "access approved, c'mon in")
-    end
-
-    return http.send(401)
+  [STATES.pending] = function(req, ctx, token)
+    local handler = assert(PENDING_HANDLERS[config.unauthorized])
+    return handler(req, ctx, token)
   end,
 
   [STATES.error] = function(req)
@@ -167,9 +187,14 @@ function _M.GET(ctx)
     return http.send(200)
   end
 
-  local state = auth.get_state(req, ctx)
+  local state, token
+  state, err, token = auth.get_state(req, ctx)
+  if err then
+    log.err("error checking auth state: ", err)
+    state = STATES.error
+  end
 
-  return HANDLERS[state](req, ctx)
+  return HANDLERS[state](req, ctx, token)
 end
 
 _M.middleware = {
