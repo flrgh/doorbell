@@ -71,6 +71,11 @@ function _M.ring(req, url)
                       req.host,
                       req.uri))
 
+
+  -- pushover puts the action link/url immediately below the rest of the
+  -- content, so this adds a little extra padding to make it more clickable
+  insert(message, "---\n")
+
   local sent, res
   sent, err, res = po:notify({
     title     = "Access requested for " .. req.addr,
