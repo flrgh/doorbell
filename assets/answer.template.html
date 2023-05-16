@@ -112,21 +112,29 @@
 			{% end %}
 
 			<div class="request-data">
-			<table>
-				{% for _, attr in ipairs(req) do %}
-					{% if attr[2] then %}
-					<tr>
-						<td class="attr-key" >{{ attr[1] }}</td>
-						<td class="attr-value">{{ attr[2] }}</td>
-					</tr>
+				<table>
+					{% for _, attr in ipairs(req) do %}
+						{% if attr[2] then %}
+						<tr>
+							<td class="attr-key" >{{ attr[1] }}</td>
+							<td class="attr-value">{{ attr[2] }}</td>
+						</tr>
+						{% end %}
 					{% end %}
-				{% end %}
-			</table>
-			</div>
+				</table>
 
-			{% if current_ip then %}
-			<p class="current-ip" >(this is your current IP address)</p>
-			{% end %}
+				{% if map_link then %}
+				<a href="{{ map_link }}" target="_blank" rel="nofollow" referrerpolicy="no-referrer" >Map</a>
+				{% end %}
+
+				{% if search_link then %}
+				<a href="{{ search_link }}" target="_blank" rel="nofollow" referrerpolicy="no-referrer" >Search</a>
+				{% end %}
+
+				{% if current_ip then %}
+				<p class="current-ip" >(this is your current IP address)</p>
+				{% end %}
+			</div>
 
 			<form class="form" action="" method="post">
 				<!-- approve || deny -->
