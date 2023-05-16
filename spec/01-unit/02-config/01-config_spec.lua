@@ -195,6 +195,77 @@ describe("doorbell.config", function()
       end)
     end)
 
+    describe(".utc_offset", function()
+      it("must be an integer", function()
+        env.CONFIG_STRING = json {
+          base_url = "http://localhost",
+          utc_offset = 0.1,
+        }
+
+        assert.error_matches(function()
+          config.init()
+        end, [[property utc_offset validation failed]], nil, true)
+
+        env.CONFIG_STRING = json {
+          base_url = "http://localhost",
+          utc_offset = "one",
+        }
+
+        assert.error_matches(function()
+          config.init()
+        end, [[property utc_offset validation failed]], nil, true)
+
+        env.CONFIG_STRING = json {
+          base_url = "http://localhost",
+          utc_offset = true
+        }
+
+        assert.error_matches(function()
+          config.init()
+        end, [[property utc_offset validation failed]], nil, true)
+
+        env.CONFIG_STRING = json {
+          base_url = "http://localhost",
+          utc_offset = 1,
+        }
+        assert.no_error(function() config.init() end)
+      end)
+
+      it("is bounded to >=-23 and <=23", function()
+        env.CONFIG_STRING = json {
+          base_url = "http://localhost",
+          utc_offset = -24
+        }
+
+        assert.error_matches(function()
+          config.init()
+        end, [[property utc_offset validation failed]], nil, true)
+
+        env.CONFIG_STRING = json {
+          base_url = "http://localhost",
+          utc_offset = 24
+        }
+
+        assert.error_matches(function()
+          config.init()
+        end, [[property utc_offset validation failed]], nil, true)
+
+        env.CONFIG_STRING = json {
+          base_url = "http://localhost",
+          utc_offset = -23,
+        }
+
+        assert.no_error(function() config.init() end)
+
+        env.CONFIG_STRING = json {
+          base_url = "http://localhost",
+          utc_offset = 23,
+        }
+
+        assert.no_error(function() config.init() end)
+      end)
+    end)
+
     describe(".notify", function()
       it("must be a table", function()
         env.CONFIG_STRING = json {

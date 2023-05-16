@@ -29,7 +29,7 @@ function _M.init(conf)
   assert(config.user_key, "pushover user key required")
 end
 
----@param req doorbell.request
+---@param req doorbell.forwarded_request
 ---@param url string
 function _M.ring(req, url)
   local po, err = pushover.new(config)
