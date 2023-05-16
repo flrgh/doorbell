@@ -18,6 +18,10 @@ local level_to_priority = {
 }
 
 local fmt = string.format
+local insert = table.insert
+local concat = table.concat
+
+local EMPTY = {}
 
 ---@type resty.pushover.client.opts
 local config
@@ -37,36 +41,43 @@ function _M.ring(req, url)
     return nil, "failed creating pushover client: " .. err
   end
 
-  local req_str = fmt(
-    "%s %s://%s%s",
-    req.method,
-    req.scheme,
-    req.host,
-    req.uri
-  )
+  local message = {
+    "IP Address: " .. req.addr,
+  }
 
-  local country = ip.get_country_name(req.country) or "Unknown"
+  local country = ip.get_country_name(req.country)
+  if country then
+    insert(message, "Country: " .. country)
+  end
 
-  local message = fmt(
-    [[
-      IP address: %s
-      Origin: %s
-      User-Agent: %s
-      Request: %s
-    ]],
-    req.addr,
-    country,
-    req.ua or "<NONE>",
-    req_str
-  )
+  local info = ip.get_ip_info(req.addr) or EMPTY
+  if info.region then
+    insert(message, "Region: " .. info.region)
+  end
+
+  if info.city then
+    insert(message, "City: " .. info.city)
+  end
+
+  if info.org then
+    insert(message, "Network: " .. info.org)
+  end
+
+  insert(message, "User-Agent: " .. (req.ua or "<NONE>"))
+
+  insert(message, fmt("Request: %s %s://%s%s",
+                      req.method,
+                      req.scheme,
+                      req.host,
+                      req.uri))
 
   local sent, res
   sent, err, res = po:notify({
-    title     = "access requested for " .. req.addr,
-    message   = message,
+    title     = "Access requested for " .. req.addr,
+    message   = concat(message, "\n"),
     monospace = true,
     url       = url,
-    url_title = "approve or deny",
+    url_title = "Approve / Deny",
   })
 
   if res then
