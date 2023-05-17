@@ -34,6 +34,7 @@ local get_redir_location
 do
   local encode_args = ngx.encode_args
   local arg_t = {
+    addr     = nil,
     next     = nil,
     token    = nil,
     scopes   = nil,
@@ -53,11 +54,12 @@ do
       uri = join(config.base_url, ENDPOINTS.get_access)
     end
 
-    arg_t.next = fmt("%s://%s%s", req.scheme, req.host, req.uri)
-    arg_t.token = token
+    arg_t.next     = fmt("%s://%s%s", req.scheme, req.host, req.uri)
+    arg_t.token    = token
     arg_t.scopes   = config.approvals.allowed_scopes
     arg_t.subjects = config.approvals.allowed_subjects
     arg_t.max_ttl  = config.approvals.max_ttl
+    arg_t.addr     = req.addr
 
     return uri .. "?" .. encode_args(arg_t)
   end
