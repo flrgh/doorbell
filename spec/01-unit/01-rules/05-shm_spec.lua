@@ -1,5 +1,6 @@
 local shm = require "doorbell.rules.shm"
 local test = require "spec.testing"
+local rules = require "doorbell.rules"
 
 local function call(fn, ...)
   local args = { ... }
@@ -34,10 +35,16 @@ describe("doorbell.rules.shm", function()
     end)
 
     it("returns the current data set", function()
-      shm.set({ a = 1 }, shm.allocate_new_version())
+      local rule = assert(rules.new({
+        action = "allow",
+        ua     = "shm test",
+        source = "user",
+      }))
+
+      shm.set({ rule }, shm.allocate_new_version())
       assert.same({}, shm.get())
       shm.update_current_version()
-      assert.same({ a = 1 }, shm.get())
+      assert.same({ rule }, shm.get())
     end)
   end)
 
@@ -145,28 +152,46 @@ describe("doorbell.rules.shm", function()
       local ttl = 0.1
       shm.PENDING_TTL = ttl
 
-      shm.set({ t = 1 }, shm.allocate_new_version())
+      local first = assert(rules.new({
+        action = "allow",
+        source = "api",
+        ua     = "1",
+      }))
+
+      shm.set({ first }, shm.allocate_new_version())
       local last_updated = shm.update_current_version()
 
+      local second = assert(rules.new({
+        action = "allow",
+        source = "api",
+        ua     = "2",
+      }))
+
       shm.allocate_new_version()
       shm.allocate_new_version()
-      shm.set({ t = 2 }, shm.allocate_new_version())
+      shm.set({ second }, shm.allocate_new_version())
 
       shm.allocate_new_version()
       shm.allocate_new_version()
       shm.allocate_new_version()
+
+      local third = assert(rules.new({
+        action = "allow",
+        source = "api",
+        ua     = "3",
+      }))
 
       local latest = shm.allocate_new_version()
-      shm.set({ t = 3 }, latest)
+      shm.set({ third }, latest)
 
       assert.equals(last_updated, shm.get_current_version())
-      assert.same({ t = 1 }, shm.get())
+      assert.same({ first }, shm.get())
 
       test.await.truthy(function()
         return shm.update_current_version() == latest
       end, ttl * 2, ttl / 10)
 
-      assert.same({ t = 3 }, shm.get())
+      assert.same({ third }, shm.get())
     end)
 
     it("never increments beyond the highest valid version", function()
