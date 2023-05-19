@@ -65,8 +65,7 @@ local function update_local_rules()
   local by_hash = {}
 
   for i = 1, #list do
-    local rule = rules.hydrate(list[i])
-    list[i] = rule
+    local rule = list[i]
     by_id[rule.id] = rule
     by_hash[rule.hash] = rule
   end
@@ -139,9 +138,7 @@ local function get(hash_or_id)
     rule = RULES_BY_HASH[hash_or_id]
   end
 
-  if rule then
-    return rules.hydrate(rule)
-  end
+  return rule
 end
 
 
@@ -191,13 +188,7 @@ end
 
 ---@return doorbell.rule[]
 local function get_all_rules()
-  local list = shm.get()
-
-  for i = 1, #list do
-    list[i] = rules.hydrate(list[i])
-  end
-
-  return list
+  return shm.get()
 end
 
 

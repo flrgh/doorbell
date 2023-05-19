@@ -16,6 +16,9 @@ local now          = ngx.now
 local update_time  = ngx.update_time
 local byte         = string.byte
 local deep_copy    = util.deep_copy
+local type         = type
+local assert       = assert
+
 
 local CONDITIONS = {
   "addr",
@@ -99,18 +102,25 @@ do
   end
 end
 
----@param rule doorbell.rule.new.opts|doorbell.rule
----@return integer
-local function count_conditions(rule)
-  local c = 0
-  for _, cond in ipairs(CONDITIONS) do
-    if rule[cond] ~= nil then
-      c = c + 1
-    end
-  end
 
-  return c
+local count_conditions
+do
+  local num_conditions = #CONDITIONS
+
+  ---@param rule doorbell.rule.new.opts|doorbell.rule
+  ---@return integer
+  function count_conditions(rule)
+    local c = 0
+    for i = 1, num_conditions do
+      if rule[CONDITIONS[i]] ~= nil then
+        c = c + 1
+      end
+    end
+
+    return c
+  end
 end
+
 
 _M.count_conditions = count_conditions
 
@@ -214,6 +224,8 @@ _M.SERIALIZED_FIELDS = SERIALIZED_FIELDS
 ---@field ua          string
 
 
+---@alias doorbell.rules doorbell.rule[]
+
 local rule_mt
 do
   ---@class doorbell.rule : doorbell.rule.dehydrated
@@ -244,13 +256,17 @@ do
     return self.hash == other.hash
   end
 
+  ---@return doorbell.rule
   function rule:update_hash()
     self.hash = hash_rule(self)
+    return self
   end
 
+  ---@return doorbell.rule
   function rule:update_generated_fields()
     self:update_hash()
     self.conditions = count_conditions(self)
+    return self
   end
 
   rule_mt = {
@@ -261,6 +277,7 @@ do
   }
 end
 
+_M.metatable = rule_mt
 
 ---@param  json          string|table|doorbell.rule|doorbell.rule.dehydrated
 ---@return doorbell.rule rule
@@ -269,7 +286,7 @@ local function hydrate(json)
     json = decode(json)
   end
 
-  assert(type(json) == "table")
+  assert(type(json) == "table", "expected a table")
 
   ---@type doorbell.rule
   local rule = {}
@@ -366,9 +383,7 @@ function _M.new(opts)
   }
 
   setmetatable(rule, rule_mt)
-  rule:update_generated_fields()
-
-  return rule
+  return rule:update_generated_fields()
 end
 
 ---@param rule doorbell.rule
@@ -427,9 +442,11 @@ end
 
 ---@param t table|doorbell.rule
 ---@return boolean
-function _M.is_rule(t)
+local function is_rule(t)
   return type(t) == "table" and getmetatable(t) == rule_mt
 end
+
+_M.is_rule = is_rule
 
 
 return _M

@@ -40,6 +40,7 @@ build = {
     ["doorbell.router"] = "lib/doorbell/router.lua",
     ["doorbell.rules"] = "lib/doorbell/rules.lua",
     ["doorbell.rules.api"] = "lib/doorbell/rules/api.lua",
+    ["doorbell.rules.codec"] = "lib/doorbell/rules/codec.lua",
     ["doorbell.rules.manager"] = "lib/doorbell/rules/manager.lua",
     ["doorbell.rules.matcher"] = "lib/doorbell/rules/matcher.lua",
     ["doorbell.rules.shm"] = "lib/doorbell/rules/shm.lua",

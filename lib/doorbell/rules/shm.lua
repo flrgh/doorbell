@@ -4,7 +4,8 @@ local _M = {
 
 local log   = require "doorbell.log"
 local util  = require "doorbell.util"
-local cjson = require "cjson"
+local codec = require "doorbell.rules.codec"
+
 
 local assert = assert
 local type   = type
@@ -16,6 +17,11 @@ local SHM = require("doorbell.shm").rules
 local V_CURRENT = "current-version"
 local V_LATEST = "latest-version"
 local PENDING = "pending"
+
+
+local encode = codec.encode
+local decode = codec.decode
+
 
 _M.PENDING = PENDING
 _M.PENDING_TTL = 30
@@ -58,6 +64,7 @@ end
 _M.get_current_version = get_current_version
 _M.get_latest_version = get_latest_version
 
+
 ---@param version? number
 ---@return doorbell.rule[]
 function _M.get(version)
@@ -71,11 +78,11 @@ function _M.get(version)
     errorf("missing SHM data for version %s", version)
   end
 
-  return cjson.decode(data)
+  return decode(data)
 end
 
 
----@param rules doorbell.rule[]
+---@param rules doorbell.rules
 ---@param version integer
 function _M.set(rules, version)
   assert(type(rules) == "table", "rules parameter is required and must be a table")
@@ -95,7 +102,7 @@ function _M.set(rules, version)
     errorf("unexpected value for pending version %s: %q: ", version, value)
   end
 
-  local data = cjson.encode(rules)
+  local data = encode(rules)
 
   local added, err = SHM:safe_set(v, data, 0)
   if not added then
@@ -170,8 +177,10 @@ function _M.update_current_version()
   return last_valid
 end
 
+
 function _M.flush_expired()
   SHM:flush_expired(0)
 end
+
 
 return _M

@@ -458,4 +458,192 @@ describe("doorbell.rules", function()
       )
     end)
   end)
+
+  describe("codec", function()
+    local buffer = require "string.buffer"
+    local codec = require "doorbell.rules.codec"
+    local encode, decode = codec.encode, codec.decode
+
+    it("encodes and decodes rule objects", function()
+      local n = 10
+      local list = {}
+      for i = 1, n do
+        list[i] = assert(rules.new({
+          action = "allow",
+          source = "api",
+          host = ("host-%s.test"):format(i)
+        }))
+      end
+
+      local encoded = encode(list)
+      assert.is_string(encoded)
+
+      local decoded = decode(encoded)
+      assert.same(list, decoded)
+    end)
+
+    describe("corrupted data checks", function()
+      local n = 10
+      local list = {}
+
+      for i = 1, n do
+        list[i] = assert(rules.new({
+          action = "allow",
+          source = "api",
+          host = ("host-%s.test"):format(i)
+        }))
+      end
+
+      it("encode with error, then encode", function()
+        assert.has_error(function()
+          encode({ 1, 2, 3 })
+        end)
+
+        assert.has_no_error(function()
+          encode(list)
+        end)
+      end)
+
+      it("encode with error, then decode", function()
+        local encoded = encode(list)
+
+        assert.has_error(function()
+          encode({ 1, 2, 3 })
+        end)
+
+        assert.same(list, decode(encoded))
+      end)
+
+      it("decode with error, then encode", function()
+        local encoded = encode(list)
+
+        local buf = buffer.new(1024, { dict = rules.SERIALIZED_FIELDS })
+        buf:encode(3)
+        buf:encode({ 1, 2, 3})
+        local corrupt = buf:get()
+
+        assert.has_error(function()
+          decode(corrupt)
+        end)
+
+        assert.same(encoded, encode(list))
+      end)
+
+      it("decode with error, then decode", function()
+        local encoded = encode(list)
+
+        local buf = buffer.new(1024, { dict = rules.SERIALIZED_FIELDS })
+        buf:encode(3)
+        buf:encode({ 1, 2, 3})
+        local corrupt = buf:get()
+
+        assert.has_error(function()
+          decode(corrupt)
+        end)
+
+        assert.same(list, decode(encoded))
+      end)
+    end)
+
+    describe("encode()", function()
+      it("throws an exception for invalid input", function()
+        assert.has_error(function()
+          encode({ 1, 2, 3 })
+        end)
+
+        assert.has_error(function()
+          encode(123)
+        end)
+      end)
+
+      it("produces a smaller size than cjson", function()
+        local cjson = require("cjson").new()
+        local sizes = { 1, 10, 100, 1000, 10000 }
+
+        for _, size in ipairs(sizes) do
+          local list = {}
+          for i = 1, size do
+            list[i] = assert(rules.new({
+              action  = "allow",
+              source  = "user",
+              ua      = "size test " .. tostring(i),
+              host    = "some-host.test",
+              addr    = "127.0.0.1",
+              comment = "my special comment " .. tostring(i),
+            }))
+          end
+
+          local with_cjson = #cjson.encode(list)
+          local with_codec = #encode(list)
+
+          assert(with_cjson > with_codec,
+                 "expected doorbell.rules.codec size "
+                 .. "size (" .. tostring(with_codec) .. ") "
+                 .. "to be smaller than cjson "
+                 .. "size (" .. tostring(with_cjson) .. ") "
+                 .. "with " .. tostring(size) .. " rule(s)")
+        end
+      end)
+    end)
+
+    describe("decode()", function()
+      it("hydrates rules", function()
+        local rule = assert(rules.new({
+          action = "deny",
+          source = "user",
+          ua     = "hydrate.test",
+        }))
+
+        local real_conditions = rule.conditions
+        local real_hash = rule.hash
+
+        rule.conditions = real_conditions + 10
+        rule.hash = "cowabunga!"
+
+        local encoded = encode({ rule })
+        local decoded = decode(encoded)
+        local hydrated = decoded[1]
+
+        assert(rules.is_rule(hydrated))
+        assert.same(real_conditions, hydrated.conditions)
+        assert.same(real_hash, hydrated.hash)
+      end)
+
+      it("throws an exception if rule list is not a string", function()
+        assert.has_error(function()
+          decode(123)
+        end)
+      end)
+
+      it("throws an exception if decoded items are not tables", function()
+        local buf = buffer.new(1024, { dict = rules.SERIALIZED_FIELDS })
+        local list = { 1, 2, 3}
+        buf:encode(#list)
+        for i = 1, #list do
+          buf:encode(list[i])
+        end
+
+        local data = buf:get()
+
+        assert.error_matches(function()
+          decode(data)
+        end, "invalid encoded rule type")
+      end)
+
+      it("throws an exception if length is missing from the data", function()
+        local buf = buffer.new(1024, { dict = rules.SERIALIZED_FIELDS })
+        buf:encode(assert(rules.new({
+          action = "allow",
+          source = "api",
+          host = "invalid-data.test",
+        })))
+
+        local data = buf:get()
+
+        assert.error_matches(function()
+          decode(data)
+        end, "missing length")
+      end)
+    end)
+  end)
 end)
