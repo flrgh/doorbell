@@ -556,6 +556,22 @@ describe("doorbell.rules", function()
         end)
       end)
 
+      it("can dehydrate rules in-place", function()
+        local rule = assert(rules.new({
+          action = "deny",
+          source = "user",
+          ua     = "dehydrate-in-place",
+        }))
+
+        assert.is_string(rule.hash)
+        assert.is_number(rule.conditions)
+
+        encode({ rule }, true)
+
+        assert.is_nil(rule.hash)
+        assert.is_nil(rule.conditions)
+      end)
+
       it("produces a smaller size than cjson", function()
         local cjson = require("cjson").new()
         local sizes = { 1, 10, 100, 1000, 10000 }
