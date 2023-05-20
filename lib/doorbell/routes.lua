@@ -20,9 +20,122 @@ local safe_decode = require("cjson.safe").decode
 local get_json_body = request.get_json_body
 local get_query_arg = request.get_query_arg
 local set_response_header = http.response.set_header
-
+local get_body_input = http.request.get_body_input
 local send       = http.send
 local shared     = ngx.shared
+local type = type
+local tonumber = tonumber
+local tostring = tostring
+local NULL = ngx.null
+
+
+---@param value any
+---@param s doorbell.schema
+local function coerce_type(value, s)
+  local stype = s and s.type
+
+  if not stype then
+    return value
+  end
+
+  local vtype = type(value)
+
+  local is_bool   = vtype == "boolean"
+  local is_nil    = value == nil
+  local is_null   = value == NULL
+  local is_number = vtype == "number"
+  local is_string = vtype == "string"
+  local is_table  = vtype == "table"
+
+  local is_primitive = is_bool
+                    or is_string
+                    or is_number
+                    or is_nil
+                    or is_null
+
+  if is_null then
+    is_nil = true
+    value = nil
+  end
+
+  if is_nil then
+    return value
+  end
+
+  if stype == "number" or stype == "integer" then
+    if not is_number then
+      value = tonumber(value) or value
+    end
+
+  elseif stype == "string" and not is_string then
+    if is_primitive then
+      value = tostring(value)
+    end
+
+  elseif stype == "boolean" and not is_bool then
+    if util.truthy(value) then
+      value = true
+
+    elseif util.falsy(value) then
+      value = false
+    end
+
+  elseif stype == "array" then
+    local arr
+
+    if is_string then
+      arr = util.split_at_comma(value)
+
+    elseif is_table then
+      arr = value
+    end
+
+    if arr then
+      local n = 0
+      for i = 1, #arr do
+        local v = coerce_type(arr[i], s.items)
+        if v ~= nil then
+          n = n + 1
+          arr[n] = v
+        else
+          arr[i] = nil
+        end
+      end
+    end
+
+    value = arr or value
+
+  elseif stype == "object" then
+    local obj
+
+    if is_table then
+      if s.properties then
+        obj = {}
+        for k, v in pairs(value) do
+          obj[k] = coerce_type(v, s.properties[k])
+        end
+      else
+        obj = value
+      end
+    end
+
+    value = obj or value
+  end
+
+  return value
+end
+
+
+---@param s doorbell.schema
+local function get_request_input(s)
+  local body, typ = get_body_input(false)
+  if typ == http.request.body_type.FORM then
+    body = coerce_type(body, s)
+  end
+
+  return body
+end
+
 
 ---@param t any
 ---@return any
@@ -238,8 +351,8 @@ function _M.init(config)
       return send(200, { data = list })
     end,
 
-    POST = function(ctx)
-      local json = get_json_body(ctx, "table")
+    POST = function()
+      local json = get_request_input(schema.rule.create)
 
       json.source = const.sources.api
 
@@ -285,8 +398,8 @@ function _M.init(config)
       end
     end,
 
-    PATCH = function(ctx, match)
-      local json = get_json_body(ctx, "table")
+    PATCH = function(_, match)
+      local json = get_request_input(schema.rule.patch)
 
       local updated, err, status = rules.patch(match.hash_or_id, json)
 
@@ -474,9 +587,9 @@ function _M.init(config)
       return send(200, { data = list })
     end,
 
-    POST = function(ctx)
-      local json = get_json_body(ctx, "table")
-      local status, err = auth.answer(json)
+    POST = function()
+      local data = get_request_input(schema.auth.approval.answer)
+      local status, err = auth.answer(data)
       if status >= 400 then
         return send(status, { error = err })
       end

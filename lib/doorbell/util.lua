@@ -410,11 +410,28 @@ function _M.truthy(value)
   end
 
   return value == "yes"
+      or value == "on"
       or value == "1"
       or value == "true"
       or value == true
       or value == 1
 end
+
+
+---@param value any
+function _M.falsy(value)
+  if type(value) == "string" then
+    value = value:lower()
+  end
+
+  return value == "no"
+      or value == "off"
+      or value == "0"
+      or value == "false"
+      or value == false
+      or value == 0
+end
+
 
 
 ---@generic T
@@ -501,5 +518,19 @@ function _M.lookup_from_values(t)
 
   return lookup
 end
+
+
+---@param s string
+---@return string[]
+function _M.split_at_comma(s)
+  local items = _M.array()
+  local _ = s:gsub("[^,]+", function(word)
+    word = word:gsub("^%s+", ""):gsub("%s+$", "")
+    table.insert(items, word)
+  end)
+
+  return items
+end
+
 
 return _M

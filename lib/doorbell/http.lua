@@ -3,11 +3,14 @@ local _M = {
 }
 
 local log = require "doorbell.log"
+local util = require "doorbell.util"
 
 local cjson = require "cjson"
 local safe_decode = require("cjson.safe").decode
+local nkeys = require "table.nkeys"
 
 local ngx             = ngx
+local var             = ngx.var
 local print           = ngx.print
 local exit            = ngx.exit
 local get_body_data   = ngx.req.get_body_data
@@ -16,6 +19,7 @@ local read_body       = ngx.req.read_body
 local header          = ngx.header
 local get_query       = ngx.req.get_uri_args
 local get_req_headers = ngx.req.get_headers
+local get_post_args   = ngx.req.get_post_args
 
 local open   = io.open
 local encode = cjson.encode
@@ -23,6 +27,7 @@ local find   = string.find
 local sub    = string.sub
 local insert = table.insert
 local concat = table.concat
+local lower  = string.lower
 
 local type   = type
 local assert = assert
@@ -30,6 +35,7 @@ local assert = assert
 
 local MAX_QUERY_ARGS = 100
 local MAX_REQUEST_HEADERS = 100
+local MAX_POST_ARGS = 100
 
 ---@alias doorbell.http.headers table<string, string|string[]>
 
@@ -125,6 +131,27 @@ local function get_json_request_body(check_type, optional)
 end
 
 
+---@param optional? boolean
+---@return table?
+local function get_request_post_args(optional)
+  read_body()
+
+  local args, err = get_post_args(MAX_POST_ARGS)
+  if err == "truncated" then
+    log.notice("request post args exceeded the limit of ", MAX_POST_ARGS)
+
+  elseif err then
+    log.err("unexpected error parsing request post args: ", err)
+  end
+
+  if not optional and (not args or nkeys(args) == 0) then
+    return send(400, { error = "request post args required" })
+  end
+
+  return args or {}
+end
+
+
 _M.parse_url = require("socket.url").parse
 
 
@@ -174,8 +201,59 @@ function _M.request.get_query_args()
   return query
 end
 
-_M.request.get_body = get_request_body
+_M.request.get_raw_body = get_request_body
 _M.request.get_json_body = get_json_request_body
+_M.request.get_post_args = get_request_post_args
+
+
+do
+  local JSON = "json"
+  local FORM = "form"
+
+  _M.request.body_type = {
+    JSON = JSON,
+    FORM = FORM,
+  }
+
+  local ctype_handler = {
+    ["application/json"] = function(optional)
+      return get_json_request_body("table", optional), JSON
+    end,
+
+    ["application/x-www-form-urlencoded"] = function(optional)
+      return get_request_post_args(optional), FORM
+    end,
+  }
+
+  local E = "Unsupported Content-Type; expected one of "
+            .. table.concat(util.table_keys(ctype_handler), ", ")
+
+  --- Checks the request content type and either parses the body as JSON or
+  --- as x-www-form-urlencoded input
+  ---
+  ---@param optional? boolean
+  ---@return table?
+  ---@return string? content_type
+  function _M.request.get_body_input(optional)
+    local ctype = var.http_content_type
+
+    local handler
+
+    if ctype then
+      handler = ctype_handler[lower(ctype)]
+
+    else
+      ctype = ""
+    end
+
+    if not handler and not optional then
+      return send(400, { error = E, ["content-type"] = ctype })
+    end
+
+    return handler(optional)
+  end
+end
+
 
 ---@param name string
 ---@param value string|string[]|nil
