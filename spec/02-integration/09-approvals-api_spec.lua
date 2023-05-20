@@ -175,6 +175,28 @@ describe("approvals API", function()
 
     end)
 
+    it("supports application/x-www-form-urlencoded", function()
+      local uri = "http://approvals.test/form"
+      local addr = test.random_ipv4()
+      local query = assert_access_not_approved(addr, uri)
+
+      local ttl = 456
+
+      client:reset()
+      client:post("/approvals", {
+        post = {
+          action  = "allow",
+          scope   = "global",
+          subject = "addr",
+          token   = query.token,
+          ttl     = tostring(ttl),
+        },
+      })
+
+      assert.same(201, client.response.status)
+      assert_access_approved(addr, uri)
+    end)
+
   end)
 
   describe("configurable limits", function()

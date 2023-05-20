@@ -188,6 +188,120 @@ describe("rules API", function()
         assert.same({ error = "exists" }, res.json)
       end)
     end)
+
+    it("supports application/x-www-form-urlencoded", function()
+      local c = 0
+
+      local function seq()
+        c = c + 1
+        return tostring(c)
+      end
+
+      local CASES = {
+        {
+          label = "truthy (OK)",
+          input = {
+            action    = "allow",
+            ua        = "form-test " .. seq(),
+            terminate = "true",
+          },
+          status = 201,
+          err = nil,
+        },
+
+        {
+          label = "truthy (ERROR)",
+          input = {
+            action    = "allow",
+            ua        = "form-test " .. seq(),
+            terminate = "don't coerce me, bro",
+          },
+          status = 400,
+          err = "property terminate validation failed",
+        },
+
+
+        {
+          label = "falsy (OK)",
+          input = {
+            action    = "allow",
+            ua        = "form-test " .. seq(),
+            terminate = "0",
+          },
+          status = 201,
+        },
+
+        {
+          label = "falsy (ERROR)",
+          input = {
+            action    = "allow",
+            ua        = "form-test " .. seq(),
+            terminate = "naaaaah",
+          },
+          status = 400,
+          err = "property terminate validation failed",
+        },
+
+
+        {
+          label = "tonumber, integer (OK)",
+          input = {
+            action    = "allow",
+            ua        = "form-test " .. seq(),
+            asn       = "123",
+          },
+          status = 201,
+        },
+
+        {
+          label = "tonumber, integer (ERROR)",
+          input = {
+            action    = "allow",
+            ua        = "form-test " .. seq(),
+            asn       = "123.99",
+          },
+          status = 400,
+          err = "property asn validation failed",
+        },
+
+        {
+          label = "tostring (OK)",
+          input = {
+            action    = "allow",
+            ua        = "form-test " .. seq(),
+            org       = 1234,
+          },
+          status = 201,
+        },
+
+        {
+          label = "tostring (ERROR)",
+          input = {
+            action    = true,
+            ua        = "form-test " .. seq(),
+          },
+          status = 400,
+          err = "property action validation failed",
+        },
+
+
+      }
+
+      for _, case in ipairs(CASES) do
+        client:post("/rules", {
+          post = case.input,
+        })
+
+        assert.is_nil(client.err, case.label)
+        assert.same(case.status, client.response.status, case.label)
+
+        if case.status == 400 and case.err then
+          assert.is_table(client.response.json)
+          assert.is_string(client.response.json.error)
+          assert.matches(case.err, client.response.json.error, nil, true)
+        end
+      end
+    end)
   end)
 
   describe("/rules/:rule", function()
@@ -236,7 +350,7 @@ describe("rules API", function()
     describe("PATCH", function()
       local rule
 
-      lazy_setup(function()
+      before_each(function()
         res = assert(client:post("/rules", {
           json = {
             action = "allow",
@@ -249,13 +363,20 @@ describe("rules API", function()
         rule = assert.is_table(res.json)
       end)
 
-      lazy_teardown(function()
+      after_each(function()
         assert(client:delete("/rule/" .. rule.id))
       end)
 
-      it("updates a rule in place", function()
+      local types = {
+        json = "json",
+        form = "post",
+      }
+
+      for typ, param in pairs(types) do
+
+      it("updates a rule in place (" .. typ .. ")", function()
         res = assert(client:patch("/rules/" .. rule.id, {
-          json = {
+          [param] = {
             ua = "patched!",
           }
         }))
@@ -266,6 +387,8 @@ describe("rules API", function()
         assert.same(200, res.status)
         assert.same("patched!", res.json.ua)
       end)
+
+      end
     end)
 
     describe("DELETE", function()

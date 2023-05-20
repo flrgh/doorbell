@@ -36,7 +36,7 @@ local function prepare(req)
     assert(req.body == nil, "request.post and request.body are " ..
                             "mutually exclusive")
 
-    assert(type(req.post) == "table", "reqest.post must be a table")
+    assert(type(req.post) == "table", "request.post must be a table")
 
     req.body = assert(ngx.encode_args(req.post))
     req.headers = req.headers or _M.headers()

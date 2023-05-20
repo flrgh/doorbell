@@ -141,7 +141,7 @@ local function get_request()
   local content_type = headers["content-type"]
 
   local errors = {}
-  local body = http.request.get_body()
+  local body = http.request.get_raw_body()
   local json = ngx.null
 
   if body and content_type:lower():find("application/json") then
@@ -240,7 +240,7 @@ function mock.prepare()
     return respond(405, { error = "only POST is allowed" })
   end
 
-  local route = http.request.get_json_body(nil, true)
+  local route = http.request.get_json_body("table", true)
   local ok, err = validate(route)
   if not ok then
     return respond(400, { error = err })
