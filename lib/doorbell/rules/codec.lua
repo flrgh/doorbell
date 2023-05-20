@@ -1,18 +1,19 @@
 local _M = {}
 
-local log = require "doorbell.log"
-local rules = require "doorbell.rules"
-local schema = require "doorbell.schema"
+local log      = require "doorbell.log"
+local rules    = require "doorbell.rules"
+local schema   = require "doorbell.schema"
 
-local buffer = require "string.buffer"
+local buffer    = require "string.buffer"
+local new_tab   = require "table.new"
 
-local new_tab      = require("table.new")
-local type         = type
-local ceil         = math.ceil
-local assert       = assert
-
-local is_rule = rules.is_rule
-local debugf = log.debugf
+local type      = type
+local ceil      = math.ceil
+local assert    = assert
+local is_rule   = rules.is_rule
+local hydrate   = rules.hydrate
+local dehydrate = rules.dehydrate
+local debugf    = log.debugf
 
 
 ---@type string.buffer.serialization.opts
@@ -24,9 +25,8 @@ local OPTS = {
 
 do
   local dict = {}
-  local seen = {}
   local reserved = {
-    -- decode() throws an 'duplicate table key' error if we use this as a
+    -- decode() throws a 'duplicate table key' error if we use this as a
     -- table key, so I assume it's used internally.
     hash = true,
   }
@@ -34,14 +34,13 @@ do
   -- NOTE: this is okay for SHM, but we'll have to be more careful if we start
   -- using this module for external storage (i.e. filesystem).
   for name in pairs(schema.rule.entity.properties) do
-    if type(name) == "string"
-    and not reserved[name]
-    and not seen[name]
-    then
-      seen[name] = true
+    if type(name) == "string" and not reserved[name] then
       table.insert(dict, name)
     end
   end
+
+  -- sanity check
+  assert(#dict >= #rules.SERIALIZED_FIELDS)
 
   table.sort(dict)
 
@@ -61,8 +60,9 @@ local AVG_SIZE = 200
 
 
 ---@param list doorbell.rule[]
+---@param in_place? boolean
 ---@return string
-function _M.encode(list)
+function _M.encode(list, in_place)
   assert(type(list) == "table")
 
   local n = #list
@@ -82,6 +82,8 @@ function _M.encode(list)
   for i = 1, n do
     local rule = list[i]
     assert(is_rule(rule), "invalid rule type")
+
+    rule = dehydrate(rule, in_place)
 
     ENCODER:encode(rule)
   end
@@ -115,7 +117,7 @@ function _M.decode(str)
     ---@type doorbell.rule
     local rule = DECODER:decode()
     assert(is_rule(rule), "invalid encoded rule type")
-    list[i] = rule:update_generated_fields()
+    list[i] = hydrate(rule, true)
   end
 
   DECODER:reset()

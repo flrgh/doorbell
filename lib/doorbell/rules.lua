@@ -6,12 +6,12 @@ local const = require "doorbell.constants"
 local util  = require "doorbell.util"
 local schema = require "doorbell.schema"
 
-local cjson = require "cjson"
+local new_tab   = require "table.new"
 
 local uuid         = require("resty.jit-uuid").generate_v4
 local concat       = table.concat
-local decode       = cjson.decode
-local setmetatable = setmetatable
+local setmetatable = debug.setmetatable
+local getmetatable = debug.getmetatable
 local now          = ngx.now
 local update_time  = ngx.update_time
 local byte         = string.byte
@@ -146,6 +146,9 @@ local SERIALIZED_FIELDS = {
 
 _M.SERIALIZED_FIELDS = SERIALIZED_FIELDS
 
+table.sort(SERIALIZED_FIELDS)
+
+
 --- IP Address to match
 ---@alias doorbell.rule.fields.addr string
 
@@ -279,43 +282,99 @@ end
 
 _M.metatable = rule_mt
 
----@param  json          string|table|doorbell.rule|doorbell.rule.dehydrated
----@return doorbell.rule rule
-local function hydrate(json)
-  if type(json) == "string" then
-    json = decode(json)
-  end
-
-  assert(type(json) == "table", "expected a table")
-
-  ---@type doorbell.rule
-  local rule = {}
-
-  for _, field in ipairs(SERIALIZED_FIELDS) do
-    rule[field] = json[field]
-  end
-
-  setmetatable(rule, rule_mt)
-
-  rule:update_generated_fields()
-
-  return rule
+---@param t table|doorbell.rule
+---@return boolean
+local function is_rule(t)
+  return type(t) == "table" and getmetatable(t) == rule_mt
 end
+
+_M.is_rule = is_rule
+
+
+local hydrate, dehydrate
+do
+  local num_serialized = #SERIALIZED_FIELDS
+  local num_fields = 0
+
+  local num_removed
+  local removed = {}
+
+  do
+    local lookup = util.lookup_from_values(SERIALIZED_FIELDS)
+
+    for name in pairs(schema.rule.entity.properties) do
+      num_fields = num_fields + 1
+
+      if not lookup[name] then
+        table.insert(removed, name)
+      end
+    end
+
+    table.sort(removed)
+    num_removed = #removed
+  end
+
+
+  ---@param  input         table|doorbell.rule|doorbell.rule.dehydrated
+  ---@param  in_place?     boolean
+  ---@return doorbell.rule rule
+  function hydrate(input, in_place)
+    assert(type(input) == "table", "expected a table")
+
+    ---@type doorbell.rule
+    local rule
+
+    if in_place then
+      rule = input
+      assert(is_rule(input), "cannot hydrate non-rule in-place")
+
+    else
+      rule = new_tab(0, num_fields)
+      setmetatable(rule, rule_mt)
+
+      for i = 1, num_serialized do
+        local field = SERIALIZED_FIELDS[i]
+        rule[field] = input[field]
+      end
+    end
+
+    rule:update_generated_fields()
+
+    return rule
+  end
+
+
+  ---@param rule      doorbell.rule
+  ---@param in_place? boolean
+  ---@return doorbell.rule.dehydrated
+  function dehydrate(rule, in_place)
+    assert(is_rule(rule), "non-rule input")
+
+    local t
+
+    if in_place then
+      t = rule
+
+      for i = 1, num_removed do
+        t[removed[i]] = nil
+      end
+
+    else
+      t = new_tab(0, num_serialized)
+      setmetatable(t, rule_mt)
+
+      for i = 1, num_serialized do
+        local field = SERIALIZED_FIELDS[i]
+        t[field] = rule[field]
+      end
+    end
+
+    return t
+  end
+end
+
 
 _M.hydrate = hydrate
-
----@param  rule doorbell.rule
----@return doorbell.rule.dehydrated
-local function dehydrate(rule)
-  local t = {}
-
-  for _, field in ipairs(SERIALIZED_FIELDS) do
-    t[field] = rule[field]
-  end
-
-  return t
-end
-
 _M.dehydrate = dehydrate
 
 
@@ -439,14 +498,6 @@ end
 if _G._TEST then
   _M._ttl_from_expires = ttl_from_expires
 end
-
----@param t table|doorbell.rule
----@return boolean
-local function is_rule(t)
-  return type(t) == "table" and getmetatable(t) == rule_mt
-end
-
-_M.is_rule = is_rule
 
 
 return _M
