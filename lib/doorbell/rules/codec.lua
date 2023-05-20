@@ -2,6 +2,7 @@ local _M = {}
 
 local log = require "doorbell.log"
 local rules = require "doorbell.rules"
+local schema = require "doorbell.schema"
 
 local buffer = require "string.buffer"
 
@@ -16,11 +17,37 @@ local debugf = log.debugf
 
 ---@type string.buffer.serialization.opts
 local OPTS = {
-  dict = rules.SERIALIZED_FIELDS,
   metatable = {
     rules.metatable,
   },
 }
+
+do
+  local dict = {}
+  local seen = {}
+  local reserved = {
+    -- decode() throws an 'duplicate table key' error if we use this as a
+    -- table key, so I assume it's used internally.
+    hash = true,
+  }
+
+  -- NOTE: this is okay for SHM, but we'll have to be more careful if we start
+  -- using this module for external storage (i.e. filesystem).
+  for name in pairs(schema.rule.entity.properties) do
+    if type(name) == "string"
+    and not reserved[name]
+    and not seen[name]
+    then
+      seen[name] = true
+      table.insert(dict, name)
+    end
+  end
+
+  table.sort(dict)
+
+  OPTS.dict = dict
+end
+
 
 local SIZE = 1024 * 1024
 
