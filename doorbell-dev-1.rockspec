@@ -17,27 +17,49 @@ build = {
   type = "builtin",
   modules = {
     ["doorbell"] = "lib/doorbell.lua",
-    ["doorbell.auth"] = "lib/doorbell/auth.lua",
+
+    ["doorbell.api"] = "lib/doorbell/api.lua",
+    ["doorbell.api.ip"] = "lib/doorbell/api/ip.lua",
+    ["doorbell.api.rules"] = "lib/doorbell/api/rules.lua",
+    ["doorbell.api.access"] = "lib/doorbell/api/access.lua",
+    ["doorbell.api.schema"] = "lib/doorbell/api/schema.lua",
+
+
     ["doorbell.cache"] = "lib/doorbell/cache.lua",
+
     ["doorbell.config"] = "lib/doorbell/config.lua",
+
     ["doorbell.constants"] = "lib/doorbell/constants.lua",
+
     ["doorbell.http"] = "lib/doorbell/http.lua",
+
     ["doorbell.ip"] = "lib/doorbell/ip.lua",
     ["doorbell.ip.countries"] = "lib/doorbell/ip/countries.lua",
+
     ["doorbell.log"] = "lib/doorbell/log.lua",
     ["doorbell.log.request"] = "lib/doorbell/log/request.lua",
+
     ["doorbell.metrics"] = "lib/doorbell/metrics.lua",
+
     ["doorbell.middleware"] = "lib/doorbell/middleware.lua",
+
     ["doorbell.nginx"] = "lib/doorbell/nginx.lua",
     ["doorbell.nginx.defaults"] = "lib/doorbell/nginx/defaults.lua",
+
     ["doorbell.notify"] = "lib/doorbell/notify.lua",
     ["doorbell.notify.strategies.pushover"] = "lib/doorbell/notify/strategies/pushover.lua",
+
     ["doorbell.ota"] = "lib/doorbell/ota.lua",
     ["doorbell.request"] = "lib/doorbell/request.lua",
+
+    ["doorbell.auth"] = "lib/doorbell/auth.lua",
     ["doorbell.auth.ring"] = "lib/doorbell/auth/ring.lua",
     ["doorbell.auth.request"] = "lib/doorbell/auth/request.lua",
+    ["doorbell.auth.access"] = "lib/doorbell/auth/access.lua",
+
     ["doorbell.routes"] = "lib/doorbell/routes.lua",
     ["doorbell.router"] = "lib/doorbell/router.lua",
+
     ["doorbell.rules"] = "lib/doorbell/rules.lua",
     ["doorbell.rules.api"] = "lib/doorbell/rules/api.lua",
     ["doorbell.rules.codec"] = "lib/doorbell/rules/codec.lua",
@@ -47,9 +69,12 @@ build = {
     ["doorbell.rules.stats"] = "lib/doorbell/rules/stats.lua",
     ["doorbell.rules.storage"] = "lib/doorbell/rules/storage.lua",
     ["doorbell.rules.transaction"] = "lib/doorbell/rules/transaction.lua",
+
     ["doorbell.schema"] = "lib/doorbell/schema.lua",
     ["doorbell.shm"] = "lib/doorbell/shm.lua",
+
     ["doorbell.util"] = "lib/doorbell/util.lua",
+
     ["doorbell.views"] = "lib/doorbell/views.lua",
     ["doorbell.views.answer"] = "lib/doorbell/views/answer.lua",
     ["doorbell.views.rule_list"] = "lib/doorbell/views/rule_list.lua"

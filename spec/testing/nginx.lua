@@ -82,6 +82,8 @@ end
 ---@field pid integer
 ---
 ---@field pidfile string
+---
+---@field clients table<spec.testing.client, true>
 local nginx = {}
 
 
@@ -148,6 +150,10 @@ function nginx:stop()
     return nil, "nginx is not running"
   end
 
+  for client in pairs(self.clients) do
+    client:close()
+  end
+
   assert(self:signal(QUIT))
 
   if not await.truthy(5, 0.05, dead, self.pid) then
@@ -170,6 +176,10 @@ function nginx:restart()
 end
 
 function nginx:reload()
+  for client in pairs(self.clients) do
+    client:close()
+  end
+
   assert(self:signal(HUP))
 end
 
@@ -191,6 +201,27 @@ function nginx:read_error_log()
   return fs.file_contents(fname)
 end
 
+function nginx:truncate_logs()
+  local errlog = fs.join(self.config.log_path, "error.log")
+  if fs.exists(errlog) then
+    fs.truncate(errlog)
+  end
+
+  local access = fs.join(self.config.log_path, "access.log")
+  if fs.exists(access) then
+    fs.truncate(access)
+  end
+end
+
+
+---@param client spec.testing.client
+function nginx:add_client(client)
+  assert(type(client) == "table")
+  if not self.clients[client] then
+    self.clients[client] = true
+  end
+end
+
 
 nginx.__index = nginx
 
@@ -203,9 +234,11 @@ function _M.new(conf)
     prefix = conf.runtime_path,
     config = conf,
     pidfile = join(conf.runtime_path, "logs", "nginx.pid"),
+    clients = {},
   }
 
   return setmetatable(self, nginx)
 end
+
 
 return _M

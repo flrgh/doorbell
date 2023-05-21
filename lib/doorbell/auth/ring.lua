@@ -10,7 +10,7 @@ local _M = {
 
 local log     = require "doorbell.log"
 local const   = require "doorbell.constants"
-local auth    = require "doorbell.auth"
+local access  = require "doorbell.auth.access"
 local request = require "doorbell.auth.request"
 local config  = require "doorbell.config"
 local http    = require "doorbell.http"
@@ -22,6 +22,7 @@ local TARPIT_INTERVAL = const.periods.minute * 5
 local STATES          = const.states
 local POLICY          = const.unauthorized
 local ENDPOINTS       = const.endpoints
+
 
 ---@type doorbell.unauthorized
 local UNAUTHORIZED
@@ -68,7 +69,7 @@ end
 ---@alias doorbell.auth.ring.handler fun(req:doorbell.forwarded_request, ctx:doorbell.ctx, token:string|nil)
 
 
----@type table<doorbell.auth_state, doorbell.auth.ring.handler>
+---@type table<doorbell.auth.access.state, doorbell.auth.ring.handler>
 local UNAUTHORIZED_HANDLERS = {
   [const.unauthorized.return_401] = function()
     return http.send(401, "who are you?")
@@ -77,7 +78,21 @@ local UNAUTHORIZED_HANDLERS = {
   [const.unauthorized.request_approval] = function(req)
     log.notice("requesting access for ", req.addr)
 
-    if auth.request(req) and auth.await(req) then
+    local state = access.new_access_request(req)
+
+    if state == STATES.allow then
+      return http.send(201, "you may enter")
+
+    elseif state == STATES.deny then
+      return http.send(403, "go away dude")
+
+    elseif state == STATES.error then
+      return http.send(500, "uh oh")
+    end
+
+    assert(state == STATES.pending, "unexpected/invalid state: " .. state)
+
+    if access.await(req) then
       log.notice("access approved for ", req.addr)
       return http.send(201, "access approved, c'mon in")
     end
@@ -86,7 +101,7 @@ local UNAUTHORIZED_HANDLERS = {
   end,
 
   [const.unauthorized.redirect_for_approval] = function(req)
-    local state, token = auth.new_approval(req)
+    local state, token = access.new_access_request(req)
 
     if state == STATES.allow then
       return http.send(201, "you may enter")
@@ -109,7 +124,7 @@ local UNAUTHORIZED_HANDLERS = {
 }
 
 
----@type table<doorbell.auth_state, doorbell.auth.ring.handler>
+---@type table<doorbell.auth.access.state, doorbell.auth.ring.handler>
 local PENDING_HANDLERS = {
   [const.unauthorized.return_401] = function()
     return http.send(401, "who are you?")
@@ -117,7 +132,7 @@ local PENDING_HANDLERS = {
 
   [const.unauthorized.request_approval] = function(req)
     log.notice("awaiting access for ", req.addr)
-    if auth.await(req) then
+    if access.request(req) and access.await(req) then
       return http.send(201, "access approved, c'mon in")
     end
 
@@ -132,7 +147,7 @@ local PENDING_HANDLERS = {
   end,
 }
 
----@type table<doorbell.auth_state, doorbell.auth.ring.handler>
+---@type table<doorbell.auth.access.state, doorbell.auth.ring.handler>
 local HANDLERS = {
   [STATES.allow] = function(req)
     log.debugf("ALLOW %s => %s %s://%s%s", req.addr, req.method, req.scheme, req.host, req.uri)
@@ -190,7 +205,7 @@ function _M.GET(ctx)
   end
 
   local state, token
-  state, err, token = auth.get_state(req, ctx)
+  state, err, token = access.get(req, ctx)
   if err then
     log.err("error checking auth state: ", err)
     state = STATES.error
@@ -207,5 +222,6 @@ _M.middleware = {
     request.release,
   }
 }
+
 
 return _M

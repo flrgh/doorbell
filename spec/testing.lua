@@ -1,5 +1,7 @@
 local _M = {}
 
+require("resty.jit-uuid").seed()
+
 local util = require "doorbell.util"
 local const = require "spec.testing.constants"
 local config = require "spec.testing.config"

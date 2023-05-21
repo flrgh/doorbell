@@ -11,6 +11,7 @@ local uuid            = util.uuid
 local get_query       = http.request.get_query_args
 local req_headers     = http.request.get_headers
 local get_json        = http.request.get_json_body
+local get_post_args   = http.request.get_post_args
 local ngx             = ngx
 local var             = ngx.var
 local get_method      = ngx.req.get_method
@@ -42,6 +43,7 @@ local get_path        = http.extract_path
 ---@field headers?          doorbell.http.headers
 ---@field uri               string
 ---@field path              string
+---@field post_args?        table
 ---@field scheme            string
 ---
 ---@field template?         any
@@ -88,6 +90,17 @@ function _M.get_request_headers(ctx)
 end
 
 
+local get_request_headers = _M.get_request_headers
+
+
+---@param ctx doorbell.ctx
+---@param name string
+---@return string|string[]|nil
+function _M.get_request_header(ctx, name)
+  return get_request_headers(ctx)[name]
+end
+
+
 --- Cached method for parsing the request query string args.
 ---
 ---@param ctx doorbell.ctx
@@ -125,9 +138,26 @@ function _M.get_json_body(ctx, typ, optional)
   local json = ctx.json
   if json == nil then
     json = get_json(typ, optional)
+    ctx.json = json
   end
 
   return json
 end
+
+
+--- Cached method for parsing the request post args.
+---
+---@param ctx doorbell.ctx
+---@return table?
+function _M.get_post_args(ctx, optional)
+  local args = ctx.post_args
+  if args == nil then
+    args = get_post_args(optional)
+    ctx.post_args = args
+  end
+
+  return args
+end
+
 
 return _M

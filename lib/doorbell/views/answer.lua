@@ -1,17 +1,17 @@
 local log     = require "doorbell.log"
 local const   = require "doorbell.constants"
-local auth    = require "doorbell.auth"
+local access  = require "doorbell.auth.access"
 local ip      = require "doorbell.ip"
 local notify  = require "doorbell.notify"
 local http    = require "doorbell.http"
 local request = require "doorbell.request"
+local util    = require "doorbell.util"
 
 local var = ngx.var
 local fmt = string.format
 local EMPTY = {}
 
 local SCOPES = const.scopes
-local SUBJECTS = const.subjects
 local PERIODS = const.periods
 
 ---@param req doorbell.forwarded_request
@@ -31,9 +31,9 @@ local function render_form(tpl, req, errors, current)
       { "method",       req.method       },
       { "uri",          req.uri          },
     },
-    errors = errors or {},
-    current_ip = current,
-    map_link = info.map_link,
+    errors      = errors or {},
+    current_ip  = current,
+    map_link    = info.map_link,
     search_link = info.search_link,
   })
 end
@@ -61,19 +61,20 @@ return function(ctx)
       path = "/wikindex.php",
     }
 
-    local errors
-    if var.arg_errors then
+    local errors = request.get_query_arg(ctx, "errors")
+    if util.truthy(errors) then
       errors = { "error: invalid action 'nope'" }
     end
 
-    local current_ip = (var.arg_current and true) or false
+    local current_ip = util.truthy(request.get_query_arg(ctx, "current"))
+                    or false
 
     http.send(200,
               render_form(ctx.template, req, errors, current_ip),
               { ["content-type"] = "text/html" })
   end
 
-  local approval = auth.get_approval(t)
+  local approval = access.get_pending_approval(t)
 
   if not approval then
     log.noticef("/answer token %s not found", t)
@@ -99,53 +100,33 @@ return function(ctx)
 
   ngx.req.read_body()
   local args = ngx.req.get_post_args()
-  local action = args.action or "NONE"
-  local scope = args.scope or "NONE"
-  local period = args.period or "NONE"
-  local subject = args.subject or "NONE"
 
-  local err
-
-  if not (action == "approve" or action == "deny") then
-    err = "invalid action: " .. tostring(action)
-  elseif not SCOPES[scope] then
-    err = "invalid scope: " .. tostring(scope)
-  elseif not PERIODS[period] then
-    err = "invalid period: " .. tostring(period)
-  elseif not SUBJECTS[subject] then
-    err = "invalid subject: " .. tostring(subject)
+  if args.action == "approve" then
+    args.action = "allow"
   end
 
-  if err then
-    log.noticef("POST /answer invalid form input: %s", err)
-    return http.send(400,
-                     render_form(ctx.template, req, { err }, current_ip),
-                     { ["content-type"] = "text/plain" })
-  end
 
-  if action == "approve" then
-    action = "allow"
-  end
-
-  ---@type doorbell.auth.approval.answer
+  ---@type doorbell.auth.access.api.intent
   local ans = {
-    action  = action,
+    action  = args.action,
     token   = approval.token,
-    scope   = scope,
-    subject = subject,
-    ttl     = PERIODS[period],
+    scope   = args.scope,
+    subject = args.subject,
+    ttl     = PERIODS[args.period] or args.period,
   }
 
-  local status, rule
-  status, err, rule = auth.answer(ans)
+
+  local status, err, rule = access.answer(ans)
 
   if status >= 500 then
     log.errf("POST /answer failed to insert rule: %s", err)
     return http.send(500)
 
   elseif status >= 400 then
-    log.errf("POST /answer with invalid input: %s", err)
-    return http.send(status, err)
+    log.noticef("POST /answer invalid form input: %s", err)
+    return http.send(400,
+                     render_form(ctx.template, req, { err }, current_ip),
+                     { ["content-type"] = "text/plain" })
 
   else
     assert(status == 201, "unexpected status: " .. tostring(status))
@@ -153,12 +134,18 @@ return function(ctx)
 
   notify.inc("answered")
 
-  local msg = fmt(
-    "%s access for %q to %s %s",
-    (rule.action == "allow" and "Approved") or "Denied",
-    (rule.addr or rule.ua),
-    (scope == SCOPES.global and "all apps.") or (scope == SCOPES.host and req.host) or req.url,
-    (PERIODS[period] == PERIODS.forever and "for all time") or ("for one " .. period)
+  local msg = fmt("%s access for %q to %s %s",
+                  (rule.action == "allow" and "Approved")
+                  or "Denied",
+
+                  (rule.addr or rule.ua),
+
+                  (ans.scope == SCOPES.global and "all apps.")
+                  or (ans.scope == SCOPES.host and req.host)
+                  or req.url,
+
+                  (ans.ttl == PERIODS.forever and "for all time")
+                  or ("for one " .. args.period)
   )
 
   return http.send(201, msg, { ["content-type"] = "text/plain" })
