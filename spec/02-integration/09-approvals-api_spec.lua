@@ -1,6 +1,7 @@
 local test = require "spec.testing"
 local const = require "doorbell.constants"
 local http = require "doorbell.http"
+local cjson = require "cjson"
 
 describe("access API", function()
 
@@ -177,6 +178,14 @@ describe("access API", function()
   describe("GET /access/pending", function()
     before_each(function()
       nginx:restart()
+    end)
+
+    it("#only encodes an empty array properly", function()
+      client:get("/access/pending")
+      local data = assert.is_table(client.response.json and client.response.json.data)
+      assert.same(0, #data)
+      assert.same("[]", cjson.encode(data))
+      assert.equals(cjson.array_mt, debug.getmetatable(data))
     end)
 
     it("lists pending approval requests", function()

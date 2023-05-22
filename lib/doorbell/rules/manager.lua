@@ -484,7 +484,7 @@ end
 --- retrieve a list of all current rules
 ---@return doorbell.rule[]
 function _M.list()
-  return get_all_rules()
+  return util.array(get_all_rules())
 end
 
 function _M.reset()
