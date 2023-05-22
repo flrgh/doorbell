@@ -1,8 +1,10 @@
 local _M = {}
 
 local http = require "resty.http"
-local cjson = require "cjson"
+local cjson = require("cjson").new()
 local clone = require "table.clone"
+
+cjson.decode_array_with_array_mt(true)
 
 local headers_mt = {
   __index = function(self, name)

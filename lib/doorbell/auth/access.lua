@@ -527,10 +527,11 @@ end
 
 
 ---@param state doorbell.auth.access.state
----@return doorbell.auth.access.pending[]
+---@return doorbell.auth.access.pending[]|doorbell.auth.access.pre-approval[]
 function _M.list_approvals(state)
   local keys = assert(APPROVALS:get_keys(0))
-  local values = {}
+  ---@return doorbell.auth.access.pending[]|doorbell.auth.access.pre-approval[]
+  local values = util.array()
   local c = 0
 
   for _, key in ipairs(keys) do
