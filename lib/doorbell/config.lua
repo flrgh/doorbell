@@ -1,6 +1,7 @@
 ---@class doorbell.config : table
 ---
 ---@field allow            doorbell.rule[]
+---@field approvals        doorbell.config.approvals
 ---@field asset_path       string
 ---@field base_url         string
 ---@field cache_size       integer
@@ -10,19 +11,16 @@
 ---@field geoip_country_db string
 ---@field host             string
 ---@field log_path         string
+---@field metrics          doorbell.metrics.config
 ---@field notify           doorbell.notify.config
+---@field ota?             doorbell.ota.config
+---@field redirect_uri     string
 ---@field runtime_path     string
 ---@field state_path       string
 ---@field trusted          string[]
----@field metrics          doorbell.metrics.config
----@field ota?             doorbell.ota.config
 ---@field unauthorized     doorbell.unauthorized
----@field redirect_uri     string
 ---@field utc_offset       integer
----@field approvals        doorbell.config.approvals
-local _M = {
-  _VERSION = require("doorbell.constants").version,
-}
+local _M = {}
 
 local util = require "doorbell.util"
 local http = require "doorbell.http"

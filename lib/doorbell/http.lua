@@ -1,16 +1,12 @@
-local _M = {
-  _VERSION = require("doorbell.constants").version,
-}
+local _M = {}
 
 local log = require "doorbell.log"
-local util = require "doorbell.util"
 
 local cjson = require "cjson"
 local safe_decode = require("cjson.safe").decode
 local nkeys = require "table.nkeys"
 
 local ngx             = ngx
-local var             = ngx.var
 local print           = ngx.print
 local exit            = ngx.exit
 local get_body_data   = ngx.req.get_body_data
@@ -27,7 +23,6 @@ local find   = string.find
 local sub    = string.sub
 local insert = table.insert
 local concat = table.concat
-local lower  = string.lower
 
 local type   = type
 local assert = assert
@@ -206,54 +201,6 @@ _M.request.get_json_body = get_json_request_body
 _M.request.get_post_args = get_request_post_args
 
 
-do
-  local JSON = "json"
-  local FORM = "form"
-
-  _M.request.body_type = {
-    JSON = JSON,
-    FORM = FORM,
-  }
-
-  local ctype_handler = {
-    ["application/json"] = function(optional)
-      return get_json_request_body("table", optional), JSON
-    end,
-
-    ["application/x-www-form-urlencoded"] = function(optional)
-      return get_request_post_args(optional), FORM
-    end,
-  }
-
-  local E = "Unsupported Content-Type; expected one of "
-            .. table.concat(util.table_keys(ctype_handler), ", ")
-
-  --- Checks the request content type and either parses the body as JSON or
-  --- as x-www-form-urlencoded input
-  ---
-  ---@param optional? boolean
-  ---@return table?
-  ---@return string? content_type
-  function _M.request.get_body_input(optional)
-    local ctype = var.http_content_type
-
-    local handler
-
-    if ctype then
-      handler = ctype_handler[lower(ctype)]
-
-    else
-      ctype = ""
-    end
-
-    if not handler and not optional then
-      return send(400, { error = E, ["content-type"] = ctype })
-    end
-
-    return handler(optional)
-  end
-end
-
 
 ---@param name string
 ---@param value string|string[]|nil
@@ -269,9 +216,14 @@ _M.response.set_header = set_response_header
 ---@class doorbell.http.CORS
 _M.CORS = {}
 
----@param route doorbell.route
-local function add_cors_headers(route, add_methods)
-  if add_methods then
+
+local add_cors_headers
+do
+  local cache = {}
+
+  ---@param route doorbell.route
+  ---@return string
+  local function build_cors_methods(route)
     local methods = {}
 
     if route.GET then
@@ -296,18 +248,30 @@ local function add_cors_headers(route, add_methods)
 
     insert(methods, "OPTIONS")
 
-    header["Access-Control-Allow-Methods"] = concat(methods, ", ")
+    local value = concat(methods, ", ")
+    cache[route] = value
+
+    return value
   end
 
-  -- TODO: make this configurable
-  header["Access-Control-Allow-Origin"] = "*"
 
-  header["Access-Control-Max-Age"] = "3600"
+  ---@param route doorbell.route
+  function add_cors_headers(route, add_methods)
+    if add_methods then
+      header["Access-Control-Allow-Methods"] = cache[route]
+                                            or build_cors_methods(route)
+    end
 
-  header["Access-Control-Expose-Headers"] = nil
+    -- TODO: make this configurable
+    header["Access-Control-Allow-Origin"] = "*"
 
-  header["Access-Control-Allow-Credentials"] = "true"
-  header["Access-Control-Allow-Headers"] = "Authorization, Cookie"
+    header["Access-Control-Max-Age"] = "3600"
+
+    header["Access-Control-Expose-Headers"] = nil
+
+    header["Access-Control-Allow-Credentials"] = "true"
+    header["Access-Control-Allow-Headers"] = "Authorization, Cookie"
+  end
 end
 
 

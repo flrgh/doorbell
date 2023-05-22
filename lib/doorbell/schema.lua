@@ -72,13 +72,14 @@ end
 
 local function noop(_) return true end
 
+
 local function validator(schema)
   local name = assert(schema.title)
   local post_validate = schema.post_validate or noop
 
   local validate_schema = assert(generate_validator(schema, { name = name }))
 
-  return function(value)
+  schema.validate = function(value)
     value = convert_arrays(schema, value)
     local ok, err = validate_schema(value)
 
@@ -92,6 +93,8 @@ local function validator(schema)
 
     return true
   end
+
+  return schema.validate
 end
 
 ---@class doorbell.schema.example : table
@@ -444,7 +447,7 @@ rule.fields.org = {
 
 for name, field in pairs(rule.fields) do
   field.title = name
-  field.validate = validator(field)
+  validator(field)
 end
 
 local function required(name)
@@ -585,7 +588,7 @@ rule.entity = {
 
   post_validate = validate_rule,
 }
-rule.entity.validate = validator(rule.entity)
+validator(rule.entity)
 
 rule.create = {
   title = "doorbell.rule.create",
@@ -664,7 +667,7 @@ rule.create = {
 
   post_validate = validate_rule,
 }
-rule.create.validate = validator(rule.create)
+validator(rule.create)
 
 ---@type doorbell.schema
 rule.patch = {
@@ -724,7 +727,7 @@ rule.patch = {
 
   post_validate = validate_rule,
 }
-rule.patch.validate = validator(rule.patch)
+validator(rule.patch)
 
 
 local config = {}
@@ -1019,7 +1022,7 @@ config.fields.notify = {
     },
   },
 }
-config.fields.notify.validate = validator(config.fields.notify)
+validator(config.fields.notify)
 
 config.fields.host = {
   description = "Server Hostname",
@@ -1073,6 +1076,8 @@ config.fields.utc_offset = {
 ---@field allowed_subjects doorbell.subject[]
 ---
 ---@field max_ttl number
+---
+---@field pre_approval_ttl number
 
 
 config.fields.approvals = {
@@ -1109,13 +1114,22 @@ config.fields.approvals = {
       default     = 0,
     },
 
+    pre_approval_ttl = {
+      description = "amount of time (in seconds) that pre-approved access requests "
+                 .. "are valid for before expiring",
+      type        = "number",
+      minimum     = -1,
+      default     = 300,
+    },
+
+
   },
 
   additionalProperties = false,
 }
 
 
----@type doorbell.schema
+---@type doorbell.schema.object
 config.entity = {
   title = "doorbell.config",
   description = "Doorbell runtime configuration object",
@@ -1156,9 +1170,9 @@ config.entity = {
     "trusted",
   }
 }
-config.entity.validate = validator(config.entity)
+validator(config.entity)
 
----@type doorbell.schema
+---@type doorbell.schema.object
 config.input = {
   title = "doorbell.config",
   description = "Doorbell runtime configuration input",
@@ -1190,10 +1204,19 @@ config.input = {
 
   post_validate = validate_config,
 }
-config.input.validate = validator(config.input)
+validator(config.input)
 
 
 local auth = {}
+
+auth.common = {}
+
+auth.common.action  = { enum = util.table_values(const.actions) }
+auth.common.scope   = { enum = util.table_values(const.scopes) }
+auth.common.subject = { enum = util.table_values(const.subjects) }
+auth.common.token   = { type = "string" }
+auth.common.ttl     = { type = "number" }
+
 
 ---@class doorbell.forwarded_request : table
 ---@field addr     string
@@ -1208,13 +1231,14 @@ local auth = {}
 ---@field country? string
 
 
+---@type doorbell.schema.object
 auth.forwarded_request = {
   description = "summary of a request submitted via the forward auth endpoint",
   type = "object",
 
   properties = {
     addr    = { type = "string" },
-    asn     = { type = "intger" },
+    asn     = { type = "integer" },
     country = { type = "string" },
     host    = { type = "string" },
     method  = { type = "string" },
@@ -1238,9 +1262,40 @@ auth.forwarded_request = {
 
 }
 
-auth.approval = {}
 
----@class doorbell.auth.approval.request
+auth.access = {}
+
+
+---@class doorbell.auth.access.pre-approval
+---
+---@field created number
+---@field scope   doorbell.scope
+---@field subject doorbell.subject
+---@field token   string
+---@field ttl     number
+
+
+---@type doorbell.schema.object
+auth.access.pre_approval = {
+  title       = "doorbell.auth.access.pre-approval",
+  description = "represents a pre-approval for a pending request",
+  type        = "object",
+
+  properties = {
+    created      = { type = "number" },
+    scope        = auth.common.scope,
+    subject      = auth.common.subject,
+    token        = auth.common.token,
+    ttl          = auth.common.ttl,
+  },
+
+  required = { "created", "scope", "subject", "token", "ttl" },
+
+  additionalProperties = false,
+}
+
+
+---@class doorbell.auth.access.pending
 ---
 ---@field request doorbell.forwarded_request
 ---
@@ -1249,14 +1304,17 @@ auth.approval = {}
 ---@field token string
 
 
-auth.approval.request = {
+
+---@type doorbell.schema.object
+auth.access.pending = {
+  title       = "doorbell.auth.access.pending",
   description = "represents a pending access request",
   type = "object",
 
   properties = {
-    token = { type = "string" },
-    created = { type = "number" },
-    request = auth.forwarded_request,
+    token        = auth.common.token,
+    created      = { type = "number" },
+    request      = auth.forwarded_request,
   },
 
   required = { "token", "created", "request" },
@@ -1264,26 +1322,56 @@ auth.approval.request = {
   additionalProperties = false,
 }
 
----@class doorbell.auth.approval.answer
+
+auth.access.api = {}
+
+---@class doorbell.auth.access.api.pre-approval
 ---
----@field action doorbell.action
----@field scope doorbell.scope
+---@field scope   doorbell.scope
 ---@field subject doorbell.subject
----@field token string
----@field ttl number
+---@field ttl     number
 
 
-auth.approval.answer = {
-  title = "doorbell.auth.approval.answer",
-  description = "approves or denies an access request",
-  type = "object",
+---@type doorbell.schema.object
+auth.access.api.pre_approval = {
+  title       = "doorbell.auth.access.api.pre-approval",
+  description = "parameters for creating a pre-approval",
+  type        = "object",
 
   properties = {
-    action  = { enum = util.table_values(const.actions) },
-    scope   = { enum = util.table_values(const.scopes) },
-    subject = { enum = util.table_values(const.subjects) },
-    token   = { type = "string" },
-    ttl     = { type = "number" },
+    scope        = auth.common.scope,
+    subject      = auth.common.subject,
+    ttl          = auth.common.ttl,
+  },
+
+  required = { "scope", "subject", "ttl" },
+
+  additionalProperties = false,
+}
+validator(auth.access.api.pre_approval)
+
+
+---@class doorbell.auth.access.api.intent
+---
+---@field action  doorbell.action
+---@field scope   doorbell.scope
+---@field subject doorbell.subject
+---@field token   string
+---@field ttl     number
+
+
+---@type doorbell.schema.object
+auth.access.api.intent = {
+  title       = "doorbell.auth.access.api.intent",
+  description = "approves or denies an access request",
+  type        = "object",
+
+  properties = {
+    action  = auth.common.action,
+    scope   = auth.common.scope,
+    subject = auth.common.subject,
+    token   = auth.common.token,
+    ttl     = auth.common.ttl,
   },
 
   required = {
@@ -1296,7 +1384,8 @@ auth.approval.answer = {
 
   additionalProperties = false,
 }
-auth.approval.answer.validate = validator(auth.approval.answer)
+validator(auth.access.api.intent)
+
 
 
 return {

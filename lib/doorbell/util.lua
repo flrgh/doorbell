@@ -326,12 +326,12 @@ local function _unlock(lock, ...)
 end
 
 
----@param ns string
----@param key string
----@param action string
----@param opts? resty.lock.opts
+---@param  ns             string
+---@param  key            string
+---@param  action         string
+---@param  opts?          resty.lock.opts
 ---@return doorbell.lock? lock
----@return string? err
+---@return string?        err
 function _M.lock(ns, key, action, opts)
   local lock, err = resty_lock:new(LOCK_SHM, opts)
   if not lock then
@@ -353,6 +353,7 @@ function _M.lock(ns, key, action, opts)
   lock.unlock = _unlock
   return lock
 end
+
 
 
 local buf = {}

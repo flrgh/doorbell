@@ -29,20 +29,22 @@ const.deny_actions = {
   exit   = "exit",
 }
 
----@alias doorbell.auth_state
----| "allow"   # allowed
----| "deny"    # explicitly denied
----| "pending" # awaiting approval
----| "none"    # never seen this IP before
----| "error"   # something's wrong
+---@alias doorbell.auth.access.state
+---| "allow"         # allowed
+---| "deny"          # explicitly denied
+---| "pending"       # awaiting approval
+---| "none"          # never seen this IP before
+---| "error"         # something's wrong
+---| "pre-approved"  # request has been pre-approved
 
 --- lookup table of valid authorization states
 const.states = {
-  allow      = "allow",
-  deny       = "deny",
-  pending    = "pending",
-  none       = "none",
-  error      = "error",
+  allow        = "allow",
+  deny         = "deny",
+  pending      = "pending",
+  none         = "none",
+  error        = "error",
+  pre_approved = "pre-approved",
 }
 
 do

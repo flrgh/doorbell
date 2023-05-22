@@ -126,6 +126,18 @@ function client:reset()
   self.err = nil
 end
 
+
+function client:reconnect()
+  self:close()
+  assert(self.httpc:connect({
+    host   = self.host,
+    scheme = self.scheme,
+    port   = self.port,
+  }))
+  self.need_connect = true
+end
+
+
 function client:send()
   self.response = nil
 
@@ -165,7 +177,7 @@ function client:send()
   local res, err = self.httpc:request(req)
   self.err = err
 
-  if err == "closed" and self.reopen then
+  if (err == "closed" or err == "broken pipe") and self.reopen then
     self.need_connect = true
     self.reopen = false
     self:send()

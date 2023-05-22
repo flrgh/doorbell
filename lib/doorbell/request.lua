@@ -25,11 +25,15 @@ local counter
 ---@type PrometheusGauge
 local countries
 
-_M.new = context.new
-_M.get_headers = context.get_request_headers
-_M.get_query_args = context.get_query_args
-_M.get_json_body = context.get_json_body
-_M.get_query_arg = context.get_query_arg
+
+_M.new              = context.new
+_M.get_headers      = context.get_request_headers
+_M.get_query_args   = context.get_query_args
+_M.get_json_body    = context.get_json_body
+_M.get_query_arg    = context.get_query_arg
+_M.get_header       = context.get_request_header
+_M.get_post_args    = context.get_post_args
+
 
 ---@type table<string, doorbell.middleware>
 _M.middleware = {}
@@ -144,6 +148,7 @@ function _M.log(ctx)
   logger.add(entry)
 end
 
+
 function _M.init_worker()
   WORKER_PID = ngx.worker.pid()
   WORKER_ID  = ngx.worker.id()
@@ -169,6 +174,7 @@ function _M.init_worker()
     end
   end
 end
+
 
 ---@param opts doorbell.config
 function _M.init(opts)
