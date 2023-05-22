@@ -149,8 +149,7 @@ describe("access API", function()
     client.raise_on_connect_error = true
     client.raise_on_request_error = true
     client.assert_status.GET = {
-      gte = 200,
-      lt = 400,
+      one_of = { 200, 404, 302 },
     }
     client.reopen = true
   end)
@@ -410,6 +409,40 @@ describe("access API", function()
       ngx.sleep(pre_approval_ttl + 1)
       assert_access_not_approved(addr, url, method, ua)
     end)
+
+    it("clears stale pending access requests on approval", function()
+      local method = "GET"
+      local addr = test.random_ipv4()
+      local ua = "random ua " .. addr
+      local url = "http://pre-approval.test/" .. addr
+
+      local query = assert_access_not_approved(addr, url, method, ua)
+      client:get("/access/pending/by-token/" .. query.token)
+      assert.same(200, client.response.status)
+
+      client.headers["x-forwarded-for"] = addr
+
+      client:post("/access/pre-approval", {
+        json = {
+          scope   = "url",
+          subject = "addr",
+          ttl     = 30,
+        },
+      })
+
+      assert.same(201, client.response.status, client.response)
+      assert.same(addr, client.response.json.subject)
+
+      await_access(addr, url, method, ua)
+      assert_access_approved(addr, url, method, ua)
+
+      client:get("/access/pending/by-token/" .. query.token)
+      assert.same(404, client.response.status)
+
+      client:get("/access/pending/by-addr/" .. addr)
+      assert.same(404, client.response.status)
+    end)
+
 
     for _, scope in pairs(const.scopes) do
     for _, subject in pairs(const.subjects) do

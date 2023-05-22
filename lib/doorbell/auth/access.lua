@@ -187,10 +187,19 @@ end
 local function set_pre_approved(typ, subject, token)
   local ttl = approvals.pre_approval_ttl
 
-  assert(PENDING:safe_set(typ .. ":" .. subject,
+  local key = typ .. ":" .. subject
+  local current, flags = PENDING:get(key)
+
+  assert(PENDING:safe_set(key,
                           token,
                           ttl,
                           F_PRE_APPROVED))
+
+  if current then
+    local state = state_type(flags)
+    log.debug("replacing existing '", state, "' state for ", key)
+    assert(APPROVALS:set(current, nil))
+  end
 end
 
 ---@param token string
@@ -235,7 +244,6 @@ local function create_rule_for_pre_approval(params, req, pre)
   if req.ua then
     clear_pending_state(SUBJECTS.ua, req.ua)
   end
-
 
   APPROVALS:set(pre.token, nil)
 
@@ -538,6 +546,24 @@ end
 
 
 ---@param pre doorbell.auth.access.api.pre-approval
+---@param typ "ua"|"addr"
+---@param subject string
+local function create_pre_approval(pre, typ, subject)
+  local token, err = generate_request_token(pre, F_PRE_APPROVED)
+  if not token then
+    return nil, err
+  end
+
+  set_pre_approved(typ, subject, token)
+
+  log.notice("created ", pre.scope, " pre-approval for ", pre.subject, " ", subject)
+
+  return true
+end
+
+
+
+---@param pre doorbell.auth.access.api.pre-approval
 ---@param req table
 ---@return integer status
 ---@return string? error
@@ -560,11 +586,11 @@ function _M.pre_approve(pre, req)
     return 400, "empty subject"
   end
 
-  local token = assert(generate_request_token(pre, F_PRE_APPROVED))
-
-  set_pre_approved(stype, subject, token)
-
-  log.notice("created ", pre.scope, " pre-approval for ", pre.subject, " ", subject)
+  ok, err = with_lock(req.addr, create_pre_approval, pre, stype, subject)
+  if not ok then
+    log.err(err)
+    return 500, err
+  end
 
   return 201
 end
