@@ -89,6 +89,7 @@ build = {
 supported_platforms = { "linux" }
 
 dependencies = {
+  "inspect",
   "lua_system_constants = 0.1.4",
   "lua-resty-ljsonschema == 1.1.3",
   "lua-cjson >= 2.1.0",
@@ -105,7 +106,6 @@ dependencies = {
 }
 
 test_dependencies = {
-  "inspect",
   "luafilesystem",
   "busted >= 2.1.1",
   "busted-htest >= 1.0.0",

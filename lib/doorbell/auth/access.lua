@@ -518,15 +518,9 @@ end
 function _M.pre_approve(pre, req)
   local ok, err = schema.auth.access.api.pre_approval.validate(pre)
 
-  log.notice(log.inspect({
-    req = req,
-    pre = pre,
-  }))
-
   if not ok then
     return 400, err
   end
-
 
   ok, err = validate_allowed_limits(pre)
   if not ok then

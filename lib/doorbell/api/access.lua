@@ -184,12 +184,14 @@ routes["/access/pre-approval"] = {
     if pre.subject == const.subjects.ua then
       subject = req.ua
       if not subject then
-        return send_error(400, "pre-approval with `ua` scope must have a `user-agent` header")
+        send_error(400, "pre-approval with `ua` subject must have a `user-agent` header")
       end
 
-    else
-      assert(pre.subject == const.subjects.addr)
+    elseif pre.subject == const.subjects.addr then
       subject = req.addr
+
+    else
+      return send_error(400, "`subject` is required")
     end
 
     local status, err = access.pre_approve(pre, req)
