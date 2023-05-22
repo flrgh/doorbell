@@ -161,7 +161,14 @@ _M.is_pending = is_pending
 ---@param typ doorbell.subject
 ---@param subject string
 local function clear_pending_state(typ, subject)
-  assert(PENDING:set(typ .. ":" .. subject, nil))
+  local key = typ .. ":" .. subject
+  local token = PENDING:get(key)
+
+  assert(PENDING:set(key, nil))
+
+  if token then
+    assert(APPROVALS:set(token, nil))
+  end
 end
 
 ---@param typ     doorbell.subject
@@ -210,6 +217,32 @@ end
 
 _M.set_pending = set_pending
 
+
+---@param params doorbell.rule.new.opts
+---@param req doorbell.forwarded_request
+---@param pre doorbell.auth.access.pre-approval
+local function create_rule_for_pre_approval(params, req, pre)
+  local rule, err = api.insert(params)
+
+  if not rule then
+    return nil, "failed creating rule for pre-approved access: " .. tostring(err)
+  end
+
+  if req.addr then
+    clear_pending_state(SUBJECTS.addr, req.addr)
+  end
+
+  if req.ua then
+    clear_pending_state(SUBJECTS.ua, req.ua)
+  end
+
+
+  APPROVALS:set(pre.token, nil)
+
+  return true
+end
+
+
 ---@param req doorbell.forwarded_request
 ---@param token string
 ---@return doorbell.auth.access.state state
@@ -241,31 +274,24 @@ local function handle_pre_approval(req, token)
     assert(pre.scope == SCOPES.global)
   end
 
-  local rule, err = api.insert({
-    action = "allow",
-    source = const.sources.user,
-    ttl    = pre.ttl,
-    addr   = addr,
-    ua     = ua,
-    host   = host,
-    path   = path,
-  })
+  local params = {
+    action  = "allow",
+    source  = const.sources.user,
+    ttl     = pre.ttl,
+    addr    = addr,
+    ua      = ua,
+    host    = host,
+    path    = path,
+    comment = "pre-approved access",
+  }
 
-  if not rule then
-    log.err("failed creating rule for pre-approved access: ", err)
+  local ok, err = with_lock(req.addr, create_rule_for_pre_approval,
+                            params, req, pre)
+
+  if not ok then
+    log.err(err)
     return STATES.error
   end
-
-  if req.addr then
-    clear_pending_state(SUBJECTS.addr, req.addr)
-  end
-
-  if req.ua then
-    clear_pending_state(SUBJECTS.ua, req.ua)
-  end
-
-
-  assert(APPROVALS:set(token, nil))
 
   return STATES.allow
 end
