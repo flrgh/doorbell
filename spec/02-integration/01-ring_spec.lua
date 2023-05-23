@@ -13,13 +13,34 @@ describe("/ring", function()
   ---@type doorbell.config
   local conf
 
-  lazy_setup(function()
-    conf = test.config()
-    conf.allow = { { ua = "allow" } }
-    conf.deny  = { { ua = "deny" } }
-  end)
+  local reset_config = false
+
+  local function update_config(updates)
+    conf = conf or test.config()
+
+    for k, v in pairs(updates) do
+      if v == ngx.null then
+        v = nil
+      end
+
+      conf[k] = v
+    end
+
+    nginx:update_config(conf)
+    nginx:restart()
+
+    reset_config = true
+  end
 
   before_each(function()
+    if not conf then
+      conf = test.config()
+
+      conf.allow = { { ua = "allow" } }
+      conf.deny  = { { ua = "deny" } }
+      conf.trusted = { "127.0.0.1/8" }
+    end
+
     nginx = test.nginx(conf)
     nginx:conf_test()
     nginx:start()
@@ -28,6 +49,7 @@ describe("/ring", function()
     client.timeout = 1000
     client.request.path = "/ring"
     client.request.host = "127.0.0.1"
+    nginx:add_client(client)
   end)
 
   after_each(function()
@@ -38,11 +60,10 @@ describe("/ring", function()
       print(string.rep("-", 120))
     end
 
-    if client then
-      client:close()
-    end
-
     nginx:stop()
+    if reset_config then
+      conf = nil
+    end
   end)
 
   it("returns a 400 if any x-forwarded-(for|method|proto|host|uri) header is missing", function()
@@ -107,6 +128,15 @@ describe("/ring", function()
                                 .has.header(const.headers.request_id))
   end)
 
+  it("denies requests from untrusted IPs", function()
+    update_config({ trusted = { "1.2.3.4/32" }})
+
+    client:add_x_forwarded_headers("1.2.3.4", "GET", "http://untrusted.test/")
+    client:get("/ring")
+
+    assert.same(403, client.response.status)
+  end)
+
   it("responds to API updates", function()
     local ua = "api-test"
 
@@ -114,7 +144,7 @@ describe("/ring", function()
     client.headers["user-agent"] = ua
 
     local api = test.client()
-    finally(api:close())
+    nginx:add_client(api)
 
     local rule = assert(api:post("/rules", {
       json = {
@@ -177,7 +207,7 @@ describe("/ring", function()
     client.headers["user-agent"] = ua
 
     local api = test.client()
-    finally(api:close())
+    nginx:add_client(api)
 
     -- add a blanket deny rule
     assert(api:post("/rules", {
@@ -226,9 +256,10 @@ describe("/ring", function()
   -- This approval path is pretty well-covered by the integration tests for the /answer
   -- endpoint, so we're not going to test that here.
   describe("policy: request-approval", function()
-    lazy_setup(function()
-      conf.unauthorized = const.unauthorized.request_approval
+    before_each(function()
+      update_config({ unauthorized = const.unauthorized.request_approval })
     end)
+
 
     it("blocks until access is approved", function()
       local timeout = 500
@@ -263,9 +294,10 @@ describe("/ring", function()
   end)
 
   describe("policy: return-401", function()
-    lazy_setup(function()
-      conf.unauthorized = const.unauthorized.return_401
+    before_each(function()
+      update_config({ unauthorized = const.unauthorized.return_401 })
     end)
+
 
     it("returns a 401 for unauthorized requests", function()
       client:add_x_forwarded_headers("1.2.3.4", "GET", "http://test/")
@@ -278,10 +310,13 @@ describe("/ring", function()
   end)
 
   describe("policy: redirect-for-approval", function()
-    lazy_setup(function()
-      conf.unauthorized = const.unauthorized.redirect_for_approval
-      conf.redirect_uri = "http://lolololo.test/"
+    before_each(function()
+      update_config({
+        unauthorized = const.unauthorized.redirect_for_approval,
+        redirect_uri = "http://lolololo.test/",
+      })
     end)
+
 
     it("redirects the client to the request approval endpoint", function()
       local url = "http://test/?a=1&b=2"

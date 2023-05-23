@@ -237,11 +237,15 @@ _M.private_cidrs = {
   "172.16.0.0/12",
   "192.168.0.0/16",
 }
+
 local private_matcher = ipmatcher.new(_M.private_cidrs)
+
 _M.private = private_matcher
 
 _M.localhost_cidrs = { "127.0.0.0/8", "::1/128" }
+
 local localhost_matcher = ipmatcher.new(_M.localhost_cidrs)
+
 _M.localhost = localhost_matcher
 
 
@@ -265,7 +269,7 @@ end
 ---@param ctx doorbell.ctx
 ---@param route doorbell.route
 function _M.require_trusted_proxy(ctx, route)
-  if not ctx.is_trusted_proxy and route.allow_untrusted ~= false then
+  if route.allow_untrusted ~= true and not ctx.is_trusted_proxy then
     log.warn("denying connection from untrusted IP: ", ctx.client_addr)
     return exit(HTTP_FORBIDDEN)
   end
@@ -369,6 +373,37 @@ local function get_forwarded(forwarded, pos)
 end
 
 
+local parse_forwarded
+do
+  local buf = {}
+  local clear = require "table.clear"
+
+  ---@param header? string
+  ---@return string? addr
+  function parse_forwarded(header)
+    if type(header) ~= "string" then return end
+
+    local parsed = cache:get("x-forwarded-for", header)
+    if parsed ~= nil then
+      return parsed or nil
+    end
+
+    clear(buf)
+    split(header, ", *", "oj", nil, 0, buf)
+
+    parsed = get_forwarded(buf)
+
+    if parsed then
+      cache:set("x-forwarded-for", header, parsed)
+    else
+      cache:set("x-forwarded-for", header, false)
+    end
+
+    return parsed
+  end
+end
+
+
 ---@param addr string
 ---
 ---@return doorbell.ip.info? info
@@ -441,17 +476,13 @@ function _M.init_request_ctx(ctx)
 
     local header = var.http_x_forwarded_for or var.http_x_real_ip
     if header then
-      local all = split(header, ", *", nil, nil, 0)
-      local forwarded = get_forwarded(all)
+      local parsed = parse_forwarded(header)
 
-      if forwarded then
-        forwarded_addr = forwarded
+      if parsed then
+        forwarded_addr = parsed
       else
         log.err("failed to parse X-Forwarded-For header: '", header, "'")
       end
-
-    else
-      log.notice("trusted proxy ", client_addr, " did not send X-Forwarded-For")
     end
   end
 
