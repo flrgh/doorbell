@@ -265,14 +265,6 @@ describe("IP API", function()
         removed_ignored(res.json)
         assert.same(case.exp, res.json)
       end)
-
-      pending("requires a trusted IP for specific lookups", function()
-        local addr = case.exp.addr
-        client.headers.x_forwarded_for = "1.2.3.4"
-        local res, err = client:get("/ip/info/" .. addr)
-        assert.is_nil(err)
-        assert.same(403, res.status)
-      end)
     end)
   end
 
