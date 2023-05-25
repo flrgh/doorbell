@@ -32,6 +32,10 @@ What makes Doorbell convenient is how access control policies ("rules") are mana
 * Allow public access to `/.well-known/acme-challenge/*` for Let's Encrypt challenges on all applications while keeping everything else locked down
 * Receive a push notification when a friend is trying to access the server and quickly grant them access
 
+## Status
+
+I've been using
+
 ## How it Works
 
 Doorbell's forward auth endpoint is server/proxy-agnostic and can be used with a variety of proxies, but development currently targets [traefik](https://github.com/traefik/traefik) for its [ForwardAuth](https://doc.traefik.io/traefik/middlewares/http/forwardauth/) middleware feature (because that is what I use at home).
@@ -59,3 +63,19 @@ If the request matches no known rule, the unauthorized policy takes over. This i
 * Respond immediately with a `401` status code
 * Send an access request push notification and block until access is granted
 * Redirect the client to a different endpoint where they must authenticate (via other means) in order to add an `allow` rule
+
+## License
+
+This module is licensed under the BSD license.
+
+Copyright (C) 2021-2023, by Michael Martin <flrgh@protonmail.com>.
+
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
