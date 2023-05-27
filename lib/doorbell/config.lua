@@ -12,6 +12,7 @@
 ---@field host             string
 ---@field log_path         string
 ---@field metrics          doorbell.metrics.config
+---@field network_tags     doorbell.config.network_tags
 ---@field notify           doorbell.notify.config
 ---@field ota?             doorbell.ota.config
 ---@field redirect_uri     string

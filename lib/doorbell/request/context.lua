@@ -24,13 +24,15 @@ local get_phase       = ngx.get_phase
 ---
 ---@field id                string
 ---
----@field client_addr         string
----@field forwarded_addr      string
----@field is_trusted_proxy    boolean
----@field forwarded_request   doorbell.forwarded_request
----@field geoip_country_code? string
----@field geoip_net_asn?      integer
----@field geoip_net_org?      string
+---@field client_addr            string
+---@field client_network_tag     string
+---@field forwarded_network_tag  string
+---@field forwarded_addr         string
+---@field is_trusted_proxy       boolean
+---@field forwarded_request      doorbell.forwarded_request
+---@field geoip_country_code?    string
+---@field geoip_net_asn?         integer
+---@field geoip_net_org?         string
 ---
 ---@field no_log            boolean
 ---@field no_metrics        boolean

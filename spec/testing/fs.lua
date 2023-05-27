@@ -132,4 +132,23 @@ function fs.basename(path)
   return pl_path.basename(path)
 end
 
+
+---@param fname string
+---@return (fun():string)|nil
+---@return string? error
+function fs.lines(fname)
+  local fh, err = io.open(fname, "r")
+  if not fh then
+    return nil, err
+  end
+
+  local iter = fh:lines()
+
+  return function()
+    local line = iter()
+    if not line then fh:close() end
+    return line
+  end
+end
+
 return fs

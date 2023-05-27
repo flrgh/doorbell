@@ -3,6 +3,7 @@ local _M = {}
 local http = require "resty.http"
 local cjson = require("cjson").new()
 local clone = require "table.clone"
+local const = require "doorbell.constants"
 
 cjson.decode_array_with_array_mt(true)
 
@@ -76,6 +77,7 @@ end
 ---@field json    table|nil
 ---@field body    string|nil
 ---@field headers spec.testing.client.headers
+---@field id      string|nil
 
 
 ---@class spec.testing.client.status.assertion : table
@@ -215,11 +217,13 @@ function client:send()
     self.need_connect = true
   end
 
+
   self.response = {
     status  = res.status,
     headers = _M.headers(res.headers),
     body    = body,
     json    = json,
+    id      = res.headers[const.headers.request_id],
   }
 
   do

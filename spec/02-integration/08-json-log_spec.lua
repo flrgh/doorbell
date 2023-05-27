@@ -1,6 +1,5 @@
 local test = require "spec.testing"
 local const = require "doorbell.constants"
-local cjson = require "cjson"
 
 local REQUEST_ID = const.headers.request_id
 
@@ -27,8 +26,7 @@ describe("json request log", function()
   end)
 
   it("writes to a file", function()
-    local client = test.client()
-    finally(function() client:close() end)
+    local client = nginx:add_client(test.client())
 
     client.headers["user-agent"] = "json-log"
     client.headers["x-my-special-header"] = "json-log"
@@ -45,15 +43,17 @@ describe("json request log", function()
 
     local entry
 
-    test.await.no_error(function()
-      entry = fs.read_json_file(log_file)
-      return true
+    test.await.truthy(function()
+      entry = nginx:get_json_log_entry(client.response.id)
+      return entry
     end, 3, 0.25)
 
     assert.is_table(entry)
     assert.table_shape({
       addr                 = "string",
+      network_tag          = "string",
       client_addr          = "string",
+      client_network_tag   = "string",
       connection           = "number",
       connection_requests  = "number",
       duration             = "number",
@@ -108,14 +108,16 @@ describe("json request log", function()
       assert.same(200, client.response.status)
     end
 
-    test.await.no_error(function()
-      local fh = assert(io.open(log_file, "r"))
-      local found = 0
+    test.await.truthy(function()
+      local iter, err = nginx:iter_json_log_entries()
+      if not iter then
+        return nil, err
+      end
 
       local seen = {}
+      local found = 0
 
-      for line in fh:lines() do
-        local log = cjson.decode(line)
+      for log in iter do
         assert.is_table(log)
         assert.is_table(log.request_headers)
         local c = assert.is_string(log.request_headers["x-count"])
@@ -126,9 +128,7 @@ describe("json request log", function()
         found = found + 1
       end
 
-      fh:close()
-
-      assert.same(count, found)
+      return count == found
     end, 5, 0.5)
   end)
 end)
