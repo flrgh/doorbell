@@ -102,10 +102,13 @@ function _M.log(ctx)
     res_body_size = tonumber(var.body_bytes_sent)
   end
 
+  ---@class doorbell.request.log.entry
   local entry = {
     -- client info
     addr                = ctx.forwarded_addr,
+    network_tag         = ctx.forwarded_network_tag,
     client_addr         = ctx.client_addr,
+    client_network_tag  = ctx.client_network_tag,
     country_code        = ctx.geoip_country_code,
     is_trusted_proxy    = ctx.is_trusted_proxy,
 

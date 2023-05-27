@@ -1129,6 +1129,20 @@ config.fields.approvals = {
 }
 
 
+---@alias doorbell.config.network_tags table<string, string>
+
+config.fields.network_tags = {
+  description = "A mapping of network addresses (CIDR notation or individual IPs) to string labels",
+  type = "object",
+
+  patternProperties = {
+    [".+"] = {
+      type = "string",
+      post_validate = validate_cidr,
+    },
+  },
+}
+
 ---@type doorbell.schema.object
 config.entity = {
   title = "doorbell.config",
@@ -1148,6 +1162,7 @@ config.entity = {
     host                 = config.fields.host,
     log_path             = config.fields.log_path,
     metrics              = config.fields.metrics,
+    network_tags         = config.fields.network_tags,
     notify               = config.fields.notify,
     ota                  = config.fields.ota,
     redirect_uri         = config.fields.redirect_uri,

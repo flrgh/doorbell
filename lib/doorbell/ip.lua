@@ -22,7 +22,6 @@ local encode_args = ngx.encode_args
 local parse_ipv4 = ipmatcher.parse_ipv4
 local parse_ipv6 = ipmatcher.parse_ipv6
 
-
 ---@param ip string
 ---@return 4|6|nil
 local function valid_ip(ip)
@@ -454,10 +453,130 @@ function _M.get_raw_ip_info(addr)
   return info
 end
 
+local get_network_tag, init_network_tags
+do
+  local DEFAULT_NET_TAGS = {
+    ["10.0.0.0/8"]     = "LAN",
+    ["172.16.0.0/12"]  = "LAN",
+    ["192.168.0.0/16"] = "LAN",
+    ["127.0.0.0/8"]    = "localhost",
+    ["default"]        = "WAN",
+  }
+
+  ---@class doorbell.ip.network.tag : table
+  ---
+  ---@field matcher   resty.ipmatcher
+  ---@field network   string
+  ---@field tag       string
+  ---@field mask_bits integer
+
+  ---@type doorbell.ip.network.tag[]
+  local TAGS
+  local TAGS_N = 0
+
+  ---@type string
+  local DEFAULT
+
+  ---@param addr string
+  ---@return string|nil
+  local function lookup_tag(addr)
+    local tag = DEFAULT
+
+    for i = 1, TAGS_N do
+      local t = TAGS[i]
+      if t.matcher:match(addr) then
+        tag = t.tag
+        break
+      end
+    end
+
+    return tag
+  end
+
+  ---@param addr string
+  ---@return string|nil tag
+  function get_network_tag(addr)
+    local tag = cache:get("tag", addr)
+
+    if tag ~= nil then
+      return tag or nil
+    end
+
+    tag = lookup_tag(addr) or false
+
+    cache:set("tag", addr, tag)
+
+    return tag
+  end
+
+  ---@param network_tags doorbell.config.network_tags
+  function init_network_tags(network_tags)
+    network_tags = network_tags or DEFAULT_NET_TAGS
+    ---@type doorbell.ip.network.tag[]
+    local tags = {}
+
+    for cidr, tag in pairs(network_tags) do
+      ---@type doorbell.ip.network.tag
+      if cidr == "default" then
+        assert(DEFAULT == nil, "duplicate default network tag")
+
+        DEFAULT = tag
+        goto continue
+      end
+
+      local m = ngx.re.match(cidr, "([^/]+)(/(.+))?")
+      local addr, mask = cidr, nil
+
+      if m then
+        addr = m[1]
+        mask = m[3]
+      end
+
+      local typ = valid_ip(addr)
+      assert(type ~= nil, "invalid CIDR: " .. cidr)
+
+      if typ == 4 then
+        mask = mask or 32
+
+      elseif typ == 6 then
+        mask = mask or 128
+      end
+
+      local network = addr .. "/" .. tostring(mask)
+
+      mask = tonumber(mask)
+      assert(mask ~= nil, "invalid CIDR: " .. cidr)
+
+
+      table.insert(tags, {
+        matcher   = assert(ipmatcher.new({ network })),
+        network   = network,
+        tag       = tag,
+        mask_bits = mask,
+      })
+
+      ::continue::
+    end
+
+    table.sort(tags, function(a, b)
+      if a.mask_bits ~= b.mask_bits then
+        return a.mask_bits > b.mask_bits
+      end
+
+      return a.network > b.network
+    end)
+
+    TAGS = tags
+    TAGS_N = #tags
+  end
+end
+
 --- Decorate the request context with IP-related fields:
 ---
 --- - client_addr
+--- - client_network_tag
 --- - forwarded_addr
+--- - forwarded_network_tag
 --- - is_trusted_proxy
 --- - geoip_country_code
 --- - geoip_net_asn
@@ -494,6 +613,13 @@ function _M.init_request_ctx(ctx)
 
   else
     ctx.geoip_net_asn = 0
+  end
+
+  ctx.client_network_tag = get_network_tag(client_addr)
+  if forwarded_addr ~= client_addr then
+    ctx.forwarded_network_tag = get_network_tag(forwarded_addr)
+  else
+    ctx.forwarded_network_tag = ctx.client_network_tag
   end
 end
 
@@ -535,6 +661,8 @@ function _M.init(opts)
     log.warnf("using default trusted IP range (%s)", table.concat(_M.localhost_cidrs, ","))
     trusted = _M.localhost
   end
+
+  init_network_tags(opts.network_tags)
 
   cache = require "doorbell.cache"
 end

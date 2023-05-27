@@ -3,6 +3,7 @@ local _M = {}
 local render = require("doorbell.nginx").render
 local lua_path = require("doorbell.nginx").lua_path
 local resty_signal = require "resty.signal"
+local cjson = require("cjson")
 
 local const = require "spec.testing.constants"
 local fs = require "spec.testing.fs"
@@ -66,7 +67,7 @@ local function format_cmd_result(cmd, code, stdout, stderr)
   return fmt(
     "\ncommand: %q\nenv:%s\ncode: %s\nstdout: %s\nstderr: %s\n",
     table.concat(cmd, " "),
-    require("cjson").encode(env),
+    cjson.encode(env),
     code,
     stdout,
     stderr
@@ -215,13 +216,54 @@ end
 
 
 ---@param client spec.testing.client
+---@return spec.testing.client
 function nginx:add_client(client)
   assert(type(client) == "table")
   if not self.clients[client] then
     self.clients[client] = true
   end
+
+  return client
 end
 
+---@alias spec.testing.nginx.json.log.iter fun():doorbell.request.log.entry?
+
+
+---@return spec.testing.nginx.json.log.iter|nil
+---@return string? error
+function nginx:iter_json_log_entries()
+  local fname = fs.join(self.config.log_path, "doorbell.json.log")
+
+  local iter, err = fs.lines(fname)
+
+  if not iter then
+    return nil, err
+  end
+
+  return function()
+    local line = iter()
+
+    if line then
+      return cjson.decode(line)
+    end
+  end
+end
+
+---@param id string
+---@return doorbell.request.log.entry|nil
+function nginx:get_json_log_entry(id)
+  assert(id ~= nil, "id is required")
+  assert(type(id) == "string", "id must be a string")
+
+  local iter = self:iter_json_log_entries()
+  if not iter then return end
+
+  for entry in iter do
+    if entry.request_id == id then
+      return entry
+    end
+  end
+end
 
 nginx.__index = nginx
 
