@@ -27,11 +27,11 @@ local proc       = require "ngx.process"
 local ngx        = ngx
 local assert     = assert
 local send       = http.send
-local exec_mw    = middleware.exec
 local new_ctx    = request.new
 local get_ctx    = request.get
 local cors_preflight = http.CORS.preflight
 local set_header = http.response.set_header
+local exec_route_middleware = router.exec_middleware
 
 local REWRITE       = middleware.phase.REWRITE
 local AUTH          = middleware.phase.AUTH
@@ -45,32 +45,14 @@ local REQUEST_ID = require("doorbell.constants").headers.request_id
 ---@type ngx.shared.DICT
 local SHM = require("doorbell.shm").doorbell
 
----@type doorbell.middleware[]
-local GLOBAL_REWRITE_MWARE = {
+local GLOBAL_REWRITE_MWARE = middleware.compile({
   request.middleware.pre_handler,
   router.on_match,
-}
+})
 
----@type doorbell.middleware[]
-local GLOBAL_PRE_HANDLER_MWARE = {
+local GLOBAL_PRE_HANDLER_MWARE = middleware.compile({
   http.CORS.middleware,
-}
-
-
----@param phase doorbell.middleware.phase
----@param ctx doorbell.ctx
-local function exec_route_middleware(phase, ctx)
-  local route = ctx.route
-  if not route then return end
-
-  local mw = route.middleware
-  if not mw then return end
-
-  local phase_mw = mw[phase]
-  if not phase_mw then return end
-
-  exec_mw(phase_mw, ctx, route)
-end
+})
 
 
 local function init_worker()
@@ -142,8 +124,8 @@ function _M.rewrite()
   ctx.route = route
   ctx.route_match = match
 
-  exec_mw(GLOBAL_REWRITE_MWARE, ctx, route, match)
-  exec_route_middleware(REWRITE, ctx)
+  GLOBAL_REWRITE_MWARE(ctx, route, match)
+  exec_route_middleware(REWRITE, ctx, route, match)
 end
 
 
@@ -153,7 +135,7 @@ function _M.auth()
   assert(SHM, "doorbell was not initialized")
 
   local ctx = get_ctx()
-  exec_route_middleware(AUTH, ctx)
+  exec_route_middleware(AUTH, ctx, ctx.route)
 end
 
 
@@ -174,8 +156,8 @@ function _M.content()
     handler = cors_preflight
   end
 
-  exec_mw(GLOBAL_PRE_HANDLER_MWARE, ctx, route, match)
-  exec_route_middleware(PRE_HANDLER, ctx)
+  GLOBAL_PRE_HANDLER_MWARE(ctx, route, match)
+  exec_route_middleware(PRE_HANDLER, ctx, route, match)
 
   if not handler then
     send(405)
@@ -188,11 +170,12 @@ end
 function _M.log()
   local ctx = get_ctx()
 
-  exec_route_middleware(LOG, ctx)
+  local route = ctx.route
+  exec_route_middleware(LOG, ctx, route)
 
   request.log(ctx)
 
-  exec_route_middleware(POST_RESPONSE, ctx)
+  exec_route_middleware(POST_RESPONSE, ctx, route)
 end
 
 
