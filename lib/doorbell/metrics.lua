@@ -134,6 +134,12 @@ function _M.init_worker()
     { "country" }
   )
 
+  registry.requests_by_network = prometheus:counter(
+    "requests_by_network",
+    "total number of incoming requests, by network tag",
+    { "network" }
+  )
+
   assert(timer_at(0, run_hooks))
 end
 

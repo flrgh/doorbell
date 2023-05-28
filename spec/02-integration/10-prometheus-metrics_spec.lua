@@ -206,8 +206,15 @@ describe("prometheus metrics", function()
   lazy_setup(function()
     conf = test.config()
     conf.trusted = { "0.0.0.0/0" }
+
     conf.metrics = {
       interval = interval,
+    }
+
+    conf.network_tags = {
+      default = "other",
+      ["127.0.0.1"] = "localhost",
+      ["10.0.0.0/8"] = "lan",
     }
 
     nginx = test.nginx(conf)
@@ -320,6 +327,50 @@ describe("prometheus metrics", function()
     end)
   end)
 
+  describe("doorbell_requests_by_network", function()
+    local name = "doorbell_requests_by_network"
+
+    it("is a counter representing the number of requests from a network", function()
+      local addrs = {
+        localhost = "127.0.0.1",
+        other = "1.2.3.4",
+        lan = "10.0.11.12",
+      }
+
+      for tag, addr in pairs(addrs) do
+        local labels = { network = tag }
+
+        local path = "/" .. test.random_string(8)
+
+        client:post("/rules", {
+          json = {
+            action = "allow",
+            addr = addr,
+            comment = "test for metrics",
+            path = path,
+          }
+        })
+
+        client:reset()
+        client:add_x_forwarded_headers(addr, "GET", "http://foo.test" .. path)
+        client:get("/ring")
+
+        test.await.truthy(function()
+          return get_metrics():have(name)
+        end, interval, 0.1)
+
+        local before = get_metrics():get_value(name, labels)
+
+        for _ = 1, 100 do
+          client:get("/ring")
+        end
+
+        test.await.truthy(function()
+          return (get_metrics():get_value(name, labels) - 100) >= before
+        end, 5, 0.1)
+      end
+    end)
+  end)
 end)
 
 
