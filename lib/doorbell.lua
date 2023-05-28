@@ -25,18 +25,19 @@ local middleware = require "doorbell.middleware"
 local proc       = require "ngx.process"
 
 local ngx        = ngx
-local start_time = ngx.req.start_time
 local assert     = assert
 local send       = http.send
 local exec_mw    = middleware.exec
 local new_ctx    = request.new
+local get_ctx    = request.get
 local cors_preflight = http.CORS.preflight
 local set_header = http.response.set_header
 
-local PRE_AUTH = middleware.phase.PRE_AUTH
-local PRE_HANDLER = middleware.phase.PRE_HANDLER
-local PRE_LOG = middleware.phase.PRE_LOG
-local POST_LOG = middleware.phase.POST_LOG
+local REWRITE       = middleware.phase.REWRITE
+local AUTH          = middleware.phase.AUTH
+local PRE_HANDLER   = middleware.phase.PRE_HANDLER
+local LOG           = middleware.phase.LOG
+local POST_RESPONSE = middleware.phase.POST_RESPONSE
 
 local SERVER = "doorbell " .. _M._VERSION
 local REQUEST_ID = require("doorbell.constants").headers.request_id
@@ -44,11 +45,14 @@ local REQUEST_ID = require("doorbell.constants").headers.request_id
 ---@type ngx.shared.DICT
 local SHM = require("doorbell.shm").doorbell
 
-
 ---@type doorbell.middleware[]
-local GLOBAL_MIDDLEWARE = {
+local GLOBAL_REWRITE_MWARE = {
   request.middleware.pre_handler,
   router.on_match,
+}
+
+---@type doorbell.middleware[]
+local GLOBAL_PRE_HANDLER_MWARE = {
   http.CORS.middleware,
 }
 
@@ -118,8 +122,12 @@ function _M.init_worker()
 end
 
 
-function _M.run()
+-- the rewrite handler runs during NGINX's rewrite phase and is responsible
+-- for matching the request to an existing route and performing any request
+-- mutations before checking auth and executing a route handler
+function _M.rewrite()
   assert(SHM, "doorbell was not initialized")
+
   set_header("server", SERVER)
 
   local ctx = new_ctx(ngx.ctx)
@@ -132,8 +140,32 @@ function _M.run()
   end
 
   ctx.route = route
+  ctx.route_match = match
 
-  exec_route_middleware(PRE_AUTH, ctx)
+  exec_mw(GLOBAL_REWRITE_MWARE, ctx, route, match)
+  exec_route_middleware(REWRITE, ctx)
+end
+
+
+-- the auth handler runs during NGINX's access phase and is responsible for,
+-- as you might expect, authentication and authorization
+function _M.auth()
+  assert(SHM, "doorbell was not initialized")
+
+  local ctx = get_ctx()
+  exec_route_middleware(AUTH, ctx)
+end
+
+
+-- the content handler runs during NGINX's content phase and is where most
+-- application business logic is performed
+function _M.content()
+  assert(SHM, "doorbell was not initialized")
+
+  local ctx = get_ctx()
+
+  local route = assert(ctx.route)
+  local match = ctx.route_match
 
   ---@type doorbell.route.handler
   local handler = route[ctx.method]
@@ -142,7 +174,7 @@ function _M.run()
     handler = cors_preflight
   end
 
-  exec_mw(GLOBAL_MIDDLEWARE, ctx, route, match)
+  exec_mw(GLOBAL_PRE_HANDLER_MWARE, ctx, route, match)
   exec_route_middleware(PRE_HANDLER, ctx)
 
   if not handler then
@@ -154,20 +186,13 @@ end
 
 
 function _M.log()
-  ---@type doorbell.ctx
-  local ctx = ngx.ctx
+  local ctx = get_ctx()
 
-  exec_route_middleware(PRE_LOG, ctx)
-
-  local start = start_time()
-
-  if not ctx.no_metrics then
-    manager.log(ctx, start)
-  end
+  exec_route_middleware(LOG, ctx)
 
   request.log(ctx)
 
-  exec_route_middleware(POST_LOG, ctx)
+  exec_route_middleware(POST_RESPONSE, ctx)
 end
 
 

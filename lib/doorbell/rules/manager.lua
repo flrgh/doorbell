@@ -20,6 +20,7 @@ local sleep       = ngx.sleep
 local exiting     = ngx.worker.exiting
 local get_phase   = ngx.get_phase
 local null        = ngx.null
+local start_time  = ngx.req.start_time
 
 local assert       = assert
 local min          = math.min
@@ -630,8 +631,7 @@ end
 
 
 ---@param ctx doorbell.ctx
----@param start_time number
-function _M.log(ctx, start_time)
+function _M.stats_middleware(ctx)
   ---@type doorbell.rule
   local rule = ctx.rule
   if not rule then
@@ -639,8 +639,11 @@ function _M.log(ctx, start_time)
   end
 
   local time = now()
+  local start = start_time()
+
   stats.inc_match_count(rule, 1, time)
-  stats.set_last_match(rule, start_time, time)
+  stats.set_last_match(rule, start, time)
+
   if rule_actions then
     rule_actions:inc(1, { rule.action })
   end

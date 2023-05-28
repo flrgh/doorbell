@@ -6,16 +6,17 @@ local cjson = require "cjson"
 local safe_decode = require("cjson.safe").decode
 local nkeys = require "table.nkeys"
 
-local ngx             = ngx
-local print           = ngx.print
-local exit            = ngx.exit
-local get_body_data   = ngx.req.get_body_data
-local get_body_file   = ngx.req.get_body_file
-local read_body       = ngx.req.read_body
-local header          = ngx.header
-local get_query       = ngx.req.get_uri_args
-local get_req_headers = ngx.req.get_headers
-local get_post_args   = ngx.req.get_post_args
+local ngx                 = ngx
+local print               = ngx.print
+local exit                = ngx.exit
+local get_body_data       = ngx.req.get_body_data
+local get_body_file       = ngx.req.get_body_file
+local read_body           = ngx.req.read_body
+local header              = ngx.header
+local get_query           = ngx.req.get_uri_args
+local get_req_headers     = ngx.req.get_headers
+local get_post_args       = ngx.req.get_post_args
+local clear_req_header    = ngx.req.clear_header
 
 local open   = io.open
 local encode = cjson.encode
@@ -199,8 +200,22 @@ end
 _M.request.get_raw_body = get_request_body
 _M.request.get_json_body = get_json_request_body
 _M.request.get_post_args = get_request_post_args
+_M.request.clear_header = clear_req_header
 
 
+_M.request.middleware = {}
+
+---@param name string
+---@return doorbell.middleware
+function _M.request.middleware.clear_header(name)
+  if type(name) ~= "string" then
+    error("invalid header type", 2)
+  end
+
+  return function()
+    clear_req_header(name)
+  end
+end
 
 ---@param name string
 ---@param value string|string[]|nil

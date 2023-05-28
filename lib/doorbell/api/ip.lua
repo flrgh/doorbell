@@ -15,7 +15,7 @@ local get_query_arg = request.get_query_arg
 local MIME_TYPES = { "text/plain", "application/json" }
 
 local SHARED_MIDDLEWARE = {
-  [mw.phase.PRE_HANDLER] = {
+  [mw.phase.REWRITE] = {
     request.middleware.enable_logging,
   },
 }
@@ -28,7 +28,7 @@ routes["/ip/addr"] = {
   allow_untrusted = true,
 
   middleware      = {
-    [mw.phase.PRE_HANDLER] = {
+    [mw.phase.REWRITE] = {
       request.middleware.disable_logging,
     },
   },

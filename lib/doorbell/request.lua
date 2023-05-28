@@ -4,6 +4,7 @@ local ip      = require "doorbell.ip"
 local logger  = require "doorbell.log.request"
 local context = require "doorbell.request.context"
 local const   = require "doorbell.constants"
+local log     = require "doorbell.log"
 
 
 local ngx              = ngx
@@ -33,6 +34,7 @@ _M.get_json_body    = context.get_json_body
 _M.get_query_arg    = context.get_query_arg
 _M.get_header       = context.get_request_header
 _M.get_post_args    = context.get_post_args
+_M.get              = context.get
 
 
 ---@type table<string, doorbell.middleware>
@@ -61,9 +63,17 @@ function _M.middleware.enable_logging(ctx)
 end
 
 
-
 ---@param ctx doorbell.ctx
 function _M.log(ctx)
+  local incomplete
+
+  if not ctx.doorbell_init then
+    log.warn("generating a JSON log entry for a request that was not properly ",
+             "initialized--some log fields may be missing or incomplete")
+
+    incomplete = true
+  end
+
   if counter and not ctx.no_metrics then
     counter:inc(1, { tostring(ngx.status) })
 
@@ -143,6 +153,7 @@ function _M.log(ctx)
 
     -- meta
     version = const.version,
+    incomplete_entry = incomplete,
   }
 
   logger.add(entry)

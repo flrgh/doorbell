@@ -17,6 +17,7 @@ local http    = require "doorbell.http"
 local mware   = require "doorbell.middleware"
 local join    = require("doorbell.util").join
 local ip      = require "doorbell.ip"
+local manager = require "doorbell.rules.manager"
 
 local TARPIT_INTERVAL = const.periods.minute * 5
 local STATES          = const.states
@@ -215,10 +216,32 @@ function _M.GET(ctx)
 end
 
 _M.middleware = {
-  [mware.phase.PRE_HANDLER] = {
+  -- /ring is designed for use as a forward-auth endpoint for proxies and such.
+  --
+  -- If not properly configured, some proxies may forward _all_ headers from
+  -- the client, and we'll get some request headers that we didn't quite expect.
+  [mware.phase.REWRITE] = {
+    -- NGINX, being the well-behaved web server and proxy that it is, will check
+    -- HTTP precondition headers and return a 412 response because they are
+    -- nonsensical in this context, so we need to clear them.
+    --
+    -- https://www.rfc-editor.org/rfc/rfc9110.html#name-preconditions
+    http.request.middleware.clear_header("If-Match"),
+    http.request.middleware.clear_header("If-Modified-Since"),
+    http.request.middleware.clear_header("If-None-Match"),
+    http.request.middleware.clear_header("If-Range"),
+    http.request.middleware.clear_header("If-Unmodified-Since"),
+
+    -- range requests also don't make much sense here
+    http.request.middleware.clear_header("Range"),
+  },
+
+  [mware.phase.AUTH] = {
     ip.require_trusted_proxy,
   },
-  [mware.phase.POST_LOG] = {
+
+  [mware.phase.POST_RESPONSE] = {
+    manager.stats_middleware,
     request.release,
   }
 }

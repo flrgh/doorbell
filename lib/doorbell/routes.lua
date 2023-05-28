@@ -35,7 +35,7 @@ function _M.init(conf)
     description     = "who is it?",
     metrics_enabled = true,
     middleware      = {
-      [mw.phase.PRE_HANDLER] = {
+      [mw.phase.REWRITE] = {
         request.middleware.enable_logging,
       },
     },
@@ -79,7 +79,7 @@ function _M.init(conf)
     metrics_enabled = false,
     content_type    = "application/json",
     middleware      = {
-      [mw.phase.PRE_HANDLER] = {
+      [mw.phase.REWRITE] = {
         request.middleware.enable_logging,
       },
     },
@@ -118,7 +118,7 @@ function _M.init(conf)
     content_type    = "text/html",
     GET             = views.rule_list,
     middleware      = {
-      [mw.phase.PRE_HANDLER] = {
+      [mw.phase.REWRITE] = {
         request.middleware.enable_logging,
       },
     },
@@ -129,7 +129,7 @@ function _M.init(conf)
     description     = "stop asking me about this, browsers",
     metrics_enabled = false,
     middleware      = {
-      [mw.phase.PRE_HANDLER] = {
+      [mw.phase.REWRITE] = {
         request.middleware.disable_logging,
       },
     },

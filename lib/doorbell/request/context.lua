@@ -4,6 +4,7 @@ local _M = {}
 local ip = require "doorbell.ip"
 local util = require "doorbell.util"
 local http = require "doorbell.http"
+local log = require "doorbell.log"
 
 
 local ip_init_request = ip.init_request_ctx
@@ -16,6 +17,7 @@ local ngx             = ngx
 local var             = ngx.var
 local get_method      = ngx.req.get_method
 local get_path        = http.extract_path
+local get_phase       = ngx.get_phase
 
 
 ---@class doorbell.ctx : table
@@ -33,6 +35,7 @@ local get_path        = http.extract_path
 ---@field no_log            boolean
 ---@field no_metrics        boolean
 ---@field route             doorbell.route
+---@field route_match       table
 ---
 ---@field rule              doorbell.rule
 ---@field rule_cache_hit    boolean
@@ -47,6 +50,9 @@ local get_path        = http.extract_path
 ---@field scheme            string
 ---
 ---@field template?         any
+---
+---@field phase ngx.phase.name
+---@field doorbell_init boolean
 
 
 ---@param ctx? table
@@ -69,7 +75,7 @@ function _M.new(ctx)
   ctx.uri = uri
   ctx.path = get_path(ctx.uri)
 
-
+  ctx.doorbell_init = true
   return ctx
 end
 
@@ -157,6 +163,34 @@ function _M.get_post_args(ctx, optional)
   end
 
   return args
+end
+
+
+-- retrieve the current request context
+---@return doorbell.ctx|nil
+function _M.get()
+  ---@type doorbell.ctx
+  local ctx = ngx.ctx
+
+  local phase = get_phase()
+
+  if not ctx then
+    log.alert("request has no ngx.ctx table, phase: ", phase)
+    return http.send(500, "internal server error")
+  end
+
+  if not ctx.doorbell_init then
+    if phase == "log" then
+      log.warn("handling uninitialized request in the log phase")
+    else
+      log.alert("request context was not initialized properly, phase: ", phase)
+      return http.send(500, "internal server error")
+    end
+  end
+
+  ctx.phase = phase
+
+  return ctx
 end
 
 
