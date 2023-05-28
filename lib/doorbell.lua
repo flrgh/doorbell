@@ -54,14 +54,20 @@ local GLOBAL_PRE_HANDLER_MWARE = middleware.compile({
   http.CORS.middleware,
 })
 
-
-local function init_worker()
-  metrics.init_worker()
-  manager.init_worker()
-  request.init_worker()
-  cache.init_worker()
-  notify.init_worker()
-end
+-- keeping these in a single table ensures that we run init() and init_worker()
+-- functions in a consistent order
+local submodules = {
+  metrics,
+  cache,
+  ip,
+  views,
+  notify,
+  auth,
+  manager,
+  request,
+  ota,
+  routes,
+}
 
 
 local function init_agent()
@@ -74,16 +80,11 @@ function _M.init()
   env.init()
   config.init()
 
-  metrics.init(config)
-  cache.init(config)
-  ip.init(config)
-  views.init(config)
-  notify.init(config)
-  auth.init(config)
-  manager.init(config)
-  request.init(config)
-  ota.init(config)
-  routes.init(config)
+  for _, mod in ipairs(submodules) do
+    if type(mod.init) == "function" then
+      mod.init(config)
+    end
+  end
 
   assert(proc.enable_privileged_agent(10))
 
@@ -100,7 +101,11 @@ function _M.init_worker()
     return init_agent()
   end
 
-  return init_worker()
+  for _, mod in ipairs(submodules) do
+    if type(mod.init_worker) == "function" then
+      mod.init_worker()
+    end
+  end
 end
 
 

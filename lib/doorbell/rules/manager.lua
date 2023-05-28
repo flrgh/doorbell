@@ -586,23 +586,10 @@ function _M.version()
 end
 
 function _M.init_worker()
-  if metrics.enabled() then
-    rules_total = metrics.prometheus:gauge(
-      "rules_total",
-      "number of rules",
-      { "action", "source" }
-    )
+  if metrics.enabled() and ngx.worker.id() == 0 then
 
-    rule_actions = metrics.prometheus:counter(
-      "rule_actions",
-      "actions taken by rules",
-      { "action" }
-    )
-
-
-    if ngx.worker.id() ~= 0 then
-      return
-    end
+    rules_total = metrics.registry.rules_total
+    rule_actions = metrics.registry.rule_actions
 
     metrics.add_hook(function()
       -- rule counts

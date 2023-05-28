@@ -1,10 +1,10 @@
 local _M = {}
 
-local ip      = require "doorbell.ip"
 local logger  = require "doorbell.log.request"
 local context = require "doorbell.request.context"
 local const   = require "doorbell.constants"
 local log     = require "doorbell.log"
+local metrics = require "doorbell.metrics"
 
 
 local ngx              = ngx
@@ -19,13 +19,6 @@ local update_time      = ngx.update_time
 
 local WORKER_ID, WORKER_PID
 local LOG = true
-
----@type PrometheusCounter
-local counter
-
----@type PrometheusGauge
-local countries
-
 
 _M.new              = context.new
 _M.get_headers      = context.get_request_headers
@@ -74,11 +67,11 @@ function _M.log(ctx)
     incomplete = true
   end
 
-  if counter and not ctx.no_metrics then
-    counter:inc(1, { tostring(ngx.status) })
+  if metrics.enabled() and not ctx.no_metrics then
+    metrics.inc("requests_total", 1, { tostring(ngx.status) })
 
-    if countries and ctx.geoip_country_code then
-      countries:inc(1, { ctx.geoip_country_code })
+    if ctx.geoip_country_code then
+      metrics.inc("requests_by_country", 1, { ctx.geoip_country_code })
     end
   end
 
@@ -169,23 +162,6 @@ function _M.init_worker()
 
   if LOG then
     logger.init_worker()
-  end
-
-  local metrics = require "doorbell.metrics"
-  if metrics.enabled() then
-    counter = metrics.prometheus:counter(
-      "requests_total",
-      "total number of incoming requests",
-      { "status" }
-    )
-
-    if ip.geoip_enabled() then
-      countries = metrics.prometheus:counter(
-        "request_by_country",
-        "total number of incoming requests, by origin country code",
-        { "country" }
-      )
-    end
   end
 end
 
