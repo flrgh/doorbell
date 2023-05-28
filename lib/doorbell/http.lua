@@ -212,8 +212,22 @@ function _M.request.middleware.clear_header(name)
     error("invalid header type", 2)
   end
 
-  return function()
-    clear_req_header(name)
+  if log.IS_DEBUG then
+    local get_headers = _M.request.get_headers
+    return function()
+      local headers = get_headers()
+
+      if headers and headers[name] then
+        log.debugf("clearing client request header %q", name)
+      end
+
+      clear_req_header(name)
+    end
+
+  else
+    return function()
+      clear_req_header(name)
+    end
   end
 end
 
