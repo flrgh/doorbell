@@ -25,10 +25,10 @@ local lrucache = require "resty.lrucache"
 local tostring = tostring
 local pairs = pairs
 
----@type prometheus.counter
+---@type PrometheusCounter|prometheus.counter
 local cache_lookups
 
----@type prometheus.gauge
+---@type PrometheusGauge|prometheus.gauge
 local cache_entries
 
 ---@type table<doorbell.cache, string>
@@ -123,18 +123,8 @@ end
 
 function _M.init_worker()
   if metrics.enabled() then
-
-    cache_lookups = metrics.prometheus:counter(
-      "cache_lookups",
-      "LRU cache hit/miss counts",
-      { "name", "status" }
-    )
-
-    cache_entries = metrics.prometheus:gauge(
-      "cache_entries",
-      "number of items in the LRU cache(s)",
-      { "name" }
-    )
+    cache_lookups = metrics.registry.cache_lookups
+    cache_entries = metrics.registry.cache_entries
 
     metrics.add_hook(function()
       for c in pairs(registry) do

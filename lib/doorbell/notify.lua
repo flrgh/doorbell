@@ -4,6 +4,7 @@ local _M = {
 
 local log = require "doorbell.log"
 local util = require "doorbell.util"
+local metrics = require "doorbell.metrics"
 
 local UTC_OFFSET = 0
 
@@ -34,8 +35,6 @@ _M.level = {
 ---@field link?       string
 ---@field link_title? string
 
----@type prometheus.counter
-local metric
 
 ---@class doorbell.notify.period : table
 ---@field from integer
@@ -181,25 +180,7 @@ function _M.inc(status)
     return
   end
 
-  if not metric then
-    return
-  end
-
-  metric:inc(1, STATUS[status])
-end
-
-
-function _M.init_worker()
-  if not strategy then return end
-
-  local metrics = require "doorbell.metrics"
-  if metrics.enabled() then
-    metric = metrics.prometheus:counter(
-      "notifications_total",
-      "notifications for authorization requests (status = sent/failed/snoozed/answered)",
-      { "status" }
-    )
-  end
+  metrics.inc("notifications_total", 1, STATUS[status])
 end
 
 

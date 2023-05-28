@@ -45,4 +45,6 @@ function _M.init(conf)
   end
 end
 
+function _M.init_worker() end
+
 return _M

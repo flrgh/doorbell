@@ -1,6 +1,4 @@
-local _M = {
-  _VERSION = require("doorbell.constants").version,
-}
+local _M = {}
 
 local const = require "doorbell.constants"
 local util  = require "doorbell.util"

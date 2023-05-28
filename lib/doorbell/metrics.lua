@@ -1,5 +1,7 @@
+---@class doorbell.metrics
 local _M = {
-  _VERSION = require("doorbell.constants").version,
+  ---@type table<string, PrometheusGauge|PrometheusCounter|prometheus.counter|prometheus.gauge>
+  registry = {}
 }
 
 local const = require "doorbell.constants"
@@ -10,6 +12,9 @@ local pcall    = pcall
 local timer_at = ngx.timer.at
 local insert   = table.insert
 local exiting  = ngx.worker.exiting
+
+
+local registry = _M.registry
 
 local prometheus
 
@@ -26,7 +31,9 @@ local HOOKS = {}
 ---@type prometheus.counter
 local metric_errors
 
-local function run_hooks(premature)
+local hooks_first_run = false
+
+local function run_hooks(premature, once)
   if premature or exiting() then
     return
   end
@@ -39,7 +46,9 @@ local function run_hooks(premature)
     end
   end
 
-  if not exiting() then
+  hooks_first_run = true
+
+  if not exiting() and not once then
     assert(timer_at(interval, run_hooks))
   end
 end
@@ -55,10 +64,12 @@ function _M.init(conf)
     require("doorbell.router").add("/metrics", {
       description     = "prometheus metrics endpoint",
       allow_untrusted = true,
-      log_enabled     = false,
-      metrics_enabled = false,
       GET             = function()
         if enabled and prometheus then
+          if not hooks_first_run then
+            log.debug("running hooks for the first time in the request path")
+            run_hooks(false, true)
+          end
           prometheus:collect()
         end
       end,
@@ -69,24 +80,66 @@ end
 function _M.init_worker()
   if not enabled then return end
 
-  prometheus = require("prometheus").init(
+  prometheus = assert(require("prometheus").init(
     const.shm.metrics,
     {
       prefix            = "doorbell_",
       error_metric_name = "metric_errors_total",
     }
-  )
+  ))
 
   _M.prometheus = prometheus
 
   metric_errors = assert(prometheus.registry[prometheus.error_metric_name])
+
+  registry.rules_total = prometheus:gauge(
+    "rules_total",
+    "number of rules",
+    { "action", "source" }
+  )
+
+  registry.rule_actions = prometheus:counter(
+    "rule_actions",
+    "actions taken by rules",
+    { "action" }
+  )
+
+  registry.cache_lookups = prometheus:counter(
+    "cache_lookups",
+    "LRU cache hit/miss counts",
+    { "name", "status" }
+  )
+
+  registry.cache_entries = prometheus:gauge(
+    "cache_entries",
+    "number of items in the LRU cache(s)",
+    { "name" }
+  )
+
+  registry.notifications_total = prometheus:counter(
+    "notifications_total",
+    "notifications for authorization requests (status = sent/failed/snoozed/answered)",
+    { "status" }
+  )
+
+  registry.requests_total = prometheus:counter(
+    "requests_total",
+    "total number of incoming requests",
+    { "status" }
+  )
+
+  registry.requests_by_country = prometheus:counter(
+    "requests_by_country",
+    "total number of incoming requests, by origin country code",
+    { "country" }
+  )
 
   assert(timer_at(0, run_hooks))
 end
 
 ---@return boolean
 function _M.enabled()
-  return enabled and prometheus ~= nil
+  return enabled
 end
 
 ---@param fn function
@@ -94,6 +147,36 @@ function _M.add_hook(fn)
   if enabled then
     insert(HOOKS, fn)
   end
+end
+
+
+---@param name string
+---@param value integer
+---@param labels? string[]
+function _M.inc(name, value, labels)
+  if not enabled then return end
+
+  local metric = registry[name]
+  if not metric then
+    error("no such metric: " .. name, 2)
+  end
+
+  metric:inc(value, labels)
+end
+
+
+---@param name string
+---@param value integer
+---@param labels? string[]
+function _M.set(name, value, labels)
+  if not enabled then return end
+
+  local metric = registry[name]
+  if not metric then
+    error("no such metric: " .. name, 2)
+  end
+
+  metric:set(value, labels)
 end
 
 return _M

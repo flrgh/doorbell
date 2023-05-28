@@ -65,6 +65,12 @@ function _M.inspect(v)
   require("doorbell.log").stderr("\n\n" .. inspect(v) .. "\n\n")
 end
 
+---@param v any
+---@return string
+function _M.pretty_print(v)
+  return (require("pl.pretty").write(v))
+end
+
 
 ---@param len? integer # length in bytes
 ---@return string
