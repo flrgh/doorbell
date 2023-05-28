@@ -73,6 +73,11 @@ function _M.log(ctx)
     if ctx.geoip_country_code then
       metrics.inc("requests_by_country", 1, { ctx.geoip_country_code })
     end
+
+    local net = ctx.forwarded_network_tag
+    if net then
+      metrics.inc("requests_by_network", 1, { net })
+    end
   end
 
   if LOG == false or ctx.no_log then

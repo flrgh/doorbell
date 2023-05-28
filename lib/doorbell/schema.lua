@@ -21,10 +21,12 @@ local function map_schema(s, value, cb)
 
   if type(value) == "table" then
     if s.type == "object" then
-      assert(type(s.properties) == "table")
+      assert(type(s.properties) == "table" or type(s.patternProperties) == "table")
 
-      for name, sub in pairs(s.properties) do
-        value[name] = map_schema(sub, value[name], cb)
+      if s.properties then
+        for name, sub in pairs(s.properties) do
+          value[name] = map_schema(sub, value[name], cb)
+        end
       end
 
     elseif s.type == "array" then
@@ -129,6 +131,8 @@ end
 ---@field type "object"
 ---
 ---@field properties table<string, doorbell.schema>
+---
+---@field patternProperties table<string, doorbell.schema>
 ---
 ---@field additionalProperties boolean,
 ---
@@ -1132,16 +1136,32 @@ config.fields.approvals = {
 ---@alias doorbell.config.network_tags table<string, string>
 
 config.fields.network_tags = {
+  title = "doorbell.config.network_tags",
   description = "A mapping of network addresses (CIDR notation or individual IPs) to string labels",
   type = "object",
 
   patternProperties = {
     [".+"] = {
       type = "string",
-      post_validate = validate_cidr,
     },
   },
+
+  post_validate = function(tags)
+    if not tags then return true end
+
+    local ok, err = true, nil
+
+    for net in pairs(tags) do
+      if net ~= "default" then
+        ok, err = validate_cidr(net)
+        if not ok then break end
+      end
+    end
+
+    return ok, err
+  end,
 }
+validator(config.fields.network_tags)
 
 ---@type doorbell.schema.object
 config.entity = {
@@ -1205,6 +1225,7 @@ config.input = {
     geoip_country_db   = config.fields.geoip_country_db,
     log_path           = config.fields.log_path,
     metrics            = config.fields.metrics,
+    network_tags       = config.fields.network_tags,
     notify             = config.fields.notify,
     ota                = config.fields.ota,
     redirect_uri       = config.fields.redirect_uri,
