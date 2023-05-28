@@ -1,6 +1,6 @@
 local errlog = require "ngx.errlog"
 
-local sys_level = errlog.get_sys_filter_level()
+local get_level = errlog.get_sys_filter_level
 local raw_log   = errlog.raw_log
 local fmt       = string.format
 local rep       = string.rep
@@ -10,6 +10,8 @@ local rawset    = rawset
 local stdout    = io.stdout
 local stderr    = io.stderr
 
+local LEVEL = get_level()
+local IS_DEBUG = LEVEL >= ngx.DEBUG
 
 local levels_by_name = {
   debug  = ngx.DEBUG,
@@ -124,7 +126,9 @@ end
 ---@field alertf  doorbell.log.fnf
 ---@field emerg   doorbell.log.fn
 ---@field emergf  doorbell.log.fnf
-local log = setmetatable({}, {
+local log = {}
+
+setmetatable(log, {
   __index = function(self, k)
     rawset(self, k, noop)
     return noop
@@ -133,7 +137,7 @@ local log = setmetatable({}, {
 
 do
   for name, lvl in pairs(levels_by_name) do
-    if sys_level >= lvl then
+    if get_level() >= lvl then
       rawset(log, name, make_log(lvl, log_varargs))
       rawset(log, name .. "f", make_log(lvl, log_f))
     end
@@ -164,7 +168,7 @@ function log.stderrf(f, ...)
   log.stderr(fmt(f, ...))
 end
 
-
-
+log.LEVEL = LEVEL
+log.IS_DEBUG = IS_DEBUG
 
 return log
