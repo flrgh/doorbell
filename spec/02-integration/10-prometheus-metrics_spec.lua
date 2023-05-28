@@ -99,7 +99,7 @@ end
 
 ---@param name string
 ---@param labels? table<string, string>
----@return spec.testing.prometheus.metric[]
+---@return spec.testing.prometheus.metric[]|nil
 function metrics_mt:get(name, labels)
   local list = assert.is_table(self.by_name[name],
                                "unknown metric: " .. name)
@@ -116,6 +116,7 @@ function metrics_mt:get(name, labels)
     end
   end
 
+  if #found == 0 then found = nil end
   return found
 end
 
@@ -356,7 +357,7 @@ describe("prometheus metrics", function()
         client:get("/ring")
 
         test.await.truthy(function()
-          return get_metrics():have(name)
+          return get_metrics():get(name, labels)
         end, interval, 0.1)
 
         local before = get_metrics():get_value(name, labels)
@@ -371,6 +372,44 @@ describe("prometheus metrics", function()
       end
     end)
   end)
+
+  describe("doorbell_requests_by_route", function()
+    local name = "doorbell_requests_by_route"
+
+    it("measures the number of requests per route", function()
+      local addr = test.random_ipv4()
+      client:post("/rules", {
+        json = {
+          action = "allow",
+          addr = addr,
+          comment = "test for metrics",
+        }
+      })
+
+      client:reset()
+      client:add_x_forwarded_headers(addr, "GET", "http://foo.test/")
+      client:get("/ring")
+
+      local labels = { route = "ring" }
+
+      test.await.truthy(function()
+        return get_metrics():get(name, labels)
+      end, interval, 0.1)
+
+
+      local before = get_metrics():get_value(name, labels)
+
+      for _ = 1, 100 do
+        client:get("/ring")
+      end
+
+      test.await.truthy(function()
+        return (get_metrics():get_value(name, labels) - 100) >= before
+      end, 5, 0.1)
+    end)
+  end)
+
+
 end)
 
 

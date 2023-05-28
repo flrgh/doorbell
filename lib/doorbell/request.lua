@@ -78,6 +78,9 @@ function _M.log(ctx)
     if net then
       metrics.inc("requests_by_network", 1, { net })
     end
+
+    local route = (ctx.route and ctx.route.id) or "NONE"
+    metrics.inc("requests_by_route", 1, { route })
   end
 
   if LOG == false or ctx.no_log then
