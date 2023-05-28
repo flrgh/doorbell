@@ -6,10 +6,24 @@ local util = require "doorbell.util"
 
 ---@enum doorbell.middleware.phase
 _M.phase = {
-  PRE_AUTH = "pre-auth",
+  -- the rewrite phase is for performing any request/context mutations before
+  -- checking auth and handling a request
+  REWRITE = "rewrite",
+
+  -- the auth phase is for authentication and authorization
+  AUTH = "auth",
+
+  -- the pre-handler phase runs just before executing a route's content handler
   PRE_HANDLER = "pre-handler",
-  PRE_LOG = "pre-log",
-  POST_LOG = "log",
+
+  -- the log handler runs before serializing a request log entry and is
+  -- ideal for adding data to the request log
+  LOG = "log",
+
+  -- the post-response handler runs at the end of the log phase and is ideal
+  -- for things like releasing table pool objects, spawning timers for async
+  -- tasks, etc
+  POST_RESPONSE = "post-response",
 }
 
 util.error_on_missing_key(_M.phase, "middleware.phase")

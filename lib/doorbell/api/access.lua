@@ -44,7 +44,7 @@ end
 
 
 local  middleware = {
-  [mw.phase.PRE_HANDLER] = {
+  [mw.phase.REWRITE] = {
     request.middleware.enable_logging,
   },
 }

@@ -18,7 +18,7 @@ local get_query_arg = request.get_query_arg
 
 
 local MIDDLEWARE = {
-  [mw.phase.PRE_HANDLER] = {
+  [mw.phase.REWRITE] = {
     request.middleware.enable_logging,
   },
 }

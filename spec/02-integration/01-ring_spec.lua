@@ -137,6 +137,7 @@ describe("/ring", function()
     assert.same(403, client.response.status)
   end)
 
+
   it("responds to API updates", function()
     local ua = "api-test"
 
@@ -362,4 +363,33 @@ describe("/ring", function()
       end
     end)
   end)
+
+  describe("[bugs]", function()
+    it("ignores precondition request headers, if forwarded", function()
+      client:add_x_forwarded_headers("1.2.3.4", "GET", "http://test/")
+      client.headers["user-agent"] = "allow"
+
+      client.headers["If-Match"]            = [["c87e5c4cf8fabe8f75deadb57fba10a2"]]
+      client.headers["If-None-Match"]       = [["c87e5c4cf8fabe8f75deadb57fba10a2"]]
+      client.headers["If-Modified-Since"]   = [[Sat, 29 Oct 1994 19:43:31 GMT]]
+      client.headers["If-Unmodified-Since"] = [[Sat, 29 Oct 1994 19:43:31 GMT]]
+
+      client:send()
+      assert.is_nil(client.err)
+      assert.equals(200, client.response.status)
+    end)
+
+    it("ignores Range request header, if forwarded", function()
+      client:add_x_forwarded_headers("1.2.3.4", "GET", "http://test/")
+      client.headers["user-agent"] = "allow"
+
+      client.headers["Range"] = "i'm invalid, just ignore me"
+
+      client:send()
+      assert.is_nil(client.err)
+      assert.equals(200, client.response.status)
+    end)
+  end)
+
+
 end)
