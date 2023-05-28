@@ -1,6 +1,7 @@
 local _M = {}
 
 local util = require "doorbell.util"
+local middleware = require "doorbell.middleware"
 
 local cache = require("doorbell.cache").new("routes", 1000)
 
@@ -26,6 +27,7 @@ local set_response_header = require("doorbell.http").response.set_header
 ---@field PUT             doorbell.route.handler
 ---@field PATCH           doorbell.route.handler
 ---@field middleware      table<doorbell.middleware.phase, doorbell.middleware[]>
+---@field _middleware     table<doorbell.middleware.phase, doorbell.middleware>
 
 ---@class doorbell.route_list : table
 ---@field [1] string
@@ -72,6 +74,11 @@ function _M.add(path, route)
     plain[path .. "/"] = route
   end
 
+  route._middleware = {}
+  for _, phase in pairs(middleware.phase) do
+    local mws = route.middleware and route.middleware[phase]
+    route._middleware[phase] = middleware.compile(mws)
+  end
 end
 
 ---@class doorbell.route_match : table
@@ -109,6 +116,19 @@ function _M.on_match(_, route)
   local ct = route.content_type
   if ct then
     set_response_header("content-type", ct)
+  end
+end
+
+
+---@param phase doorbell.middleware.phase
+---@param ctx doorbell.ctx
+---@param route? doorbell.route
+---@param match? doorbell.route_match
+function _M.exec_middleware(phase, ctx, route, match)
+  route = route or ctx.route
+  if route then
+    match = match or ctx.route_match
+    route._middleware[phase](ctx, route, match)
   end
 end
 
