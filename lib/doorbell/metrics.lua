@@ -140,6 +140,12 @@ function _M.init_worker()
     { "network" }
   )
 
+  registry.requests_by_route = prometheus:counter(
+    "requests_by_route",
+    "total number of incoming requests, by route id",
+    { "route" }
+  )
+
   assert(timer_at(0, run_hooks))
 end
 
@@ -165,6 +171,9 @@ function _M.inc(name, value, labels)
   local metric = registry[name]
   if not metric then
     error("no such metric: " .. name, 2)
+
+  elseif not metric.inc then
+    error("invalid operation for metric type", 2)
   end
 
   metric:inc(value, labels)
@@ -180,6 +189,9 @@ function _M.set(name, value, labels)
   local metric = registry[name]
   if not metric then
     error("no such metric: " .. name, 2)
+
+  elseif not metric.set then
+    error("invalid operation for metric type", 2)
   end
 
   metric:set(value, labels)
