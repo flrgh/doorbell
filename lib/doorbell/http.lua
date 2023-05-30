@@ -299,7 +299,7 @@ do
     header["Access-Control-Expose-Headers"] = nil
 
     header["Access-Control-Allow-Credentials"] = "true"
-    header["Access-Control-Allow-Headers"] = "Authorization, Cookie"
+    header["Access-Control-Allow-Headers"] = "Authorization, Cookie, Content-Type"
   end
 end
 

@@ -37,10 +37,17 @@ describe("IP API", function()
       assert.is_nil(err)
       assert.same(200, res.status)
 
-      assert.response(res).header("access-control-allow-credentials")
-      assert.response(res).header("access-control-allow-headers")
-      assert.response(res).header("access-control-allow-origin")
-      assert.response(res).header("access-control-max-age")
+      local creds = assert.response(res).header("access-control-allow-credentials")
+      assert.same("true", creds)
+
+      local headers = assert.response(res).header("access-control-allow-headers")
+      assert.same("authorization, cookie, content-type", headers:lower())
+
+      local origin = assert.response(res).header("access-control-allow-origin")
+      assert.same("*", origin)
+
+      local age = assert.response(res).header("access-control-max-age")
+      assert.is_number(tonumber(age), "access-control-max-age was not a valid number")
     end)
 
     it("handles CORS pre-flight OPTIONS requests", function()
@@ -48,11 +55,17 @@ describe("IP API", function()
       assert.is_nil(err)
       assert.same(200, res.status)
 
-      assert.response(res).header("access-control-allow-credentials")
-      assert.response(res).header("access-control-allow-headers")
-      assert.response(res).header("access-control-allow-methods")
-      assert.response(res).header("access-control-allow-origin")
-      assert.response(res).header("access-control-max-age")
+      local creds = assert.response(res).header("access-control-allow-credentials")
+      assert.same("true", creds)
+
+      local headers = assert.response(res).header("access-control-allow-headers")
+      assert.same("authorization, cookie, content-type", headers:lower())
+
+      local origin = assert.response(res).header("access-control-allow-origin")
+      assert.same("*", origin)
+
+      local age = assert.response(res).header("access-control-max-age")
+      assert.is_number(tonumber(age), "access-control-max-age was not a valid number")
     end)
 
     it("reacts to the Accept header", function()
