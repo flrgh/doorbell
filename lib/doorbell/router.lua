@@ -6,7 +6,6 @@ local middleware = require "doorbell.middleware"
 local cache = require("doorbell.cache").new("routes", 1000)
 
 local re_match = ngx.re.match
-local assert   = assert
 local type     = type
 local set_response_header = require("doorbell.http").response.set_header
 
@@ -42,10 +41,21 @@ local regex = { n = 0 }
 ---@param path string
 ---@param route doorbell.route
 function _M.add(path, route)
-  assert(type(path) == "string", "path must be a string")
-  assert(type(route) == "table", "route must be a table")
+  if type(path) ~= "string" then
+    error("path must be a string", 2)
+  end
+
+  if type(route) ~= "table" then
+    error("route must be a table", 2)
+  end
+
+  if route.id ~= nil and type(route.id) ~= "string" then
+    error("route.id is required", 2)
+  end
 
   route.path = path
+
+  route.id = route.id or path:gsub("/", "-")
 
   if util.is_regex(path) then
     local re, err = util.validate_regex(path)
