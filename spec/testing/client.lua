@@ -232,34 +232,35 @@ function client:send()
 
     if check then
       local status = res.status
+      local ok, msg = true, nil
 
-      if check.gt then
-        assert(status > check.gt,
-               "status code " .. status .. " is <= " .. check.gt)
+      if ok and check.gt then
+        ok = status > check.gt
+        msg = "status code " .. status .. " is <= " .. check.gt
       end
 
-      if check.gte then
-        assert(status >= check.gte,
-               "status code " .. status .. " is < " .. check.gte)
+      if ok and check.gte then
+        ok = status >= check.gte
+        msg = "status code " .. status .. " is < " .. check.gte
       end
 
-      if check.lt then
-        assert(status < check.lt,
-               "status code " .. status .. " is >= " .. check.lt)
+      if ok and check.lt then
+        ok = status < check.lt
+        msg = "status code " .. status .. " is >= " .. check.lt
       end
 
-      if check.lte then
-        assert(status <= check.lte,
-               "status code " .. status .. " is > " .. check.lte)
+      if ok and check.lte then
+        ok = status <= check.lte
+        msg = "status code " .. status .. " is > " .. check.lte
       end
 
 
-      if check.eq then
-        assert(status == check.eq,
-               "status code " .. status .. " != " .. check.eq)
+      if ok and check.eq then
+        ok = status == check.eq
+        msg = "status code " .. status .. " != " .. check.eq
       end
 
-      if check.one_of then
+      if ok and check.one_of then
         local found = false
         for _, exp in ipairs(check.one_of) do
           if exp == status then
@@ -268,10 +269,12 @@ function client:send()
           end
         end
 
-        assert(found, "status code " .. status .. " was not one of "
-                   .. table.concat(check.one_of, ", "))
+        ok = found
+        msg = "status code " .. status .. " was not one of "
+              .. table.concat(check.one_of, ", ")
       end
 
+      assert(ok, { msg = msg, req = req, res = self.response })
     end
   end
 

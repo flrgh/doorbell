@@ -66,10 +66,12 @@ end
 
 ---@param name string
 ---@param labels table<string, string>
----@return number
+---@return number?
 function metrics_mt:get_value(name, labels)
   local list = self.by_name[name]
-  assert.is_table(list, "no metrics found for '" .. name .. "'")
+  if not list then
+    return
+  end
 
   ---@type spec.testing.prometheus.metric
   local found
@@ -84,10 +86,7 @@ function metrics_mt:get_value(name, labels)
     end
   end
 
-  assert.not_nil(found, "no metric found with name '" .. name .. "' and "
-                     .. "labels: " .. test.pretty_print(labels))
-
-  return found.value
+  return found and found.value
 end
 
 ---@param name string
@@ -123,11 +122,16 @@ end
 
 
 describe("prometheus metrics", function()
+  local interval = 1
+
   ---@type spec.testing.client
   local client
 
   ---@type spec.testing.nginx
   local nginx
+
+  ---@type spec.testing.client
+  local api
 
   ---@type doorbell.config
   local conf
@@ -202,11 +206,131 @@ describe("prometheus metrics", function()
     return metrics
   end
 
-  local interval = 1
+  local await_timeout = interval * 5
+
+  local await_metric = {
+    ---@param name string
+    ---@param labels? string[]
+    ---@return spec.testing.prometheus.metric[]
+    exists = function(name, labels)
+      local metrics
+
+      test.await.truthy(function()
+        metrics = get_metrics():get(name, labels)
+        return metrics and #metrics > 0
+      end, await_timeout, 0.1)
+
+      return metrics
+    end,
+
+    ---@param name string
+    ---@param labels? string[]
+    ---@param value number
+    ---@return number
+    gte = function(name, labels, value)
+      assert.is_number(value)
+
+      local new
+
+      test.await.truthy(function()
+        local metrics = get_metrics()
+        new = metrics:get_value(name, labels)
+        return new and new >= value
+      end, await_timeout, 0.1)
+
+      return new
+    end,
+
+
+    ---@param name string
+    ---@param labels? string[]
+    ---@param value number
+    ---@return number
+    gt = function(name, labels, value)
+      assert.is_number(value)
+
+      local new
+
+      test.await.truthy(function()
+        local metrics = get_metrics()
+        new = metrics:get_value(name, labels)
+        return new and new > value
+      end, await_timeout, 0.1)
+
+      return new
+    end,
+
+    ---@param name string
+    ---@param labels? string[]
+    ---@param value number
+    eq = function(name, labels, value)
+      assert.is_number(value)
+
+      test.await.truthy(function()
+        local metrics = get_metrics()
+        local new = metrics:get_value(name, labels)
+        return new and new == value
+      end, await_timeout, 0.1)
+    end,
+
+
+    ---@param name string
+    ---@param labels? string[]
+    ---@return number
+    value = function(name, labels)
+      local value
+
+      test.await.truthy(function()
+        value = get_metrics():get_value(name, labels)
+        return value
+      end, await_timeout, 0.1)
+
+      return value
+    end,
+
+    ---@param name string
+    ---@param labels? string[]
+    ---@param value number
+    ---@return number
+    lt = function(name, labels, value)
+      assert.is_number(value)
+
+      local new
+
+      test.await.truthy(function()
+        local metrics = get_metrics()
+        new = metrics:get_value(name, labels)
+        return new and new < value
+      end, await_timeout, 0.1)
+
+      return new
+    end,
+
+    ---@param name string
+    ---@param labels? string[]
+    ---@param value number
+    ---@return number
+    lte = function(name, labels, value)
+      assert.is_number(value)
+
+      local new
+
+      test.await.truthy(function()
+        local metrics = get_metrics()
+        new = metrics:get_value(name, labels)
+        return new and new <= value
+      end, await_timeout, 0.1)
+
+      return new
+    end,
+  }
+
+
 
   lazy_setup(function()
     conf = test.config()
     conf.trusted = { "0.0.0.0/0" }
+    conf.unauthorized = "redirect-for-approval"
 
     conf.metrics = {
       interval = interval,
@@ -226,9 +350,17 @@ describe("prometheus metrics", function()
     metrics_client.assert_status.GET = { eq = 200 }
 
     client = nginx:add_client(test.client())
+    api = nginx:add_client(test.client())
+  end)
 
+  before_each(function()
+    client:reset()
     client.assert_status.POST = { eq = 201 }
     client.assert_status.GET = { eq = 200 }
+
+    api:reset()
+    api.assert_status.POST = { eq = 201 }
+    api.assert_status.GET = { eq = 200 }
   end)
 
   lazy_teardown(function()
@@ -238,17 +370,9 @@ describe("prometheus metrics", function()
   describe("doorbell_rules_total", function()
     local name = "doorbell_rules_total"
 
-    lazy_setup(function()
-      test.await.truthy(function()
-        return get_metrics():have(name)
-      end, interval, 0.1)
-    end)
-
     it("measures the number of rule entities", function()
-      local metrics = get_metrics()
-
       local labels = { action = "allow", source = "api" }
-      local before = metrics:get_value(name, labels)
+      local before = await_metric.value(name, labels)
 
       client:post("/rules", {
         json = {
@@ -260,18 +384,16 @@ describe("prometheus metrics", function()
 
       local id = assert.is_string(client.response.json.id)
 
-      test.await.truthy(function()
-        return get_metrics():get_value(name, labels) > before
-      end, 5, 0.1)
+      await_metric.gt(name, labels, before)
 
       client:delete("/rules/" .. id)
 
-      test.await.truthy(function()
-        return get_metrics():get_value(name, labels) == before
-      end, 5, 0.1)
+      await_metric.eq(name, labels, before)
     end)
 
     it("labels by rule.action", function()
+      await_metric.exists(name)
+
       local metrics = get_metrics()
 
       for _, action in pairs(const.actions) do
@@ -282,6 +404,8 @@ describe("prometheus metrics", function()
     end)
 
     it("labels by rule.source", function()
+      await_metric.exists(name)
+
       local metrics = get_metrics()
 
       for _, source in pairs(const.sources) do
@@ -294,12 +418,6 @@ describe("prometheus metrics", function()
 
   describe("doorbell_requests_total", function()
     local name = "doorbell_requests_total"
-
-    lazy_setup(function()
-      test.await.truthy(function()
-        return get_metrics():have(name)
-      end, interval, 0.1)
-    end)
 
     it("is a counter representing the number of requests", function()
       local addr = test.random_ipv4()
@@ -316,15 +434,13 @@ describe("prometheus metrics", function()
       client:get("/ring")
 
       local labels = { status = "200" }
-      local before = get_metrics():get_value(name, labels)
+      local before = await_metric.gte(name, labels, 1)
 
       for _ = 1, 100 do
         client:get("/ring")
       end
 
-      test.await.truthy(function()
-        return (get_metrics():get_value(name, labels) - 100) >= before
-      end, 5, 0.1)
+      await_metric.gte(name, labels, before + 100)
     end)
   end)
 
@@ -356,19 +472,13 @@ describe("prometheus metrics", function()
         client:add_x_forwarded_headers(addr, "GET", "http://foo.test" .. path)
         client:get("/ring")
 
-        test.await.truthy(function()
-          return get_metrics():get(name, labels)
-        end, interval, 0.1)
-
-        local before = get_metrics():get_value(name, labels)
+        local before = await_metric.gte(name, labels, 1)
 
         for _ = 1, 100 do
           client:get("/ring")
         end
 
-        test.await.truthy(function()
-          return (get_metrics():get_value(name, labels) - 100) >= before
-        end, 5, 0.1)
+        await_metric.gte(name, labels, before + 100)
       end
     end)
   end)
@@ -391,25 +501,95 @@ describe("prometheus metrics", function()
       client:get("/ring")
 
       local labels = { route = "ring" }
-
-      test.await.truthy(function()
-        return get_metrics():get(name, labels)
-      end, interval, 0.1)
-
-
-      local before = get_metrics():get_value(name, labels)
+      local before = await_metric.gte(name, labels, 1)
 
       for _ = 1, 100 do
         client:get("/ring")
       end
 
-      test.await.truthy(function()
-        return (get_metrics():get_value(name, labels) - 100) >= before
-      end, 5, 0.1)
+      await_metric.gte(name, labels, before + 100)
     end)
   end)
 
+  describe("doorbell_access_requests", function()
+    local name = "doorbell_access_requests"
 
+    it("measures pending access requests", function()
+      local labels = { state = "pending" }
+
+      client.assert_status.GET = { eq = 302 }
+
+      local addr = test.random_ipv4()
+      client:add_x_forwarded_headers(addr, "GET", "http://foo.test/")
+      client:get("/ring")
+
+      api:get("/access/pending")
+      assert.is_table(api.response.json)
+      assert.is_table(api.response.json.data)
+      assert.is_table(api.response.json.data[1])
+
+      local before = await_metric.gte(name, labels, 1)
+
+      addr = test.random_ipv4()
+      client:add_x_forwarded_headers(addr, "GET", "http://foo.test/")
+      client:get("/ring")
+
+      await_metric.gt(name, labels, before)
+
+      api:get("/access/pending")
+      assert.is_table(api.response.json)
+      assert.is_table(api.response.json.data)
+
+      for _, item in ipairs(api.response.json.data) do
+        api:post("/access/intent", {
+          json = {
+            token = item.token,
+            scope = "global",
+            subject = "addr",
+            ttl = 300,
+            action = "deny",
+          }
+        })
+      end
+
+      await_metric.lt(name, labels, before)
+    end)
+
+    it("measures pre-approved access requests", function()
+      local labels = { state = "pre-approved" }
+
+      local addrs = {}
+
+      local count = 3
+
+      for i = 1, count do
+        api:reset()
+
+        local addr = test.random_ipv4()
+        api.headers["x-forwarded-for"] = addr
+
+        api:post("/access/pre-approval", {
+          json = {
+            subject = "addr",
+            scope = "global",
+            ttl = 300,
+          },
+        })
+
+        addrs[i] = addr
+      end
+
+      local value = await_metric.gte(name, labels, count)
+
+      for _, addr in ipairs(addrs) do
+        client:reset()
+        client:add_x_forwarded_headers(addr, "GET", "http://foo.test/")
+        client:get("/ring")
+      end
+
+      await_metric.lte(name, labels, value - count)
+    end)
+  end)
 end)
 
 

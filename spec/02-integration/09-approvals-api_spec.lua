@@ -180,7 +180,7 @@ describe("access API", function()
       nginx:restart()
     end)
 
-    it("#only encodes an empty array properly", function()
+    it("encodes an empty array properly", function()
       client:get("/access/pending")
       local data = assert.is_table(client.response.json and client.response.json.data)
       assert.same(0, #data)
