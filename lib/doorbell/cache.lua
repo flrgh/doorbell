@@ -34,44 +34,59 @@ local cache_entries
 ---@type table<doorbell.cache, string>
 local registry = {}
 
+
+---@param key string
+---@return any
+function cache:raw_get(key)
+  local value, stale = self.lru:get(key)
+
+  if value ~= nil then
+    debugf("[%s] cache HIT for %s => %q", self.name, key, tostring(value))
+    self.hit = self.hit + 1
+  else
+    if stale == nil then
+      debugf("[%s] cache MISS for %s", self.name, key)
+      self.miss = self.miss + 1
+    else
+      debugf("[%s] cache EXPIRE for %s", self.name, key)
+      self.expire = self.expire + 1
+    end
+  end
+
+  return value
+end
+
+
 ---@param ns string
 ---@param key string
 ---@return any
 function cache:get(ns, key)
   local cache_key = ns .. "::" .. key
-
-  local value, stale = self.lru:get(cache_key)
-
-  if value ~= nil then
-    debugf("cache HIT for %s => %q", cache_key, tostring(value))
-    self.hit = self.hit + 1
-  else
-    if stale == nil then
-      debugf("cache MISS for %s", cache_key)
-      self.miss = self.miss + 1
-    else
-      debugf("cache EXPIRE for %s", cache_key)
-      self.expire = self.expire + 1
-    end
-  end
-  return value
+  return self:raw_get(cache_key)
 end
+
+---@param key string
+---@param value any
+---@param ttl?  number
+function cache:raw_set(key, value, ttl)
+  if ttl == 0 then
+    ttl = nil
+  elseif ttl and ttl < 0 then
+    debugf("[%s] not caching already-expired item ", self.name, key)
+    return
+  end
+
+  self.lru:set(key, value, ttl)
+end
+
 
 ---@param ns    string
 ---@param key   string
 ---@param value any
 ---@param ttl?  number
 function cache:set(ns, key, value, ttl)
-  if ttl == 0 then
-    ttl = nil
-  elseif ttl and ttl < 0 then
-    debugf("not caching already-expired item %s:%s", ns, key)
-    return
-  end
-
   local cache_key = ns .. "::" .. key
-
-  self.lru:set(cache_key, value, ttl)
+  self:raw_set(cache_key, value, ttl)
 end
 
 function cache:count()

@@ -230,6 +230,7 @@ describe("access API", function()
 
       assert.same({
         addr   = addr,
+        asn    = 0,
         scheme = "http",
         host   = "approvals.test",
         path   = "/by-token",
@@ -261,6 +262,7 @@ describe("access API", function()
 
       assert.same({
         addr   = addr,
+        asn    = 0,
         scheme = "http",
         host   = "approvals.test",
         path   = "/with-ip-address",

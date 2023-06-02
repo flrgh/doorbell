@@ -1,12 +1,16 @@
-local _M = {
-  _VERSION = require("doorbell.constants").version,
-}
+local _M = {}
 
 local log = require "doorbell.log"
 local util = require "doorbell.util"
 
 ---@class doorbell.cache
 local cache
+
+---@class doorbell.cache
+local cache_basic
+
+---@class doorbell.cache
+local cache_geo
 
 local ipmatcher = require "resty.ipmatcher"
 local split = require("ngx.re").split
@@ -18,9 +22,11 @@ local HTTP_FORBIDDEN = ngx.HTTP_FORBIDDEN
 local EMPTY = {}
 local fmt = string.format
 local encode_args = ngx.encode_args
+local type = type
 
 local parse_ipv4 = ipmatcher.parse_ipv4
 local parse_ipv6 = ipmatcher.parse_ipv6
+
 
 ---@param ip string
 ---@return 4|6|nil
@@ -35,7 +41,7 @@ end
 
 
 ---@type resty.ipmatcher
-local trusted
+local trusted_ips
 
 ---@type table<string, string>
 local country_names = require "doorbell.ip.countries"
@@ -102,14 +108,7 @@ local function lookup_country_code(addr)
 end
 
 local function is_trusted(ip)
-  local trust = cache:get("trusted", ip)
-
-  if trust == nil then
-    trust = (trusted:match(ip) and true) or false
-    cache:set("trusted", ip, trust)
-  end
-
-  return trust
+  return (trusted_ips:match(ip) and true) or false
 end
 
 
@@ -147,6 +146,17 @@ local function add_map_links(info)
 end
 
 
+
+---@class doorbell.ip.info.basic : table
+---
+---@field asn         integer
+---@field country     string
+---@field net_tag     string
+---@field org         string
+---@field private     boolean
+---@field trusted     boolean
+
+
 ---@class doorbell.ip.info : table
 ---
 ---@field addr             string
@@ -169,7 +179,7 @@ end
 
 ---@return doorbell.ip.info?
 local function get_ip_info(addr)
-  local info = cache:get("geoip-info", addr)
+  local info = cache_geo:raw_get(addr)
   if info ~= nil then
     return info or nil
   end
@@ -185,7 +195,7 @@ local function get_ip_info(addr)
   end
 
   if not geo and not asn then
-    cache:set("geoip-info", addr, false)
+    cache_geo:raw_set(addr, false)
     return
   end
 
@@ -225,7 +235,7 @@ local function get_ip_info(addr)
 
   add_map_links(info)
 
-  cache:set("geoip-info", addr, info)
+  cache_geo:raw_set(addr, info)
 
   return info
 end
@@ -251,16 +261,9 @@ _M.localhost = localhost_matcher
 ---@param ip string
 ---@return boolean
 local function is_private(ip)
-  local private = cache:get("is-private", ip)
-  if private == nil then
-    private = (private_matcher:match(ip)
-               or localhost_matcher:match(ip)
-               and true) or false
-
-    cache:set("is-private", ip, private)
-  end
-
-  return private
+  return (private_matcher:match(ip)
+          or localhost_matcher:match(ip)
+          and true) or false
 end
 
 
@@ -304,37 +307,6 @@ function _M.get_country_name(code)
 end
 
 
----@param addr string
----@return string? country_code
----@return string? country_name_or_error
-local function get_country(addr)
-  if not LOCATION_DB then return nil, "geoip not enabled" end
-
-  assert(cache, "doorbell.ip module not initialized")
-
-  local country = cache:get("geoip", addr)
-
-  if country == false then
-    return nil, nil
-  elseif country then
-    return country, country_names[country]
-  end
-
-  local err
-  country, err = lookup_country_code(addr)
-  if country then
-    cache:set("geoip", addr, country)
-    return country, country_names[country]
-  end
-
-  if err == "failed to find entry" or err == nil then
-    cache:set("geoip", addr, false)
-    err = nil
-  end
-
-  return nil, err
-end
-
 
 ---@param addr string
 ---
@@ -344,8 +316,6 @@ end
 function _M.get_net_info(addr)
   if not ASN_DB then return nil, nil, "asn not enabled" end
 
-  assert(cache, "doorbell.ip module not initialized")
-
   local info = get_ip_info(addr)
   if not info then
     return nil, nil, "no IP info for " .. addr
@@ -353,7 +323,6 @@ function _M.get_net_info(addr)
 
   return info.asn, info.org
 end
-local get_net_info = _M.get_net_info
 
 
 local function get_forwarded(forwarded, pos)
@@ -478,9 +447,9 @@ do
   local DEFAULT
 
   ---@param addr string
-  ---@return string|nil
-  local function lookup_tag(addr)
-    local tag = DEFAULT
+  ---@return string
+  function get_network_tag(addr)
+    local tag = DEFAULT or "default"
 
     for i = 1, TAGS_N do
       local t = TAGS[i]
@@ -493,21 +462,6 @@ do
     return tag
   end
 
-  ---@param addr string
-  ---@return string|nil tag
-  function get_network_tag(addr)
-    local tag = cache:get("tag", addr)
-
-    if tag ~= nil then
-      return tag or nil
-    end
-
-    tag = lookup_tag(addr) or false
-
-    cache:set("tag", addr, tag)
-
-    return tag
-  end
 
   ---@param network_tags doorbell.config.network_tags
   function init_network_tags(network_tags)
@@ -571,6 +525,53 @@ do
   end
 end
 
+
+---@param addr string
+---@return doorbell.ip.info.basic
+local function get_basic_info(addr)
+  local info = cache_basic:raw_get(addr)
+
+  if info ~= nil then
+    return info
+  end
+
+  local trusted = is_trusted(addr)
+  local private = is_private(addr)
+
+  local country
+
+  local asn = 0
+  local org
+
+  if not private then
+    country = lookup_country_code(addr)
+
+    if ASN_DB then
+      local data = ASN_DB:lookup(addr)
+      if data then
+        asn = data.autonomous_system_number
+        org = data.autonomous_system_organization
+      end
+    end
+  end
+
+  local tag = get_network_tag(addr)
+
+  info = {
+    asn     = asn,
+    country = country,
+    net_tag = tag,
+    org     = org,
+    private = private,
+    trusted = trusted,
+  }
+
+  cache_basic:raw_set(addr, info)
+
+  return info
+end
+
+
 --- Decorate the request context with IP-related fields:
 ---
 --- - client_addr
@@ -586,11 +587,13 @@ end
 function _M.init_request_ctx(ctx)
   local client_addr = var.realip_remote_addr or var.remote_addr
   ctx.client_addr = client_addr
-  ctx.is_trusted_proxy = false
+
+  local client = get_basic_info(client_addr)
+  ctx.client_network_tag = client.net_tag
 
   local forwarded_addr = client_addr
 
-  if is_trusted(client_addr) then
+  if client.trusted then
     ctx.is_trusted_proxy = true
 
     local header = var.http_x_forwarded_for or var.http_x_real_ip
@@ -607,19 +610,18 @@ function _M.init_request_ctx(ctx)
 
   ctx.forwarded_addr = forwarded_addr
 
-  if not is_private(forwarded_addr) then
-    ctx.geoip_country_code = get_country(forwarded_addr)
-    ctx.geoip_net_asn, ctx.geoip_net_org = get_net_info(forwarded_addr)
+  if forwarded_addr == client_addr then
+    ctx.geoip_country_code      = client.country
+    ctx.geoip_net_asn           = client.asn
+    ctx.geoip_net_org           = client.org
+    ctx.forwarded_network_tag   = client.net_tag
 
   else
-    ctx.geoip_net_asn = 0
-  end
-
-  ctx.client_network_tag = get_network_tag(client_addr)
-  if forwarded_addr ~= client_addr then
-    ctx.forwarded_network_tag = get_network_tag(forwarded_addr)
-  else
-    ctx.forwarded_network_tag = ctx.client_network_tag
+    local forwarded = get_basic_info(forwarded_addr)
+    ctx.geoip_country_code      = forwarded.country
+    ctx.geoip_net_asn           = forwarded.asn
+    ctx.geoip_net_org           = forwarded.org
+    ctx.forwarded_network_tag   = forwarded.net_tag
   end
 end
 
@@ -656,15 +658,17 @@ function _M.init(opts)
 
   local trusted_cidrs = opts.trusted
   if trusted_cidrs then
-    trusted = assert(ipmatcher.new(trusted_cidrs))
+    trusted_ips = assert(ipmatcher.new(trusted_cidrs))
   else
     log.warnf("using default trusted IP range (%s)", table.concat(_M.localhost_cidrs, ","))
-    trusted = _M.localhost
+    trusted_ips = _M.localhost
   end
 
   init_network_tags(opts.network_tags)
 
-  cache = require "doorbell.cache"
+  cache       = require("doorbell.cache")
+  cache_basic = require("doorbell.cache").new("ip-basic", 2000)
+  cache_geo   = require("doorbell.cache").new("ip-geo", 2000)
 end
 
 
