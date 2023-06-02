@@ -8,6 +8,7 @@ local notify  = require "doorbell.notify"
 local util    = require "doorbell.util"
 local schema  = require "doorbell.schema"
 local api     = require "doorbell.rules.api"
+local metrics = require "doorbell.metrics"
 
 local random     = require "resty.random"
 local str        = require "resty.string"
@@ -543,6 +544,29 @@ function _M.list_approvals(state)
   end
 
   return values
+end
+
+
+function _M.update_access_metrics()
+  ---@type table<doorbell.auth.access.pending.type, integer>
+  local counts = {
+    [STATES.pending] = 0,
+    [STATES.pre_approved] = 0,
+  }
+
+  local keys = assert(APPROVALS:get_keys(0))
+
+  for _, key in ipairs(keys) do
+    local _, flags = APPROVALS:get(key)
+    local state = flags and state_type(flags)
+    if state and state ~= STATES.none then
+      counts[state] = counts[state] + 1
+    end
+  end
+
+  for state, count in pairs(counts) do
+    metrics.set("access_requests", count, { state })
+  end
 end
 
 

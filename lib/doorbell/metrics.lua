@@ -146,6 +146,13 @@ function _M.init_worker()
     { "route" }
   )
 
+  registry.access_requests = prometheus:gauge(
+    "access_requests",
+    "measures the current number of access requests awaiting action",
+    { "state" }
+  )
+
+
   assert(timer_at(0, run_hooks))
 end
 
