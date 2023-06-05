@@ -153,6 +153,17 @@ function _M.init_worker()
     { "state" }
   )
 
+  registry.nginx_timers = prometheus:gauge(
+    "nginx_timers",
+    "nginx running/pending timer counts",
+    { "state" }
+  )
+
+  registry.nginx_worker_respawns = assert(prometheus:counter(
+    "nginx_worker_respawns",
+    "nginx worker respawn counts",
+    { "type" }
+  ))
 
   assert(timer_at(0, run_hooks))
 end

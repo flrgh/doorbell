@@ -19,6 +19,11 @@ local headers_mt = {
   end,
 }
 
+local function is_conn_err(e)
+  return e == "closed"
+      or e == "broken pipe"
+      or e == "connection reset by peer"
+end
 
 ---@param req spec.testing.client.request
 local function prepare(req)
@@ -46,6 +51,84 @@ local function prepare(req)
     req.headers["content-type"] = "application/x-www-form-urlencoded"
   end
 end
+
+---@param res resty.http.response
+---@return spec.testing.client.response
+local function new_response(res)
+  local ct = res.headers["content-type"] or ""
+  local body, json
+  if res.has_body then
+    body = assert(res:read_body())
+    if ct:find("application/json", 1, true) then
+      json = cjson.decode(body)
+    end
+  end
+
+  return {
+    status  = res.status,
+    headers = _M.headers(res.headers),
+    body    = body,
+    json    = json,
+    id      = res.headers[const.headers.request_id],
+  }
+end
+
+
+---@param self spec.testing.client
+---@param req spec.testing.client.request
+---@param res spec.testing.client.response
+local function check_response(self, req, res)
+  local method = req.method or "GET"
+  local check = self.assert_status[method]
+
+  if check then
+    local status = res.status
+    local ok, msg = true, nil
+
+    if ok and check.gt then
+      ok = status > check.gt
+      msg = "status code " .. status .. " is <= " .. check.gt
+    end
+
+    if ok and check.gte then
+      ok = status >= check.gte
+      msg = "status code " .. status .. " is < " .. check.gte
+    end
+
+    if ok and check.lt then
+      ok = status < check.lt
+      msg = "status code " .. status .. " is >= " .. check.lt
+    end
+
+    if ok and check.lte then
+      ok = status <= check.lte
+      msg = "status code " .. status .. " is > " .. check.lte
+    end
+
+
+    if ok and check.eq then
+      ok = status == check.eq
+      msg = "status code " .. status .. " != " .. check.eq
+    end
+
+    if ok and check.one_of then
+      local found = false
+      for _, exp in ipairs(check.one_of) do
+        if exp == status then
+          found = true
+          break
+        end
+      end
+
+      ok = found
+      msg = "status code " .. status .. " was not one of "
+            .. table.concat(check.one_of, ", ")
+    end
+
+    assert(ok, { msg = msg, req = req, res = self.response })
+  end
+end
+
 
 ---@alias spec.testing.client.headers table<string, string|string[]>
 
@@ -176,55 +259,38 @@ function client:send()
     req.headers[k] = v
   end
 
+
   self.httpc:set_timeout(self.timeout or 5000)
 
   local res, err = self.httpc:request(req)
   self.err = err
 
-  if (err == "closed" or err == "broken pipe") and self.reopen then
-    self.need_connect = true
-    self.reopen = false
-    self:send()
+  if res then
+    self.response = new_response(res)
 
-    res = self.response
-    err = self.err
-    self.reopen = true
-  end
+    local conn = res.headers.connection or ""
+    if conn:find("close", 1, true) then
+      self:close()
+    end
 
-  if not res then
+    check_response(self, req, self.response)
+
+  else
     self:close()
-    self.need_connect = true
 
-    if self.raise_on_request_error then
+    if is_conn_err(err) and self.reopen then
+      self.reopen = false
+
+      self:send()
+
+      self.reopen = true
+
+    elseif self.raise_on_request_error then
       error("failed to send request: " .. tostring(err))
     end
 
     return nil, err
   end
-
-  local body, json
-  if res.has_body then
-    body = res:read_body()
-    local ct = res.headers["content-type"] or ""
-    if ct:find("application/json", 1, true) then
-      json = cjson.decode(body)
-    end
-  end
-
-  local conn = res.headers.connection or ""
-  if conn:find("close", 1, true) then
-    self:close()
-    self.need_connect = true
-  end
-
-
-  self.response = {
-    status  = res.status,
-    headers = _M.headers(res.headers),
-    body    = body,
-    json    = json,
-    id      = res.headers[const.headers.request_id],
-  }
 
   do
     local method = req.method or "GET"

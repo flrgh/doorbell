@@ -21,8 +21,7 @@ local http    = require "doorbell.http"
 local ota     = require "doorbell.ota"
 local env     = require "doorbell.env"
 local middleware = require "doorbell.middleware"
-
-local proc       = require "ngx.process"
+local nginx = require "doorbell.nginx"
 
 local ngx        = ngx
 local assert     = assert
@@ -69,14 +68,18 @@ local submodules = {
   routes,
 }
 
-
 local function init_agent()
-  manager.init_agent()
-  ota.init_agent()
+  for _, mod in ipairs(submodules) do
+    local handler = rawget(mod, "init_agent") or rawget(mod, "init_worker")
+    if type(handler) == "function" then
+      handler()
+    end
+  end
 end
 
 
 function _M.init()
+  nginx.init()
   env.init()
   config.init()
 
@@ -85,8 +88,6 @@ function _M.init()
       mod.init(config)
     end
   end
-
-  assert(proc.enable_privileged_agent(10))
 
   manager.reload()
 end
@@ -97,13 +98,16 @@ function _M.init_worker()
 
   require("resty.jit-uuid").seed()
 
-  if proc.type() == "privileged agent" then
-    return init_agent()
-  end
+  nginx.init_worker()
 
-  for _, mod in ipairs(submodules) do
-    if type(mod.init_worker) == "function" then
-      mod.init_worker()
+  if nginx.process.is_agent then
+    init_agent()
+
+  else
+    for _, mod in ipairs(submodules) do
+      if type(mod.init_worker) == "function" then
+        mod.init_worker()
+      end
     end
   end
 end

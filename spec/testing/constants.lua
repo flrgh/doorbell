@@ -1,6 +1,6 @@
 local const = {}
 
-local nginx = require("doorbell.nginx")
+local nginx_conf = require("doorbell.nginx.conf")
 local join = require("spec.testing.fs").join
 
 const.ROOT_DIR = os.getenv("PWD") or "."
@@ -19,7 +19,7 @@ const.GEOIP_COUNTRY_DB = join(const.ROOT_DIR, "geoip", "GeoLite2-Country-Test.mm
 
 const.GEOIP_ASN_DB = join(const.ROOT_DIR, "geoip", "GeoLite2-ASN-Test.mmdb")
 
-const.LUA_PATH = nginx.lua_path(
+const.LUA_PATH = nginx_conf.lua_path(
   const.ROOT_DIR,
   join(const.ROOT_DIR, "lib")
 )

@@ -141,6 +141,7 @@ function _M.init(conf)
   add_submodule_routes("doorbell.api.schema")
   add_submodule_routes("doorbell.api.ip")
   add_submodule_routes("doorbell.api.rules")
+  add_submodule_routes("doorbell.api.nginx")
 end
 
 return _M
