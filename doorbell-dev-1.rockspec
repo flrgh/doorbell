@@ -23,7 +23,7 @@ build = {
     ["doorbell.api.rules"] = "lib/doorbell/api/rules.lua",
     ["doorbell.api.access"] = "lib/doorbell/api/access.lua",
     ["doorbell.api.schema"] = "lib/doorbell/api/schema.lua",
-
+    ["doorbell.api.nginx"] = "lib/doorbell/api/nginx.lua",
 
     ["doorbell.cache"] = "lib/doorbell/cache.lua",
 
@@ -44,7 +44,8 @@ build = {
     ["doorbell.middleware"] = "lib/doorbell/middleware.lua",
 
     ["doorbell.nginx"] = "lib/doorbell/nginx.lua",
-    ["doorbell.nginx.defaults"] = "lib/doorbell/nginx/defaults.lua",
+    ["doorbell.nginx.conf"] = "lib/doorbell/nginx/conf.lua",
+    ["doorbell.nginx.conf.defaults"] = "lib/doorbell/nginx/conf/defaults.lua",
 
     ["doorbell.notify"] = "lib/doorbell/notify.lua",
     ["doorbell.notify.strategies.pushover"] = "lib/doorbell/notify/strategies/pushover.lua",

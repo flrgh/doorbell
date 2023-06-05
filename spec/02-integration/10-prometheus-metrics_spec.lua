@@ -3,6 +3,7 @@ local const = require "doorbell.constants"
 local splitlines = require("pl.stringx").splitlines
 local split = require("ngx.re").split
 local nkeys = require "table.nkeys"
+local signal = require "resty.signal"
 
 
 ---@param s string|nil
@@ -347,6 +348,8 @@ describe("prometheus metrics", function()
     nginx:start()
 
     metrics_client = nginx:add_client(test.client())
+    metrics_client.reopen = true
+    metrics_client.raise_on_connect_error = true
     metrics_client.assert_status.GET = { eq = 200 }
 
     client = nginx:add_client(test.client())
@@ -588,6 +591,33 @@ describe("prometheus metrics", function()
       end
 
       await_metric.lte(name, labels, value - count)
+    end)
+  end)
+
+  describe("nginx_timers", function()
+    local name = "doorbell_nginx_timers"
+
+    it("measures running/pending timers", function()
+      await_metric.gte(name, { state = "pending" }, 1)
+      await_metric.gte(name, { state = "running" }, 1)
+    end)
+  end)
+
+  describe("nginx_worker_respawns", function()
+    local name = "doorbell_nginx_worker_respawns"
+
+    it("measures worker respawn counts", function()
+      api:get("/nginx", { query = { block = 1 } })
+      local info = api.response.json
+
+      local agent_before = await_metric.value(name, { type = "agent" })
+      local worker_before = await_metric.value(name, { type = "worker" })
+
+      assert(signal.kill(info.agent.pid, 9))
+      await_metric.gt(name, { type = "agent" }, agent_before)
+
+      assert(signal.kill(info.workers[1].pid, 9))
+      await_metric.gt(name, { type = "worker" }, worker_before)
     end)
   end)
 end)

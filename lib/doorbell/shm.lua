@@ -8,6 +8,7 @@ SHM.metrics   = assert(ngx.shared.metrics, "ngx.shared.metrics does not exist")
 SHM.locks     = assert(ngx.shared.locks, "ngx.shared.locks does not exist")
 SHM.approvals = assert(ngx.shared.approvals, "ngx.shared.approvals does not exist")
 SHM.pending   = assert(ngx.shared.pending, "ngx.shared.pending does not exist")
+SHM.nginx     = assert(ngx.shared.nginx, "ngx.shared.nginx does not exist")
 
 setmetatable(SHM, {
   __index = function(_, name)

@@ -1,7 +1,7 @@
 local _M = {}
 
-local render = require("doorbell.nginx").render
-local lua_path = require("doorbell.nginx").lua_path
+local render = require("doorbell.nginx.conf").render
+local lua_path = require("doorbell.nginx.conf").lua_path
 local resty_signal = require "resty.signal"
 local cjson = require("cjson")
 
