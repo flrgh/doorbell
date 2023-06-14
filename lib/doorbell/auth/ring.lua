@@ -6,6 +6,7 @@ local _M = {
   metrics_enabled = true,
   allow_untrusted = false,
   content_type    = "text/plain",
+  auth_required   = false, -- no oauth
 }
 
 local log     = require "doorbell.log"
@@ -245,6 +246,5 @@ _M.middleware = {
     request.release,
   }
 }
-
 
 return _M

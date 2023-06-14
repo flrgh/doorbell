@@ -1,6 +1,7 @@
 ---@class doorbell.auth
 ---
 ---@field access doorbell.auth.access
+---@field openid doorbell.auth.openid
 local _M = {}
 
 local metrics = require "doorbell.metrics"
@@ -11,6 +12,9 @@ local metrics = require "doorbell.metrics"
 function _M.init(conf)
   _M.access = require("doorbell.auth.access")
   _M.access.init(conf)
+
+  _M.openid = require("doorbell.auth.openid")
+  _M.openid.init(conf)
 end
 
 

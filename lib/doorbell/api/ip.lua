@@ -26,6 +26,7 @@ routes["/ip/addr"] = {
   description     = "returns the client IP address",
   metrics_enabled = true,
   allow_untrusted = true,
+  auth_required   = false,
 
   middleware      = {
     [mw.phase.REWRITE] = {
@@ -56,6 +57,7 @@ routes["/ip/info"] = {
   metrics_enabled = true,
   allow_untrusted = true,
   middleware      = SHARED_MIDDLEWARE,
+  auth_required   = false,
 
   ---@param ctx doorbell.ctx
   GET = function(ctx)
@@ -80,6 +82,7 @@ routes["~^/ip/info/(?<addr>.+)"] = {
   metrics_enabled = true,
   allow_untrusted = false,
   middleware      = SHARED_MIDDLEWARE,
+  auth_required   = false,
 
   GET = function(ctx, match)
     local addr = match.addr

@@ -25,6 +25,9 @@ function config.new(runtime_path)
         file = join(runtime_path, "notify.log"),
       },
     },
+    auth = {
+      disabled = true,
+    },
   }
 end
 

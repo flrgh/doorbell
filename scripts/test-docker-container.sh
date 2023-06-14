@@ -106,7 +106,7 @@ group "start container" \
         --publish 9876:9876 \
         -v "$LOGS:/var/log/doorbell" \
         -v "$RUNTIME:/var/run/doorbell" \
-        -e DOORBELL_TRUSTED=0.0.0.0/0 \
+        -e DOORBELL_CONFIG_STRING='{ "trusted": [ "0.0.0.0/0" ], "auth": { "disabled": true } }' \
         doorbell \
 || fail "failed to start container"
 

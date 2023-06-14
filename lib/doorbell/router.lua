@@ -27,6 +27,8 @@ local set_response_header = require("doorbell.http").response.set_header
 ---@field PATCH           doorbell.route.handler
 ---@field middleware      table<doorbell.middleware.phase, doorbell.middleware[]>
 ---@field _middleware     table<doorbell.middleware.phase, doorbell.middleware>
+---
+---@field auth_required   boolean
 
 ---@class doorbell.route_list : table
 ---@field [1] string
