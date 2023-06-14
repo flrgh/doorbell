@@ -55,6 +55,8 @@ local get_phase       = ngx.get_phase
 ---
 ---@field phase ngx.phase.name
 ---@field doorbell_init boolean
+---
+---@field auth_jwt table
 
 
 ---@param ctx? table

@@ -93,6 +93,8 @@ function _M.auth_middleware(ctx, route)
     log.warn("unauthorized request: ", err)
     return http.send(403, { error = "no bad guys can come into this town" })
   end
+
+  ctx.auth_jwt = json
 end
 
 return _M
