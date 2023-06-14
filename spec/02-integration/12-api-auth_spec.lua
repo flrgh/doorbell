@@ -252,7 +252,8 @@ describe("API auth", function()
     assert.same("access token expired", client.response.json.error)
   end)
 
-
-
-
+  it("does not require an auth token for CORS pre-flight/OPTIONS", function()
+    client:options("/auth-test")
+    assert.same(200, client.response.status)
+  end)
 end)

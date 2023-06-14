@@ -53,7 +53,10 @@ end
 ---@param ctx doorbell.ctx
 ---@param route doorbell.route
 function _M.auth_middleware(ctx, route)
-  if DISABLED then
+  if ctx.method == "OPTIONS" then
+    return
+
+  elseif DISABLED then
     return
 
   elseif route.auth_required == false then
