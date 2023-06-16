@@ -5,6 +5,10 @@ local jwt = require "resty.jwt"
 
 local BASE_URL = "http://127.0.0.1:" .. test.constants.MOCK_UPSTREAM_PORT .. "/"
 
+local USER = "my-test-user"
+local SUB = "provider|my-test-user-sub"
+local EMAIL = "my-test-user@email.test"
+
 local function new_openid_conf()
   return {
     authorization_endpoint = BASE_URL .. "authorize",
@@ -121,6 +125,18 @@ local function setup_mocks()
   })
 end
 
+local function setup_userinfo(info)
+  mu.mock.prepare({
+    path = "/userinfo",
+    method = "GET",
+    once = true,
+    response = {
+      status = 200,
+      json = info,
+    },
+  })
+end
+
 
 
 describe("API auth", function()
@@ -137,6 +153,15 @@ describe("API auth", function()
     conf = test.config()
     conf.auth = {
       openid_issuer = BASE_URL,
+      users = {
+        {
+          name = USER,
+          identifiers = {
+            { sub = SUB },
+            { email = EMAIL },
+          },
+        },
+      },
     }
 
     nginx = test.nginx(conf)
@@ -157,10 +182,28 @@ describe("API auth", function()
 
   before_each(function()
     client:reset()
+    mu.mock.reset()
   end)
+
+  ---@param res spec.testing.client.response
+  local function await_user_log_entry(res)
+    local entry
+    test.await.truthy(function()
+      entry = nginx:get_json_log_entry(res.id)
+      return entry
+    end, 5, 0.1, "waiting for authenticated_user in the JSON logs")
+
+    assert.is_table(entry.authenticated_user)
+    assert.is_string(entry.authenticated_user.name)
+    assert.same(USER, entry.authenticated_user.name)
+  end
 
   it("uses OpenID to validate Bearer tokens", function()
     setup_mocks()
+    setup_userinfo({
+      email = EMAIL,
+      email_verified = true,
+    })
 
     local token = jwt:sign(PRIVATE_KEY, {
       header = {
@@ -179,6 +222,82 @@ describe("API auth", function()
 
     assert.same(200, client.response.status)
   end)
+
+  it("identifies users by email", function()
+    setup_mocks()
+    setup_userinfo({
+      email = EMAIL,
+      email_verified = true,
+    })
+
+    local token = jwt:sign(PRIVATE_KEY, {
+      header = {
+        typ = "JWT",
+        alg = "RS256",
+      },
+      payload = {
+        sub = test.random_string(12),
+        iss = BASE_URL,
+        exp = ngx.now() + 1000,
+      },
+    })
+
+    client.headers.Authorization = "Bearer " .. token
+    client:get("/auth-test")
+
+    assert.same(200, client.response.status)
+
+    await_user_log_entry(client.response)
+  end)
+
+  it("identifies users by sub", function()
+    setup_mocks()
+
+    local token = jwt:sign(PRIVATE_KEY, {
+      header = {
+        typ = "JWT",
+        alg = "RS256",
+      },
+      payload = {
+        sub = SUB,
+        iss = BASE_URL,
+        exp = ngx.now() + 1000,
+      },
+    })
+
+    client.headers.Authorization = "Bearer " .. token
+    client:get("/auth-test")
+
+    assert.same(200, client.response.status)
+
+    await_user_log_entry(client.response)
+  end)
+
+  it("returns 403 when a user cannot be identified", function()
+    setup_mocks()
+    setup_userinfo({
+      email = test.random_string(12) .. "@email.test",
+      email_verified = true,
+    })
+
+    local token = jwt:sign(PRIVATE_KEY, {
+      header = {
+        typ = "JWT",
+        alg = "RS256",
+      },
+      payload = {
+        sub = test.random_string(12),
+        iss = BASE_URL,
+        exp = ngx.now() + 1000,
+      },
+    })
+
+    client.headers.Authorization = "Bearer " .. token
+    client:get("/auth-test")
+
+    assert.same(403, client.response.status)
+  end)
+
 
   it("returns 401 for requests without a valid auth header", function()
     client:get("/auth-test")
@@ -201,26 +320,6 @@ describe("API auth", function()
         sub = "my-user",
         iss = "nope!",
         exp = ngx.now() + 1000,
-      },
-    })
-
-    client.headers.Authorization = "Bearer " .. token
-    client:get("/auth-test")
-
-    assert.same(403, client.response.status)
-  end)
-
-  it("returns 403 if the issuer doesn't match", function()
-    setup_mocks()
-
-    local token = jwt:sign(PRIVATE_KEY, {
-      header = {
-        typ = "JWT",
-        alg = "RS256",
-      },
-      payload = {
-        sub = "my-user",
-        iss = "nope!",
       },
     })
 

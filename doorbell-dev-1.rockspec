@@ -26,6 +26,7 @@ build = {
     ["doorbell.api.nginx"] = "lib/doorbell/api/nginx.lua",
 
     ["doorbell.cache"] = "lib/doorbell/cache.lua",
+    ["doorbell.cache.shared"] = "lib/doorbell/cache/shared.lua",
 
     ["doorbell.config"] = "lib/doorbell/config.lua",
 
@@ -107,6 +108,7 @@ dependencies = {
   "nginx-lua-prometheus == 0.20221218",
   "penlight >= 1.0.0",
   "api7-lua-resty-jwt = 0.2.4",
+  "lua-resty-mlcache = 2.6.0",
 }
 
 test_dependencies = {

@@ -24,6 +24,7 @@ local sort    = table.sort
 local select  = select
 local insert  = table.insert
 local concat  = table.concat
+local to_hex  = require("resty.string").to_hex
 
 local LOCK_SHM = const.shm.locks
 
@@ -531,6 +532,18 @@ function _M.split_at_comma(s)
   end)
 
   return items
+end
+
+do
+  local sha256 = require("resty.sha256"):new()
+
+  function _M.sha256(s)
+    sha256:reset()
+    sha256:update(s)
+    local res = sha256:final()
+    sha256:reset()
+    return to_hex(res)
+  end
 end
 
 

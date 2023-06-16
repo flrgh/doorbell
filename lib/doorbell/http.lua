@@ -5,6 +5,7 @@ local log = require "doorbell.log"
 local cjson = require "cjson"
 local safe_decode = require("cjson.safe").decode
 local nkeys = require "table.nkeys"
+local split = require("ngx.re").split
 
 local ngx                 = ngx
 local print               = ngx.print
@@ -27,6 +28,7 @@ local concat = table.concat
 
 local type   = type
 local assert = assert
+local tonumber = tonumber
 
 
 local MAX_QUERY_ARGS = 100
@@ -320,11 +322,9 @@ end
 
 
 do
-  local tonumber = tonumber
   local byte = string.byte
   local sort = table.sort
 
-  local split = require("ngx.re").split
   local WILD = byte("*")
   local MATCH_ALL = "*/*"
 
@@ -409,6 +409,29 @@ do
 
     return negotiate(accept, available_types) or first
   end
+end
+
+---@param value string
+---@return table
+function _M.parse_cache_control(value)
+  local cc = {}
+  local list = assert(split(value, ", *", "jo"))
+
+  for i = 1, #list do
+    local item = list[i]
+    local k, v = item:match("(.+)=(.+)")
+
+    if k and v then
+      v = tonumber(v) or v
+    else
+      k = item
+      v = true
+    end
+
+    cc[k] = v
+  end
+
+  return cc
 end
 
 

@@ -140,6 +140,9 @@ do
     if get_level() >= lvl then
       rawset(log, name, make_log(lvl, log_varargs))
       rawset(log, name .. "f", make_log(lvl, log_f))
+
+      -- add a vararg index by numeric log level
+      rawset(log, lvl, make_log(lvl, log_varargs))
     end
   end
 end

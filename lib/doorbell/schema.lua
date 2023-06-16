@@ -1167,8 +1167,18 @@ validator(config.fields.network_tags)
 ---@class doorbell.config.auth : table
 ---
 ---@field openid_issuer string
----@field disabled boolean
+---@field disabled      boolean
+---@field users         doorbell.config.auth.user[]
 
+---@class doorbell.config.auth.user : table
+---
+---@field name string
+---@field identifiers doorbell.config.auth.user.identifier[]
+
+---@class doorbell.config.auth.user.identifier : table
+---
+---@field email string
+---@field sub   string
 
 config.fields.auth = {
   title = "doorbell.config.auth",
@@ -1179,8 +1189,20 @@ config.fields.auth = {
     openid_issuer = {
       type = "string",
     },
+
     disabled = {
       type = "boolean",
+    },
+
+    users = {
+      type = "array",
+      items = {
+        type = "object",
+        properties = {
+          email = { type = "string" },
+          sub   = { type = "string" },
+        },
+      },
     },
   },
 }
