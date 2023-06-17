@@ -3,6 +3,7 @@
 ---@field allow            doorbell.rule[]
 ---@field approvals        doorbell.config.approvals
 ---@field asset_path       string
+---@field auth             doorbell.config.auth
 ---@field base_url         string
 ---@field cache_size       integer
 ---@field deny             doorbell.rule[]

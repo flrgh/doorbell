@@ -133,6 +133,11 @@ function _M.init(opts)
   setmetatable(_M, cache_mt)
   _M.hit, _M.miss, _M.expire = 0, 0, 0
   _M.name = "main"
+
+  -- this needs no special ordering around its initialization logic, so its
+  -- just here in case no other module initializes it during init_by_lua
+  require("doorbell.cache.shared")
+
   return _M
 end
 

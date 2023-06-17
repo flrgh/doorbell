@@ -1,8 +1,6 @@
 local _M = {}
 
 local http    = require "doorbell.http"
-local log     = require "doorbell.log"
-local manager = require "doorbell.rules.manager"
 local notify  = require "doorbell.notify"
 local router  = require "doorbell.router"
 local views   = require "doorbell.views"
@@ -25,9 +23,7 @@ local function add_submodule_routes(modname)
 end
 
 
----@param conf doorbell.config
-function _M.init(conf)
-
+function _M.init()
   router["/ring"] = require("doorbell.auth.ring")
 
   router["/answer"] = {
@@ -41,36 +37,6 @@ function _M.init(conf)
     },
     GET             = views.answer,
     POST            = views.answer,
-  }
-
-  router["/reload"] = {
-    id              = "reload",
-    description     = "reload from disk",
-    metrics_enabled = false,
-    content_type    = "text/plain",
-    POST = function()
-      local ok, err = manager.load(conf.runtime_path)
-      if ok then
-        return send(201, "success")
-      end
-      log.err("failed reloading rules from disk: ", err)
-      return send(500, "failure")
-    end
-  }
-
-  router["/save"] = {
-    id              = "save",
-    description     = "save to disk",
-    metrics_enabled = false,
-    content_type    = "text/plain",
-    POST            = function()
-      local ok, err = manager.save()
-      if not ok then
-        log.err("failed saving rules to disk: ", err)
-        return send(500, "failure")
-      end
-      return send(201, "success")
-    end
   }
 
   router["/notify/test"] = {
@@ -134,6 +100,23 @@ function _M.init(conf)
       },
     },
     GET = function() return send(404) end,
+  }
+
+  router["/auth-test"] = {
+    id = "auth-test",
+    description     = "what do you thinkg you're doing around here?",
+    metrics_enabled = false,
+    content_type    = "application/json",
+    middleware      = {
+      [mw.phase.REWRITE] = {
+        request.middleware.enable_logging,
+      },
+    },
+    ---@param ctx doorbell.ctx
+    GET = function(ctx)
+      require("doorbell.auth.openid").auth_middleware(ctx, ctx.route)
+      send(200, { message = "OK" })
+    end,
   }
 
 

@@ -90,11 +90,30 @@ const.ttl = {
 
 -- ngx.shared shm names
 const.shm = {
-  doorbell  = "doorbell",    -- primary storage
-  rules     = "rules",       -- doorbell rules
-  stats     = "stats",       -- rule statistics
-  metrics   = "metrics",     -- prometheus metrics
-  locks     = "locks",       -- locks
+  -- "main", use sparingly for metadata and global things
+  doorbell   = "doorbell",
+
+  -- doorbell.rules.*
+  rules      = "rules",
+  stats      = "stats",
+
+  -- prometheus metric storage
+  metrics    = "metrics",     -- prometheus metrics
+
+  -- locks, used by multiple submodules
+  locks      = "locks",
+
+  -- nginx IPC
+  nginx      = "nginx",
+
+  -- doorbell.auth.*
+  approvals  = "approvals",
+  pending    = "pending",
+
+  -- doorbell.cache.shared / lua-resty-mlcache
+  mlcache_main  = "mlcache_main",
+  mlcache_miss  = "mlcache_miss",
+  mlcache_locks = "mlcache_locks",
 }
 
 ---@enum doorbell.unauthorized

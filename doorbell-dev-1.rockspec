@@ -26,6 +26,7 @@ build = {
     ["doorbell.api.nginx"] = "lib/doorbell/api/nginx.lua",
 
     ["doorbell.cache"] = "lib/doorbell/cache.lua",
+    ["doorbell.cache.shared"] = "lib/doorbell/cache/shared.lua",
 
     ["doorbell.config"] = "lib/doorbell/config.lua",
 
@@ -57,6 +58,7 @@ build = {
     ["doorbell.auth.ring"] = "lib/doorbell/auth/ring.lua",
     ["doorbell.auth.request"] = "lib/doorbell/auth/request.lua",
     ["doorbell.auth.access"] = "lib/doorbell/auth/access.lua",
+    ["doorbell.auth.openid"] = "lib/doorbell/auth/openid.lua",
 
     ["doorbell.routes"] = "lib/doorbell/routes.lua",
     ["doorbell.router"] = "lib/doorbell/router.lua",
@@ -97,6 +99,7 @@ dependencies = {
   "lua-resty-http >= 0.16.1-0",
   "lua-resty-ipmatcher == 0.6.1",
   "lua-resty-jit-uuid == 0.0.7",
+  "lua-resty-openidc == 1.7.6",
   "lua-resty-pushover == 0.1.0",
   "lua-resty-template == 2.0",
   "luafilesystem-ffi == 0.3.0",
@@ -104,6 +107,8 @@ dependencies = {
   "luasocket",
   "nginx-lua-prometheus == 0.20221218",
   "penlight >= 1.0.0",
+  "api7-lua-resty-jwt = 0.2.4",
+  "lua-resty-mlcache = 2.6.0",
 }
 
 test_dependencies = {

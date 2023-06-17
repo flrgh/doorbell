@@ -1163,6 +1163,50 @@ config.fields.network_tags = {
 }
 validator(config.fields.network_tags)
 
+
+---@class doorbell.config.auth : table
+---
+---@field openid_issuer string
+---@field disabled      boolean
+---@field users         doorbell.config.auth.user[]
+
+---@class doorbell.config.auth.user : table
+---
+---@field name string
+---@field identifiers doorbell.config.auth.user.identifier[]
+
+---@class doorbell.config.auth.user.identifier : table
+---
+---@field email string
+---@field sub   string
+
+config.fields.auth = {
+  title = "doorbell.config.auth",
+  description = "Auth{entication,orization} settings",
+  type = "object",
+
+  properties = {
+    openid_issuer = {
+      type = "string",
+    },
+
+    disabled = {
+      type = "boolean",
+    },
+
+    users = {
+      type = "array",
+      items = {
+        type = "object",
+        properties = {
+          email = { type = "string" },
+          sub   = { type = "string" },
+        },
+      },
+    },
+  },
+}
+
 ---@type doorbell.schema.object
 config.entity = {
   title = "doorbell.config",
@@ -1173,6 +1217,7 @@ config.entity = {
     allow                = config.fields.allow,
     approvals            = config.fields.approvals,
     asset_path           = config.fields.asset_path,
+    auth                 = config.fields.auth,
     base_url             = config.fields.base_url,
     cache_size           = config.fields.cache_size,
     deny                 = config.fields.deny,
@@ -1216,6 +1261,7 @@ config.input = {
   properties = {
     allow              = config.fields.allow,
     approvals          = config.fields.approvals,
+    auth               = config.fields.auth,
     asset_path         = config.fields.asset_path,
     base_url           = config.fields.base_url,
     cache_size         = config.fields.cache_size,

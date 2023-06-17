@@ -11,6 +11,7 @@ routes["/nginx"] = {
   metrics_enabled = false,
   allow_untrusted = true,
   content_type = "application/json",
+  auth_required   = false,
 
   middleware      = {
     [mw.phase.REWRITE] = {

@@ -112,6 +112,8 @@ function _M.log(ctx)
     client_network_tag  = ctx.client_network_tag,
     country_code        = ctx.geoip_country_code,
     is_trusted_proxy    = ctx.is_trusted_proxy,
+    jwt                 = ctx.jwt,
+    authenticated_user  = ctx.user,
 
     -- connection data
     connection          = tonumber(var.connection),
