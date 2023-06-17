@@ -9,9 +9,14 @@ RUN apk add --no-cache \
     ln -v -s /usr/lib/libGeoIP.so.1 /usr/lib/libGeoIP.so && \
     ln -v -s /usr/lib/libmaxminddb.so.0 /usr/lib/libmaxminddb.so
 
+RUN apk add --no-cache --virtual .build-deps \
+        git
+
 COPY ./doorbell-dev-1.rockspec /tmp/
 RUN luarocks install --deps-only /tmp/doorbell-dev-1.rockspec && \
     rm /tmp/doorbell-dev-1.rockspec
+
+RUN apk del .build-deps
 
 ARG INSTALL_PREFIX=/usr/local
 ARG RUNTIME_PREFIX=/var/run
