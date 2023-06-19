@@ -147,7 +147,7 @@ end
 ---@alias spec.testing.client.method fun(self:spec.testing.client, path:string, params?:spec.testing.client.request):spec.testing.client.response? string?
 
 
----@class spec.testing.client.request : resty.http.request_params
+---@class spec.testing.client.request : resty.http.request.params
 ---
 ---@field json? table
 ---

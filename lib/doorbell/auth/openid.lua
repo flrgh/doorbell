@@ -133,7 +133,7 @@ local function load_discovery()
   local client = assert(httpc.new())
   client:set_timeouts(5000, 1000, 5000)
 
-  ---@type resty.http.request_uri_params
+  ---@type resty.http.request_uri.params
   local params = {
     method = "GET",
     headers = {},
