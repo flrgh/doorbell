@@ -610,11 +610,7 @@ describe("prometheus metrics", function()
       api:get("/nginx", { query = { block = 1 } })
       local info = api.response.json
 
-      local agent_before = await_metric.value(name, { type = "agent" })
       local worker_before = await_metric.value(name, { type = "worker" })
-
-      assert(signal.kill(info.agent.pid, 9))
-      await_metric.gt(name, { type = "agent" }, agent_before)
 
       assert(signal.kill(info.workers[1].pid, 9))
       await_metric.gt(name, { type = "worker" }, worker_before)

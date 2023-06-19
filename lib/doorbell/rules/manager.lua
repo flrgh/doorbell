@@ -274,14 +274,17 @@ local function save(fname)
   local version = get_version()
   local list = get_all_rules()
 
-  local ok, written, err = util.update_json_file(fname, storage.serialize(list))
-  if not ok then
+  local ok, err, written = util.update_json_file(fname, storage.serialize(list))
+  if ok then
+    if written then
+      log.noticef("saved %s rules to %s", #list, fname)
+
+    else
+      log.debug("rule filesystem state was unchanged")
+    end
+  else
     log.errf("failed saving rules to %s: %s", fname, err)
     return unlock()
-  end
-
-  if written then
-    log.noticef("saved %s rules to %s", #list, fname)
   end
 
   last_saved(now())
@@ -499,12 +502,6 @@ function _M.reload()
 end
 
 
-function _M.init_agent()
-  assert(timer_at(0, flush_expired, true))
-  assert(timer_at(0, saver))
-  stats.init_agent()
-end
-
 ---@param timeout? number
 ---@return boolean? ok
 ---@return string? error
@@ -585,6 +582,13 @@ function _M.version()
 end
 
 function _M.init_worker()
+  if ngx.worker.id() == 0 then
+    assert(timer_at(0, flush_expired, true))
+    assert(timer_at(0, saver))
+  end
+
+  stats.init_worker()
+
   if metrics.enabled() and ngx.worker.id() == 0 then
 
     rules_total = metrics.registry.rules_total

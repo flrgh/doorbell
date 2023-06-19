@@ -32,6 +32,7 @@ ENV DOORBELL_LOG_PATH=${LOG_PREFIX}/doorbell
 COPY ./lib/ ${DOORBELL_LIB_PATH}/
 COPY ./assets/ ${DOORBELL_ASSET_PATH}/
 COPY ./bin/render-nginx-template ${DOORBELL_LIBEXEC_PATH}/
+COPY ./bin/resty-doorbell ${DOORBELL_LIBEXEC_PATH}/
 
 ARG NGINX_USER=doorbell
 ARG NGINX_USER_ID=9876

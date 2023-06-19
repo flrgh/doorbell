@@ -187,9 +187,11 @@ function _M.init(conf)
 end
 
 
-function _M.init_agent()
+function _M.init_worker()
   if not config then return end
-  assert(ngx.timer.at(0, update_timer))
+  if ngx.worker.id() == 0 then
+    assert(ngx.timer.at(0, update_timer))
+  end
 end
 
 

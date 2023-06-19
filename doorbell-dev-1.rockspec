@@ -78,6 +78,7 @@ build = {
     ["doorbell.shm"] = "lib/doorbell/shm.lua",
 
     ["doorbell.util"] = "lib/doorbell/util.lua",
+    ["doorbell.util.file"] = "lib/doorbell/util/file.lua",
 
     ["doorbell.views"] = "lib/doorbell/views.lua",
     ["doorbell.views.answer"] = "lib/doorbell/views/answer.lua",

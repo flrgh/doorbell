@@ -3,9 +3,7 @@
 export _DOORBELL_TEST=1
 
 exec -a busted \
-    resty \
+    "$PWD/bin/resty-doorbell" \
     -I "$PWD/lib" \
     -I "$PWD" \
-    --no-stream \
-    --http-include "./assets/nginx.include/http.shm.conf" \
     ./spec/busted "$@"

@@ -42,10 +42,6 @@ routes["/nginx"] = {
           end
         end
 
-        if not info.agent.healthy then
-          healthy = false
-        end
-
         if not healthy then
           ngx.sleep(0.05)
         end

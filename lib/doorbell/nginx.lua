@@ -1,7 +1,5 @@
 local _M = {}
 
-local proc = require "ngx.process"
-
 local ngx = ngx
 local exiting = ngx.worker.exiting
 local tostring = tostring
@@ -25,10 +23,10 @@ end
 local UNHEALTHY_THRESHOLD = HEARTBEAT_INTERVAL * 0.5
 
 
----@type string
+---@type integer
 local HEARTBEAT_KEY
 
----@type string
+---@type integer
 local LATENCY_KEY
 
 local B_NAMESPACE_BITS   = 2
@@ -75,10 +73,8 @@ end
 
 ---@param f fun(integer, boolean)
 local function each_process(f)
-  f(-1, true) -- agent
-
   for i = 0, WORKER_COUNT - 1 do
-    f(i, false)
+    f(i)
   end
 end
 
@@ -259,8 +255,6 @@ end
 
 
 function _M.init()
-  assert(proc.enable_privileged_agent(1024))
-
   PG_ID = assert(SHM:incr(make_global_key(B_MAX_GROUP), 1, 0))
 
   if PG_ID == 1 then
@@ -363,7 +357,6 @@ function _M.info()
   local t = time()
 
   local info = {
-    agent            = nil,
     group            = pg,
     is_clean_start   = PROC.is_clean_start,
     is_reload        = PROC.is_reload,
@@ -373,14 +366,9 @@ function _M.info()
     workers          = {},
   }
 
-  each_process(function(id, is_agent)
+  each_process(function(id)
     local p = get_proc_info(pg, id, t)
-
-    if is_agent then
-      info.agent = p
-    else
-      table.insert(info.workers, p)
-    end
+    table.insert(info.workers, p)
   end)
 
   return info

@@ -272,9 +272,11 @@ local function saver(premature, interval)
 end
 
 
-function _M.init_agent()
-  SEMAPHORE = assert(require("ngx.semaphore").new(1))
-  assert(timer_at(0, saver, 1))
+function _M.init_worker()
+  if ngx.worker.id() == 0 then
+    SEMAPHORE = assert(require("ngx.semaphore").new(1))
+    assert(timer_at(0, saver, 1))
+  end
 end
 
 

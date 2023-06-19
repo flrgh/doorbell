@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+readonly ASSET_DIR=${DOORBELL_ASSET_PATH:-$PWD/assets}
+readonly LIB_DIR=${DOORBELL_LIB_PATH:-$PWD/lib}
+
+ARGS=()
+
+for f in "$ASSET_DIR"/nginx.include/http*.conf; do
+    ARGS+=(--http-include "$f")
+done
+
+for f in "$ASSET_DIR"/nginx.include/main*.conf; do
+    ARGS+=(--main-include "$f")
+done
+
+
+exec resty \
+    -I "$LIB_DIR" \
+    --no-stream \
+    "${ARGS[@]}" \
+    "$@"
