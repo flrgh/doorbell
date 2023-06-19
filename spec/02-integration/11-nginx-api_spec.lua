@@ -61,7 +61,6 @@ describe("nginx api", function()
     local info = assert.is_table(client.response.json)
 
     assert.table_shape({
-      agent        = "table",
       group        = "number",
       started      = "number",
       uptime       = "number",
@@ -77,14 +76,6 @@ describe("nginx api", function()
       respawn_count = "number",
       started       = "number",
     }, info.workers[1])
-
-    assert.table_shape({
-      id            = "number",
-      last_seen     = "number",
-      pid           = "number",
-      respawn_count = "number",
-      started       = "number",
-    }, info.agent)
   end)
 
   it("updates with each heartbeat", function()
@@ -95,10 +86,6 @@ describe("nginx api", function()
     test.await.truthy(function()
       client:get("/nginx")
       local new = assert.is_table(client.response.json)
-
-      if new.agent.last_seen <= info.agent.last_seen then
-        return false
-      end
 
       if #new.workers ~= info.worker_count then
         return false
@@ -183,10 +170,6 @@ describe("nginx api", function()
     end, 5, 0.1)
 
     assert.is_true(new.group > old.group)
-
-    assert.same(old.agent.id, new.agent.id)
-    assert.not_same(old.agent.pid, new.agent.pid)
-    assert.same(0, new.agent.respawn_count)
 
     for i = 1, old.worker_count do
       assert.same(old.workers[i].id, new.workers[i].id)

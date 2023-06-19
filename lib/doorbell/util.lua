@@ -8,16 +8,16 @@ local cjson = require "cjson.safe"
 local resty_lock = require "resty.lock"
 local uuid = require("resty.jit-uuid").generate_v4
 local clone = require "table.clone"
+local file = require "doorbell.util.file"
+local proc = require("doorbell.nginx").process
 
 local encode  = cjson.encode
 local decode  = cjson.decode
-local open    = io.open
 local type    = type
 local fmt     = string.format
 local byte    = string.byte
 local utctime = ngx.utctime
 local error   = error
-local md5     = ngx.md5
 local re_find = ngx.re.find
 local pairs   = pairs
 local sort    = table.sort
@@ -25,10 +25,54 @@ local select  = select
 local insert  = table.insert
 local concat  = table.concat
 local to_hex  = require("resty.string").to_hex
+local run_worker_thread = ngx.run_worker_thread
+local get_phase = ngx.get_phase
+local exiting = ngx.worker.exiting
+
+local THREAD_POOL = "doorbell.util.file"
 
 local LOCK_SHM = const.shm.locks
 
 local TILDE = string.byte("~")
+
+
+---@return boolean
+local function should_run_in_thread()
+  local phase = get_phase()
+
+  return proc.is_worker
+     and not exiting()
+     and (
+             phase == "timer"
+          or phase == "access"
+          or phase == "rewrite"
+          or phase == "content"
+          or phase == "header_filter"
+          or phase == "set"
+          or phase == "body_filter"
+          or phase == "log"
+          or phase == "balancer"
+        )
+end
+
+---@param fn string
+---@param ... any
+local function run_it(fn, ...)
+  if should_run_in_thread() then
+    local ok, a, b, c, d = run_worker_thread(THREAD_POOL, "doorbell.util.file", fn, ...)
+
+    if ok then
+      return a, b, c, d
+
+    else
+      return nil, a
+    end
+
+  else
+    return file[fn](...)
+  end
+end
+
 
 ---@param t table
 ---@return string? encoded
@@ -48,16 +92,7 @@ end
 ---@return string? contents
 ---@return string? error
 local function read_file(fname)
-  local fh, err = open(fname, "r")
-  if not fh then
-    return nil, err
-  end
-
-  local content
-  content, err = fh:read("*a")
-  fh:close()
-
-  return content, err
+  return run_it("read", fname)
 end
 
 _M.read_file = read_file
@@ -67,54 +102,16 @@ _M.read_file = read_file
 ---@return boolean? ok
 ---@return string? error
 local function write_file(fname, contents)
-  local fh, err = open(fname, "w+")
-  if not fh then
-    return nil, err
-  end
-
-  local bytes
-  bytes, err = fh:write(contents)
-  fh:close()
-
-  if not bytes then
-    return nil, err
-  end
-
-  return true
-end
-
----@param fname string
----@return string? checksum
----@return string? error
-local function md5_file(fname)
-  local contents, err = read_file(fname)
-  if not contents then
-    return nil, err
-  end
-  return md5(contents)
+  return run_it("write", fname, contents)
 end
 
 ---@param fname string
 ---@param contents string
 ---@return boolean? ok
----@return boolean? written
 ---@return string? error
+---@return boolean? written
 local function update_file(fname, contents)
-  -- not checking for errors here; if we couldn't read/checksum the existing
-  -- file we'll just assume that a write is needed
-  local file_sum = md5_file(fname)
-
-  if file_sum and md5(contents) == file_sum then
-    -- no write needed
-    return true, false
-  end
-
-  local ok, err = write_file(fname, contents)
-  if ok then
-    return true, true
-  end
-
-  return nil, nil, err
+  return run_it("update", fname, contents)
 end
 
 --- Read and unserialize json data from a file.
@@ -545,6 +542,5 @@ do
     return to_hex(res)
   end
 end
-
 
 return _M

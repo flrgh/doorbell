@@ -38,6 +38,7 @@ if [[ ${1:-} = start ]]; then
         "${DOORBELL_LOG_PATH}/doorbell.json.log"
 
     echo "Rendering NGINX template to ${DOORBELL_RUNTIME_PATH}/nginx.conf"
+    "$DOORBELL_LIBEXEC_PATH"/resty-doorbell \
     "$DOORBELL_LIBEXEC_PATH"/render-nginx-template \
         < "$DOORBELL_ASSET_PATH"/nginx.template.conf \
         > "$DOORBELL_RUNTIME_PATH"/nginx.conf

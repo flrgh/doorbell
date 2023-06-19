@@ -73,16 +73,6 @@ local submodules = {
   routes,
 }
 
-local function init_agent()
-  for _, mod in ipairs(submodules) do
-    local handler = rawget(mod, "init_agent") or rawget(mod, "init_worker")
-    if type(handler) == "function" then
-      handler()
-    end
-  end
-end
-
-
 function _M.init()
   nginx.init()
   env.init()
@@ -105,14 +95,9 @@ function _M.init_worker()
 
   nginx.init_worker()
 
-  if nginx.process.is_agent then
-    init_agent()
-
-  else
-    for _, mod in ipairs(submodules) do
-      if type(mod.init_worker) == "function" then
-        mod.init_worker()
-      end
+  for _, mod in ipairs(submodules) do
+    if type(mod.init_worker) == "function" then
+      mod.init_worker()
     end
   end
 end

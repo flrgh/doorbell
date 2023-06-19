@@ -1,11 +1,11 @@
 local _M = {}
 
-local ffi = require "ffi"
-local cjson    = require("cjson.safe").new()
-local encode   = cjson.encode
-local fmt      = string.format
-local concat   = table.concat
-local insert   = table.insert
+local ffi    = require "ffi"
+local cjson  = require("cjson.safe").new()
+local encode = cjson.encode
+local fmt    = string.format
+local concat = table.concat
+local insert = table.insert
 
 cjson.encode_keep_buffer(true)
 cjson.encode_number_precision(16)
