@@ -5,6 +5,10 @@ local http = require "doorbell.http"
 local util = require "doorbell.util"
 local isarray = require "table.isarray"
 
+
+---@type fun(doorbell.schema, table):function
+local generate_validator = require("resty.ljsonschema").generate_validator
+
 local NULL = ngx.null
 local re_match = ngx.re.match
 
@@ -64,10 +68,6 @@ local function convert_arrays(s, t)
 end
 
 
-
---local generate_validator = require("jsonschema").generate_validator
-local generate_validator = require("resty.ljsonschema").generate_validator
-
 local function is_set(value)
   return value ~= nil and value ~= NULL
 end
@@ -75,6 +75,7 @@ end
 local function noop(_) return true end
 
 
+---@param schema doorbell.schema
 local function validator(schema)
   local name = assert(schema.title)
   local post_validate = schema.post_validate or noop
@@ -117,7 +118,7 @@ end
 ---
 ---@field not doorbell.schema
 ---
----@field extra_validator fun(value:any):boolean?, string?
+---@field post_validate fun(value:any):boolean?, string?
 ---
 ---@field validate fun(value:any):boolean?, string?
 ---
@@ -147,7 +148,7 @@ end
 ---
 ---@field uniqueItems boolean
 ---
----@field minItems boolean
+---@field minItems integer
 
 
 ---@class doorbell.schema.string : doorbell.schema.base
@@ -1199,8 +1200,17 @@ config.fields.auth = {
       items = {
         type = "object",
         properties = {
-          email = { type = "string" },
-          sub   = { type = "string" },
+          name = { type = "string" },
+          identifiers = {
+            type = "array",
+            items = {
+              type = "object",
+              properties = {
+                email = { type = "string" },
+                sub   = { type = "string" },
+              },
+            },
+          },
         },
       },
     },

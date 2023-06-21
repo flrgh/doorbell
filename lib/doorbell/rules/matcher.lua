@@ -264,7 +264,7 @@ function _M.new(list)
     end
   end
 
-  ---@param req doorbell.request
+  ---@param req doorbell.forwarded_request
   ---@return doorbell.rule?
   return function(req)
     local addr    = assert(req.addr, "missing request addr")
