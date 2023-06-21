@@ -374,22 +374,23 @@ function _M.init(conf)
     USERS_BY_EMAIL = {}
 
     for _, u in ipairs(conf.auth.users or {}) do
+      local user = { name = u.name }
       assert(USERS[u.name] == nil, "duplicate username: " .. u.name)
-      USERS[u.name] = u
+      USERS[u.name] = user
 
       for _, id in ipairs(u.identifiers or {}) do
         if id.email then
           assert(USERS_BY_EMAIL[id.email] == nil,
                  "duplicate user email: " .. id.email)
 
-          USERS_BY_EMAIL[id.email] = u
+          USERS_BY_EMAIL[id.email] = user
         end
 
         if id.sub then
           assert(USERS_BY_SUB[id.sub] == nil,
                  "duplicate user sub: " .. id.sub)
 
-          USERS_BY_SUB[id.sub] = u
+          USERS_BY_SUB[id.sub] = user
         end
       end
     end
