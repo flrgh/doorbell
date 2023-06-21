@@ -40,6 +40,38 @@ local SRC_NONE = "NONE"
 local SRC_HEADER = "HEADER"
 --local SRC_COOKIE = "COOKIE"
 
+local OIDC_OPTS = {
+  auth_accept_token_as_header_name = "Authorization",
+  auth_accept_token_as = "header",
+  iat_slack = SLACK,
+}
+
+---@type string
+local DISCOVERY_URL
+
+---@type table
+local DISCOVERY_DATA
+
+local VALIDATORS = {
+  sub = validators.required(),
+  exp = validators.required(),
+}
+
+---@type table <string, doorbell.config.auth.user>
+local USERS = {}
+
+---@type table <string, doorbell.config.auth.user>
+local USERS_BY_SUB = {}
+
+---@type table <string, doorbell.config.auth.user>
+local USERS_BY_EMAIL = {}
+
+local CONFIGURED = false
+local DISABLED = false
+
+local CACHE_KEY_DISCOVERY = "oidc::discovery"
+
+
 ---@param e string|nil
 ---@return boolean
 local function is_expired_err(e)
@@ -80,36 +112,6 @@ local function token_ttl(t)
 end
 
 
-local OIDC_OPTS = {
-  auth_accept_token_as_header_name = "Authorization",
-  auth_accept_token_as = "header",
-  iat_slack = SLACK,
-}
-
----@type string
-local DISCOVERY_URL
-
----@type table
-local DISCOVERY_DATA
-
-local VALIDATORS = {
-  sub = validators.required(),
-  exp = validators.required(),
-}
-
----@type table <string, doorbell.config.auth.user>
-local USERS = {}
-
----@type table <string, doorbell.config.auth.user>
-local USERS_BY_SUB = {}
-
----@type table <string, doorbell.config.auth.user>
-local USERS_BY_EMAIL = {}
-
-local CONFIGURED = false
-local DISABLED = false
-
-
 ---@param  ctx doorbell.ctx
 ---@return string? raw_token
 ---@return string? error
@@ -140,7 +142,6 @@ local function get_access_token(ctx)
   return nil, E_NO_TOKEN, 401, src
 end
 
-local CACHE_KEY_DISCOVERY = "oidc::discovery"
 
 local function load_discovery()
   local client = assert(httpc.new())
