@@ -5,6 +5,7 @@ local router  = require "doorbell.router"
 local schema  = require "doorbell.schema"
 local mw      = require "doorbell.middleware"
 local request = require "doorbell.request"
+local auth    = require "doorbell.auth"
 
 local send = http.send
 local get_json_body = request.get_json_body
@@ -40,7 +41,7 @@ local function schema_api(obj)
   local serialized = drop_functions(obj)
   local api = {
     metrics_enabled = true,
-    allow_untrusted = true,
+    auth_strategy   = auth.require_any(),
     content_type    = "application/json",
     middleware      = middleware,
 

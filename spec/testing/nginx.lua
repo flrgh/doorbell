@@ -9,6 +9,7 @@ local const = require "spec.testing.constants"
 local fs = require "spec.testing.fs"
 local exec = require "spec.testing.exec"
 local await = require "spec.testing.await"
+local http = require "spec.testing.client"
 
 local assert = require "luassert"
 
@@ -25,9 +26,16 @@ local function dead(pid)
   return err == "No such process"
 end
 
-
 local function alive(pid)
   return (kill(pid, 0) and true) or false
+end
+
+---@param pid integer
+---@param fn fun(integer):boolean
+---@param timeout? number
+local function wait_pid(pid, fn, timeout)
+  timeout = timeout or 5
+  return await.truthy(timeout, 0.05, fn, pid)
 end
 
 
@@ -85,7 +93,41 @@ end
 ---@field pidfile string
 ---
 ---@field clients table<spec.testing.client, true>
+---
+---@field control_socket string
+---@field control_client spec.testing.client
 local nginx = {}
+
+---@return doorbell.nginx.info?
+---@return string? error
+function nginx:status()
+  if not fs.exists(self.control_socket) then
+    return nil, "control socket " .. self.control_socket .. " does not exist"
+  end
+
+  local client = http.new("unix:" .. self.control_socket)
+  if not client then
+    return nil, "failed to create control socket HTTP client"
+  end
+
+  client:get("/status")
+  client:close()
+
+  if client.response and client.response.status == 200 then
+    if client.response.json then
+      return client.response.json
+
+    else
+      return nil, "/status returned non-JSON response: " .. client.response.body
+    end
+
+  elseif client.response then
+    return nil, "/status returned non-200 status: " .. client.response.status
+
+  else
+    return nil, "request failed: " .. client.err
+  end
+end
 
 
 ---@param sig integer|string
@@ -141,8 +183,15 @@ function nginx:start()
 
   self.pid = assert(tonumber(fs.file_contents(self.pidfile)))
 
-  if not await.truthy(5, 0.05, alive, self.pid) then
+  if not wait_pid(self.pid, alive, 5) then
     error("timed out waiting for NGINX process (" .. self.pid .. ") to exist")
+  end
+
+  if not await.truthy(5, 0.05, function()
+      return self:status()
+    end)
+  then
+    error("timed out waiting for NGINX control socket to be ready")
   end
 end
 
@@ -157,10 +206,10 @@ function nginx:stop()
 
   assert(self:signal(QUIT))
 
-  if not await.truthy(5, 0.05, dead, self.pid) then
+  if not wait_pid(self.pid, dead, 5) then
     self:signal(TERM)
 
-    if not await.truthy(5, 0.05, dead, self.pid) then
+    if not wait_pid(self.pid, dead, 5) then
       error("timed out waiting for NGINX " .. self.pid .. " to go away")
     end
   end
@@ -181,7 +230,21 @@ function nginx:reload()
     client:close()
   end
 
+  local status = self:status()
+  local pids = {}
+  for _, proc in ipairs(status.workers) do
+    assert(proc.pid)
+    table.insert(pids, proc.pid)
+  end
+  assert(#pids == status.worker_count)
+
   assert(self:signal(HUP))
+
+  for _, pid in ipairs(pids) do
+    if not wait_pid(pid, dead, 5) then
+      error("timed out waiting for PID " .. pid .. " to die")
+    end
+  end
 end
 
 function nginx:update_config(config)
@@ -275,6 +338,7 @@ function _M.new(conf)
   local self = {
     prefix = conf.runtime_path,
     config = conf,
+    control_socket = conf.runtime_path .. "/doorbell.sock",
     pidfile = join(conf.runtime_path, "logs", "nginx.pid"),
     clients = {},
   }

@@ -9,6 +9,7 @@ local request = require "doorbell.request"
 local schema  = require "doorbell.schema"
 local api     = require "doorbell.api"
 local const   = require "doorbell.constants"
+local auth    = require "doorbell.auth"
 
 
 local send               = api.send
@@ -54,8 +55,8 @@ routes["/access/pending"] = {
   id              = "access-pending-collection",
   description     = "list pending access requests",
   metrics_enabled = true,
-  allow_untrusted = false,
   middleware      = middleware,
+  auth_strategy   = auth.require_any(),
 
   GET = function()
     local list = access.list_approvals(const.states.pending)
@@ -67,8 +68,8 @@ routes["/access/pre-approved"] = {
   id              = "access-pre-approved-collection",
   description     = "list pre-approved access requests",
   metrics_enabled = true,
-  allow_untrusted = false,
   middleware      = middleware,
+  auth_strategy   = auth.require_any(),
 
   GET = function()
     local list = access.list_approvals(const.states.pre_approved)
@@ -82,8 +83,8 @@ routes["/access/config"] = {
   id              = "access-config",
   description     = "fetch access control configuration",
   metrics_enabled = true,
-  allow_untrusted = false,
   middleware      = middleware,
+  auth_strategy   = auth.require_any(),
 
   GET = function()
     return send(200, CONF)
@@ -95,8 +96,8 @@ routes["/access/intent"] = {
   id              = "access-intent",
   description     = "allow, deny, or pre-approve access requests",
   metrics_enabled = true,
-  allow_untrusted = false,
   middleware      = middleware,
+  auth_strategy   = auth.require_any(),
 
   POST = function(ctx)
     local data = get_request_input(ctx, schema.auth.access.api.intent)
@@ -118,8 +119,8 @@ routes["~^/access/pending/by-token/(?<token>[^/]+)$"] = {
   id              = "approvals-by-token",
   description     = "fetch an approval request for a given token",
   metrics_enabled = true,
-  allow_untrusted = false,
   middleware      = middleware,
+  auth_strategy   = auth.require_any(),
 
   GET = function(_, match)
     local token = match.token
@@ -138,8 +139,8 @@ routes["~^/access/pending/by-addr/(?<addr>[^/]+)$"] = {
   id              = "approvals-by-addr",
   description     = "fetch an approval request for a given IP address",
   metrics_enabled = true,
-  allow_untrusted = false,
   middleware      = middleware,
+  auth_strategy   = auth.require_any(),
 
   GET = function(_, match)
     local addr = match.addr
@@ -167,8 +168,8 @@ routes["/access/pre-approval"] = {
   id              = "access-pre-approval",
   description     = "pre-approve access for an IP or user-agent",
   metrics_enabled = true,
-  allow_untrusted = false,
   middleware      = middleware,
+  auth_strategy   = auth.require_any(),
 
   ---@param ctx doorbell.ctx
   POST = function(ctx)
