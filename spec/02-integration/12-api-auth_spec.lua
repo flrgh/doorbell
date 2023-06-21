@@ -296,16 +296,19 @@ describe("API auth", function()
     client:get("/auth-test")
 
     assert.same(403, client.response.status)
+    assert.is_string(client.response.json.error)
   end)
 
 
   it("returns 401 for requests without a valid auth header", function()
     client:get("/auth-test")
     assert.same(401, client.response.status)
+    assert.is_string(client.response.json.error)
 
     client.headers.Authorization = "nope!"
     client:get("/auth-test")
     assert.same(401, client.response.status)
+    assert.is_string(client.response.json.error)
   end)
 
   it("returns 403 if the issuer doesn't match", function()
@@ -327,6 +330,7 @@ describe("API auth", function()
     client:get("/auth-test")
 
     assert.same(403, client.response.status)
+    assert.is_string(client.response.json.error)
   end)
 
   it("returns 401 if the token is expired", function()

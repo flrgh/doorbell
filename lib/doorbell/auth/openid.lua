@@ -25,6 +25,8 @@ local E_EXPIRED = "access token expired"
 local E_INTERNAL = "internal server error"
 local E_NO_SUCH_USER = "no such user"
 local E_NOT_VERIFIED = "could not validate and/or validate access token"
+local E_INVALID_TOKEN = "invalid access token"
+local E_NO_TOKEN = "authentication required"
 local SLACK = 60
 
 local AUTH_HEADER = "Authorization"
@@ -111,11 +113,11 @@ local function get_access_token(ctx)
     src = SRC_HEADER
 
     if type(bearer) == "table" then
-      log.err("got a request with more than one auth token")
-      return nil, "one token at a time, please", 400, src
+      log.notice("got a request with more than one auth token")
+      return nil, E_INVALID_TOKEN, 400, src
 
     elseif substr(lower(bearer), 1, 7) ~= "bearer " then
-      return nil, "invalid bearer access token", 401, src
+      return nil, E_INVALID_TOKEN, 401, src
     end
 
     local token = substr(bearer, 8)
@@ -124,7 +126,7 @@ local function get_access_token(ctx)
   -- TODO: get from cookie
   end
 
-  return nil, nil, 401, src
+  return nil, E_NO_TOKEN, 401, src
 end
 
 local CACHE_KEY_DISCOVERY = "oidc::discovery"
