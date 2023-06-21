@@ -22,7 +22,6 @@ local ota     = require "doorbell.ota"
 local env     = require "doorbell.env"
 local middleware = require "doorbell.middleware"
 local nginx = require "doorbell.nginx"
-local openid = require "doorbell.auth.openid"
 
 local ngx        = ngx
 local assert     = assert
@@ -51,7 +50,7 @@ local GLOBAL_REWRITE_MWARE = middleware.compile({
 })
 
 local GLOBAL_AUTH_MWARE = middleware.compile({
-  openid.auth_middleware,
+  auth.middleware,
 })
 
 
@@ -193,6 +192,12 @@ function _M.log()
   request.log(ctx)
 
   exec_route_middleware(POST_RESPONSE, ctx, route)
+end
+
+
+function _M.status()
+  http.response.set_header("content-type", "application/json")
+  http.send(200, nginx.info())
 end
 
 

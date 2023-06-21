@@ -3,24 +3,26 @@
 ---@param fn       function
 ---@param ...      any
 ---@return boolean ok
+---@return number elapsed
 local function await(timeout, step, fn, ...)
   step = step or 0.05
   timeout = timeout or 5
 
   ngx.update_time()
   local start = ngx.now()
-  local elapsed = 0
+  local deadline = start + timeout
 
-  while elapsed < timeout do
+  repeat
     if fn(...) then
-      return true
+      ngx.update_time()
+      return true, ngx.now() - start
     end
+
     ngx.sleep(step)
     ngx.update_time()
-    elapsed = ngx.now() - start
-  end
+  until ngx.now() >= deadline
 
-  return false
+  return false, ngx.now() - start
 end
 
 
@@ -35,6 +37,7 @@ _M.truthy = await
 ---@param  fn       function
 ---@param  ...      any
 ---@return boolean  ok
+---@return number elapsed
 function _M.falsy(timeout, step, fn, ...)
   local args = { ... }
   return await(timeout, step, function()

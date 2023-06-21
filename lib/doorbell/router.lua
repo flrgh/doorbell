@@ -2,6 +2,9 @@ local _M = {}
 
 local util = require "doorbell.util"
 local middleware = require "doorbell.middleware"
+local auth = require "doorbell.auth"
+
+local DEFAULT_AUTH = auth.require_all(auth.TRUSTED_IP, auth.OPENID)
 
 local cache = require("doorbell.cache").new("routes", 1000)
 
@@ -29,6 +32,7 @@ local set_response_header = require("doorbell.http").response.set_header
 ---@field _middleware     table<doorbell.middleware.phase, doorbell.middleware>
 ---
 ---@field auth_required   boolean
+---@field auth_strategy   integer
 
 ---@class doorbell.route_list : table
 ---@field [1] string
@@ -58,6 +62,8 @@ function _M.add(path, route)
   route.path = path
 
   route.id = route.id or path:gsub("/", "-")
+
+  route.auth_strategy = route.auth_strategy or DEFAULT_AUTH
 
   if util.is_regex(path) then
     local re, err = util.validate_regex(path)

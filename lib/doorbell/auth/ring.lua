@@ -1,14 +1,3 @@
----@type doorbell.route
-local _M = {
-  id              = "ring",
-  description     = "ring ring",
-  log_enabled     = true,
-  metrics_enabled = true,
-  allow_untrusted = false,
-  content_type    = "text/plain",
-  auth_required   = false, -- no oauth
-}
-
 local log     = require "doorbell.log"
 local const   = require "doorbell.constants"
 local access  = require "doorbell.auth.access"
@@ -19,6 +8,20 @@ local mware   = require "doorbell.middleware"
 local join    = require("doorbell.util").join
 local ip      = require "doorbell.ip"
 local manager = require "doorbell.rules.manager"
+local auth    = require "doorbell.auth"
+
+
+---@type doorbell.route
+local _M = {
+  id              = "ring",
+  description     = "ring ring",
+  log_enabled     = true,
+  metrics_enabled = true,
+  allow_untrusted = false,
+  content_type    = "text/plain",
+  auth_strategy   = auth.require_all(auth.TRUSTED_IP),
+}
+
 
 local TARPIT_INTERVAL = const.periods.minute * 5
 local STATES          = const.states

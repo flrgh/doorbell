@@ -6,6 +6,7 @@ local router  = require "doorbell.router"
 local views   = require "doorbell.views"
 local mw      = require "doorbell.middleware"
 local request = require "doorbell.request"
+local auth    = require "doorbell.auth"
 
 local send = http.send
 
@@ -30,6 +31,7 @@ function _M.init()
     id              = "answer",
     description     = "who is it?",
     metrics_enabled = true,
+    auth_strategy   = auth.require_none(),
     middleware      = {
       [mw.phase.REWRITE] = {
         request.middleware.enable_logging,
@@ -44,6 +46,7 @@ function _M.init()
     description     = "send a test notification",
     metrics_enabled = false,
     content_type    = "application/json",
+    auth_strategy   = auth.require_any(),
     middleware      = {
       [mw.phase.REWRITE] = {
         request.middleware.enable_logging,
@@ -80,7 +83,7 @@ function _M.init()
     id              = "rules-html-report",
     description     = "rules list, in html",
     metrics_enabled = false,
-    allow_untrusted = false,
+    auth_strategy   = auth.require_any(),
     content_type    = "text/html",
     GET             = views.rule_list,
     middleware      = {
@@ -94,6 +97,7 @@ function _M.init()
     id              = "favicon",
     description     = "stop asking me about this, browsers",
     metrics_enabled = false,
+    auth_strategy   = auth.require_none(),
     middleware      = {
       [mw.phase.REWRITE] = {
         request.middleware.disable_logging,
@@ -102,23 +106,39 @@ function _M.init()
     GET = function() return send(404) end,
   }
 
-  router["/auth-test"] = {
-    id = "auth-test",
-    description     = "what do you thinkg you're doing around here?",
-    metrics_enabled = false,
-    content_type    = "application/json",
-    middleware      = {
-      [mw.phase.REWRITE] = {
-        request.middleware.enable_logging,
-      },
-    },
-    ---@param ctx doorbell.ctx
-    GET = function(ctx)
-      require("doorbell.auth.openid").auth_middleware(ctx, ctx.route)
-      send(200, { message = "OK" })
-    end,
-  }
+  do
+    local strategies = {
+      ["token"]      = auth.require_all(auth.OPENID),
+      ["trusted-ip"] = auth.require_all(auth.TRUSTED_IP),
+      ["any"]        = auth.require_any(auth.TRUSTED_IP, auth.OPENID),
+      ["all"]        = auth.require_all(auth.TRUSTED_IP, auth.OPENID),
+      ["none"]       = auth.require_none(),
+    }
 
+    for name, strategy in pairs(strategies) do
+      router["/auth-test/" .. name] = {
+        id = "auth-test-" .. name,
+        description     = "test authentication (" .. name .. ")",
+        metrics_enabled = false,
+        content_type    = "application/json",
+        auth_strategy   = strategy,
+        middleware      = {
+          [mw.phase.REWRITE] = {
+            request.middleware.enable_logging,
+          },
+        },
+        ---@param ctx doorbell.ctx
+        GET = function(ctx)
+          send(200, {
+            message    = "OK",
+            jwt        = ctx.jwt,
+            user       = ctx.user,
+            trusted_ip = ctx.is_trusted_proxy,
+          })
+        end,
+      }
+    end
+  end
 
   add_submodule_routes("doorbell.api.access")
   add_submodule_routes("doorbell.api.schema")

@@ -419,6 +419,8 @@ end
 ---@return string? error
 ---@return ngx.http.status_code? status
 local function identify(ctx)
+  log.notice("I'm RUNNING!")
+
   if DISABLED or not CONFIGURED then
     return nil, E_INTERNAL, 500
   end
@@ -455,7 +457,6 @@ end
 
 _M.identify = identify
 
-
 ---@param ctx doorbell.ctx
 ---@param route doorbell.route
 function _M.auth_middleware(ctx, route)
@@ -463,8 +464,12 @@ function _M.auth_middleware(ctx, route)
     return
 
   elseif not CONFIGURED then
-    log.alert("got request to OpenID endpoint (", route.id, "), but auth is not enabled")
     return http.send(500, { error = "an unexpected error has occurred" })
+  end
+
+  -- already authenticated
+  if ctx.user and ctx.user.name then
+    return
   end
 
   local user, err, status = identify(ctx)

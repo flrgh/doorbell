@@ -4,13 +4,14 @@ local nginx = require "doorbell.nginx"
 local request = require "doorbell.request"
 local mw = require "doorbell.middleware"
 local http = require "doorbell.http"
+local auth = require "doorbell.auth"
 
 routes["/nginx"] = {
   id = "nginx-info",
   description = "returns information about the current nginx process/group",
   metrics_enabled = false,
-  allow_untrusted = true,
   content_type = "application/json",
+  auth_strategy = auth.require_any(),
 
   middleware      = {
     [mw.phase.REWRITE] = {

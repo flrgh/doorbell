@@ -10,6 +10,7 @@ local rules     = require "doorbell.rules.api"
 local schema    = require "doorbell.schema"
 local stats     = require "doorbell.rules.stats"
 local util      = require "doorbell.util"
+local auth      = require "doorbell.auth"
 
 
 local send = http.send
@@ -28,8 +29,8 @@ routes["/rules"] = {
   id                = "rules-collection",
   description       = "rules API",
   metrics_enabled   = false,
-  allow_untrusted   = false,
   middleware        = MIDDLEWARE,
+  auth_strategy     = auth.require_any(),
 
   GET = function(ctx)
     local list, err = rules.list()
@@ -70,8 +71,8 @@ routes["~^/rules/(?<hash_or_id>[a-z0-9-]+)$"] = {
   id                = "rules-single",
   description       = "rules API",
   metrics_enabled   = false,
-  allow_untrusted   = false,
   middleware        = MIDDLEWARE,
+  auth_strategy     = auth.require_any(),
 
   GET = function(ctx, match)
     local rule = rules.get(match.hash_or_id)

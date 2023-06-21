@@ -4,6 +4,7 @@ local http = require "doorbell.http"
 local mw = require "doorbell.middleware"
 local request = require "doorbell.request"
 local ip = require "doorbell.ip"
+local auth = require "doorbell.auth"
 
 local set_response_header = http.response.set_header
 local send = http.send
@@ -25,8 +26,7 @@ routes["/ip/addr"] = {
   id              = "get-forwarded-ip",
   description     = "returns the client IP address",
   metrics_enabled = true,
-  allow_untrusted = true,
-  auth_required   = false,
+  auth_strategy   = auth.require_none(),
 
   middleware      = {
     [mw.phase.REWRITE] = {
@@ -55,9 +55,8 @@ routes["/ip/info"] = {
   id              = "get-forwarded-ip-info",
   description     = "returns IP address info",
   metrics_enabled = true,
-  allow_untrusted = true,
   middleware      = SHARED_MIDDLEWARE,
-  auth_required   = false,
+  auth_strategy   = auth.require_none(),
 
   ---@param ctx doorbell.ctx
   GET = function(ctx)
@@ -80,9 +79,8 @@ routes["~^/ip/info/(?<addr>.+)"] = {
   id              = "get-ip-info",
   description     = "returns IP address info",
   metrics_enabled = true,
-  allow_untrusted = false,
   middleware      = SHARED_MIDDLEWARE,
-  auth_required   = false,
+  auth_strategy   = auth.require_any(),
 
   GET = function(ctx, match)
     local addr = match.addr

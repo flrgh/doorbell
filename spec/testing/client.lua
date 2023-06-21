@@ -4,6 +4,7 @@ local http = require "resty.http"
 local cjson = require("cjson").new()
 local clone = require "table.clone"
 local const = require "doorbell.constants"
+local parse_url = require("doorbell.http").parse_url
 
 cjson.decode_array_with_array_mt(true)
 
@@ -26,7 +27,7 @@ local function is_conn_err(e)
 end
 
 ---@param req spec.testing.client.request
-local function prepare(req)
+local function prepare(self, req)
   if req.json then
     assert(req.body == nil, "request.json and request.body are " ..
                             "mutually exclusive")
@@ -49,6 +50,10 @@ local function prepare(req)
     req.body = assert(ngx.encode_args(req.post))
     req.headers = req.headers or _M.headers()
     req.headers["content-type"] = "application/x-www-form-urlencoded"
+  end
+
+  if self.unix then
+    req.headers.host = req.headers.host or "doorbell"
   end
 end
 
@@ -180,11 +185,12 @@ end
 ---@field response     spec.testing.client.response
 ---@field err          string|nil
 ---@field host         string
----@field port         integer
----@field scheme       "http"|"https"
+---@field port         integer|nil
+---@field scheme       "http"|"https"|nil
 ---@field headers      spec.testing.client.headers
 ---@field need_connect boolean
 ---@field timeout      number
+---@field unix         boolean
 ---
 ---@field raise_on_request_error     boolean
 ---@field raise_on_connect_error     boolean
@@ -213,14 +219,17 @@ function client:reset()
   self.err = nil
 end
 
-
-function client:reconnect()
-  self:close()
-  assert(self.httpc:connect({
+function client:connect()
+  return self.httpc:connect({
     host   = self.host,
     scheme = self.scheme,
     port   = self.port,
-  }))
+  })
+end
+
+function client:reconnect()
+  self:close()
+  assert(self:connect())
   self.need_connect = true
 end
 
@@ -231,12 +240,7 @@ function client:send()
   self.httpc:set_timeout(self.timeout or 5000)
 
   if self.need_connect then
-    local ok, err = self.httpc:connect({
-      host   = self.host,
-      scheme = self.scheme,
-      port   = self.port,
-    })
-
+    local ok, err = self:connect()
     self.err = err
 
     if not ok then
@@ -253,7 +257,7 @@ function client:send()
   ---@type spec.testing.client.request
   local req = clone(self.request)
   req.headers = req.headers or _M.headers()
-  prepare(req)
+  prepare(self, req)
 
   for k, v in pairs(self.headers) do
     req.headers[k] = v
@@ -391,13 +395,24 @@ end
 function _M.new(url)
   url = url or "http://127.0.0.1:9876"
 
-  local parsed = assert(http:parse_uri(url))
+  local parsed = assert(parse_url(url))
+  local scheme, host, port
+  local unix = false
+  if parsed.scheme == "unix" then
+    unix = true
+    host = "unix:" .. assert(parsed.path)
+
+  else
+    scheme = parsed.scheme
+    host = parsed.host
+    port = parsed.port
+  end
 
   local self = {
     httpc                  = assert(http.new()),
-    scheme                 = parsed[1],
-    host                   = parsed[2],
-    port                   = parsed[3],
+    scheme                 = scheme,
+    host                   = host,
+    port                   = port,
     headers                = _M.headers(),
     need_connect           = true,
     request                = {},
@@ -405,6 +420,7 @@ function _M.new(url)
     raise_on_connect_error = true,
     assert_status          = {},
     reopen                 = false,
+    unix                   = unix,
   }
 
   return setmetatable(self, client)

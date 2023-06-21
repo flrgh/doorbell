@@ -341,7 +341,18 @@ function _M.init_worker()
   end
 end
 
+---@class doorbell.nginx.info : table
+---
+---@field agent          doorbell.nginx.process.info|nil
+---@field group          integer
+---@field is_clean_start boolean
+---@field is_reload      boolean
+---@field started        number
+---@field uptime         number
+---@field worker_count   integer
+---@field workers        doorbell.nginx.process.info[]
 
+---@return doorbell.nginx.info
 function _M.info()
   local pg = get_current_pg()
   local started = pg_get(pg, B_STARTED_AT)

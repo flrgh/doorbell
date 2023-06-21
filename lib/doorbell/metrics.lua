@@ -61,10 +61,11 @@ function _M.init(conf)
   end
 
   if enabled then
+    local auth = require "doorbell.auth"
     require("doorbell.router").add("/metrics", {
       id              = "metrics",
       description     = "prometheus metrics endpoint",
-      allow_untrusted = true,
+      auth_strategy   = auth.require_any(),
       GET             = function()
         if enabled and prometheus then
           if not hooks_first_run then

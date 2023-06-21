@@ -140,223 +140,351 @@ end
 
 
 describe("API auth", function()
-  ---@type spec.testing.client
-  local client
+  for _, trusted_client_ip in ipairs({ true, false }) do
+    local label = trusted_client_ip
+              and "(trusted client IP)"
+               or "(untrusted client IP)"
 
-  ---@type spec.testing.nginx
-  local nginx
+    describe(label, function()
 
-  ---@type doorbell.config
-  local conf
+      ---@type spec.testing.client
+      local client
 
-  lazy_setup(function()
-    conf = test.config()
-    conf.auth = {
-      openid_issuer = BASE_URL,
-      users = {
-        {
-          name = USER,
-          identifiers = {
-            { sub = SUB },
-            { email = EMAIL },
+      ---@type spec.testing.nginx
+      local nginx
+
+      ---@type doorbell.config
+      local conf
+
+      lazy_setup(function()
+        conf = test.config()
+        conf.auth = {
+          openid_issuer = BASE_URL,
+          users = {
+            {
+              name = USER,
+              identifiers = {
+                { sub = SUB },
+                { email = EMAIL },
+              },
+            },
           },
-        },
-      },
-    }
+        }
 
-    nginx = test.nginx(conf)
-    nginx:conf_test()
-    nginx:start()
+        if trusted_client_ip then
+          conf.trusted = { "0.0.0.0/0" }
+        else
+          conf.trusted = { "4.3.2.1/32" }
+        end
 
-    client = test.client()
-    nginx:add_client(client)
+        nginx = test.nginx(conf)
+        nginx:conf_test()
+        nginx:start()
 
-    client.raise_on_connect_error = true
-    client.reopen = true
-  end)
+        client = test.client()
+        nginx:add_client(client)
 
-  lazy_teardown(function()
-    client:close()
-    nginx:stop()
-  end)
+        client.raise_on_connect_error = true
+        client.reopen = true
+      end)
 
-  before_each(function()
-    client:reset()
-    mu.mock.reset()
-  end)
+      lazy_teardown(function()
+        client:close()
+        nginx:stop()
+      end)
 
-  ---@param res spec.testing.client.response
-  local function await_user_log_entry(res)
-    local entry
-    test.await.truthy(function()
-      entry = nginx:get_json_log_entry(res.id)
-      return entry
-    end, 5, 0.1, "waiting for authenticated_user in the JSON logs")
+      before_each(function()
+        client:reset()
+        mu.mock.reset()
+      end)
 
-    assert.is_table(entry.authenticated_user)
-    assert.is_string(entry.authenticated_user.name)
-    assert.same(USER, entry.authenticated_user.name)
+      ---@param res spec.testing.client.response
+      local function await_user_log_entry(res)
+        local entry
+        test.await.truthy(function()
+          entry = nginx:get_json_log_entry(res.id)
+          return entry
+        end, 5, 0.1, "waiting for authenticated_user in the JSON logs")
+
+        assert.is_table(entry.authenticated_user)
+        assert.is_string(entry.authenticated_user.name)
+        assert.same(USER, entry.authenticated_user.name)
+      end
+
+
+      local function check_options(path)
+        it("allows OPTIONS requests", function()
+          client:options(path)
+          assert.same(200, client.response.status)
+        end)
+      end
+
+      local function check_allowed_ip_only(path)
+        it("allows requests from trusted IP addresses", function()
+          client:get(path)
+          assert.same(200, client.response.status)
+          assert.is_true(client.response.json.trusted_ip)
+        end)
+      end
+
+      local function check_denied_ip_only(path, status)
+        it("denies requests from trusted IP addresses (with no token)", function()
+          client:get(path)
+          assert.same(status or 403, client.response.status)
+          assert.is_string(client.response.json.error)
+        end)
+      end
+
+      local function check_denied_valid_token(path)
+        it("denies requests even with valid tokens", function()
+          setup_mocks()
+          setup_userinfo({
+            email = EMAIL,
+            email_verified = true,
+          })
+
+          local token = jwt:sign(PRIVATE_KEY, {
+            header = {
+              typ = "JWT",
+              alg = "RS256",
+            },
+            payload = {
+              sub = "my-user",
+              iss = BASE_URL,
+              exp = ngx.now() + 1000,
+            },
+          })
+
+          client.headers.Authorization = "Bearer " .. token
+          client:get(path)
+
+          assert.is_true(client.response.status == 401
+                      or client.response.status == 403)
+
+          assert.is_string(client.response.json.error)
+
+          -- need a sanity check just to make sure we _do_ have a valid token
+          setup_mocks()
+          setup_userinfo({
+            email = EMAIL,
+            email_verified = true,
+          })
+
+          client:get("/auth-test/token")
+
+          assert.same(200, client.response.status)
+          await_user_log_entry(client.response)
+        end)
+      end
+
+
+      local function check_allowed_token(path)
+        it("uses OpenID to validate Bearer tokens", function()
+          setup_mocks()
+          setup_userinfo({
+            email = EMAIL,
+            email_verified = true,
+          })
+
+          local token = jwt:sign(PRIVATE_KEY, {
+            header = {
+              typ = "JWT",
+              alg = "RS256",
+            },
+            payload = {
+              sub = "my-user",
+              iss = BASE_URL,
+              exp = ngx.now() + 1000,
+            },
+          })
+
+          client.headers.Authorization = "Bearer " .. token
+          client:get(path)
+
+          assert.same(200, client.response.status)
+        end)
+
+        it("identifies users by email", function()
+          setup_mocks()
+          setup_userinfo({
+            email = EMAIL,
+            email_verified = true,
+          })
+
+          local token = jwt:sign(PRIVATE_KEY, {
+            header = {
+              typ = "JWT",
+              alg = "RS256",
+            },
+            payload = {
+              sub = test.random_string(12),
+              iss = BASE_URL,
+              exp = ngx.now() + 1000,
+            },
+          })
+
+          client.headers.Authorization = "Bearer " .. token
+          client:get(path)
+
+          assert.same(200, client.response.status)
+
+          await_user_log_entry(client.response)
+        end)
+
+        it("identifies users by sub", function()
+          setup_mocks()
+
+          local token = jwt:sign(PRIVATE_KEY, {
+            header = {
+              typ = "JWT",
+              alg = "RS256",
+            },
+            payload = {
+              sub = SUB,
+              iss = BASE_URL,
+              exp = ngx.now() + 1000,
+            },
+          })
+
+          client.headers.Authorization = "Bearer " .. token
+          client:get(path)
+
+          assert.same(200, client.response.status)
+
+          await_user_log_entry(client.response)
+        end)
+      end
+
+      local function check_bad_token(path)
+        it("returns 403 when a user cannot be identified", function()
+          setup_mocks()
+          setup_userinfo({
+            email = test.random_string(12) .. "@email.test",
+            email_verified = true,
+          })
+
+          local token = jwt:sign(PRIVATE_KEY, {
+            header = {
+              typ = "JWT",
+              alg = "RS256",
+            },
+            payload = {
+              sub = test.random_string(12),
+              iss = BASE_URL,
+              exp = ngx.now() + 1000,
+            },
+          })
+
+          client.headers.Authorization = "Bearer " .. token
+          client:get(path)
+
+          assert.same(403, client.response.status)
+          assert.is_string(client.response.json.error)
+        end)
+
+
+        it("returns 401 for requests without a valid auth header", function()
+          client:get(path)
+          assert.same(401, client.response.status)
+          assert.is_string(client.response.json.error)
+
+          client.headers.Authorization = "nope!"
+          client:get(path)
+          assert.same(401, client.response.status)
+          assert.is_string(client.response.json.error)
+        end)
+
+        it("returns 403 if the issuer doesn't match", function()
+          setup_mocks()
+
+          local token = jwt:sign(PRIVATE_KEY, {
+            header = {
+              typ = "JWT",
+              alg = "RS256",
+            },
+            payload = {
+              sub = "my-user",
+              iss = "nope!",
+              exp = ngx.now() + 1000,
+            },
+          })
+
+          client.headers.Authorization = "Bearer " .. token
+          client:get(path)
+
+          assert.same(403, client.response.status)
+          assert.is_string(client.response.json.error)
+        end)
+
+        it("returns 401 if the token is expired", function()
+          setup_mocks()
+
+          local token = jwt:sign(PRIVATE_KEY, {
+            header = {
+              typ = "JWT",
+              alg = "RS256",
+            },
+            payload = {
+              sub = "my-user",
+              iss = BASE_URL,
+              exp = ngx.now() - 1000,
+            },
+          })
+
+          client.headers.Authorization = "Bearer " .. token
+          client:get(path)
+
+          assert.same(401, client.response.status)
+          assert.same("access token expired", client.response.json.error)
+        end)
+      end
+
+
+      describe("strategy => IP", function()
+        local path = "/auth-test/trusted-ip"
+        check_options(path)
+
+        if trusted_client_ip then
+          check_allowed_ip_only(path)
+          check_allowed_token(path)
+        else
+          check_denied_ip_only(path)
+          check_denied_valid_token(path)
+        end
+      end)
+
+      describe("strategy => token", function()
+        local path = "/auth-test/token"
+        check_options(path)
+        check_denied_ip_only(path, 401)
+        check_allowed_token(path)
+        check_bad_token(path)
+      end)
+
+      describe("strategy => any", function()
+        local path = "/auth-test/any"
+        check_options(path)
+        check_allowed_token(path)
+
+        if trusted_client_ip then
+          check_allowed_ip_only(path)
+        else
+          check_denied_ip_only(path, 401)
+        end
+      end)
+
+      describe("strategy => all", function()
+        local path = "/auth-test/all"
+        check_options(path)
+        check_denied_ip_only(path, 401)
+
+        if trusted_client_ip then
+          check_allowed_token(path)
+          check_bad_token(path)
+        else
+          check_denied_valid_token(path)
+        end
+      end)
+    end)
   end
-
-  it("uses OpenID to validate Bearer tokens", function()
-    setup_mocks()
-    setup_userinfo({
-      email = EMAIL,
-      email_verified = true,
-    })
-
-    local token = jwt:sign(PRIVATE_KEY, {
-      header = {
-        typ = "JWT",
-        alg = "RS256",
-      },
-      payload = {
-        sub = "my-user",
-        iss = BASE_URL,
-        exp = ngx.now() + 1000,
-      },
-    })
-
-    client.headers.Authorization = "Bearer " .. token
-    client:get("/auth-test")
-
-    assert.same(200, client.response.status)
-  end)
-
-  it("identifies users by email", function()
-    setup_mocks()
-    setup_userinfo({
-      email = EMAIL,
-      email_verified = true,
-    })
-
-    local token = jwt:sign(PRIVATE_KEY, {
-      header = {
-        typ = "JWT",
-        alg = "RS256",
-      },
-      payload = {
-        sub = test.random_string(12),
-        iss = BASE_URL,
-        exp = ngx.now() + 1000,
-      },
-    })
-
-    client.headers.Authorization = "Bearer " .. token
-    client:get("/auth-test")
-
-    assert.same(200, client.response.status)
-
-    await_user_log_entry(client.response)
-  end)
-
-  it("identifies users by sub", function()
-    setup_mocks()
-
-    local token = jwt:sign(PRIVATE_KEY, {
-      header = {
-        typ = "JWT",
-        alg = "RS256",
-      },
-      payload = {
-        sub = SUB,
-        iss = BASE_URL,
-        exp = ngx.now() + 1000,
-      },
-    })
-
-    client.headers.Authorization = "Bearer " .. token
-    client:get("/auth-test")
-
-    assert.same(200, client.response.status)
-
-    await_user_log_entry(client.response)
-  end)
-
-  it("returns 403 when a user cannot be identified", function()
-    setup_mocks()
-    setup_userinfo({
-      email = test.random_string(12) .. "@email.test",
-      email_verified = true,
-    })
-
-    local token = jwt:sign(PRIVATE_KEY, {
-      header = {
-        typ = "JWT",
-        alg = "RS256",
-      },
-      payload = {
-        sub = test.random_string(12),
-        iss = BASE_URL,
-        exp = ngx.now() + 1000,
-      },
-    })
-
-    client.headers.Authorization = "Bearer " .. token
-    client:get("/auth-test")
-
-    assert.same(403, client.response.status)
-    assert.is_string(client.response.json.error)
-  end)
-
-
-  it("returns 401 for requests without a valid auth header", function()
-    client:get("/auth-test")
-    assert.same(401, client.response.status)
-    assert.is_string(client.response.json.error)
-
-    client.headers.Authorization = "nope!"
-    client:get("/auth-test")
-    assert.same(401, client.response.status)
-    assert.is_string(client.response.json.error)
-  end)
-
-  it("returns 403 if the issuer doesn't match", function()
-    setup_mocks()
-
-    local token = jwt:sign(PRIVATE_KEY, {
-      header = {
-        typ = "JWT",
-        alg = "RS256",
-      },
-      payload = {
-        sub = "my-user",
-        iss = "nope!",
-        exp = ngx.now() + 1000,
-      },
-    })
-
-    client.headers.Authorization = "Bearer " .. token
-    client:get("/auth-test")
-
-    assert.same(403, client.response.status)
-    assert.is_string(client.response.json.error)
-  end)
-
-  it("returns 401 if the token is expired", function()
-    setup_mocks()
-
-    local token = jwt:sign(PRIVATE_KEY, {
-      header = {
-        typ = "JWT",
-        alg = "RS256",
-      },
-      payload = {
-        sub = "my-user",
-        iss = BASE_URL,
-        exp = ngx.now() - 1000,
-      },
-    })
-
-    client.headers.Authorization = "Bearer " .. token
-    client:get("/auth-test")
-
-    assert.same(401, client.response.status)
-    assert.same("access token expired", client.response.json.error)
-  end)
-
-  it("does not require an auth token for CORS pre-flight/OPTIONS", function()
-    client:options("/auth-test")
-    assert.same(200, client.response.status)
-  end)
 end)

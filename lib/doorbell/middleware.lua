@@ -2,6 +2,7 @@ local _M = {}
 
 local util = require "doorbell.util"
 local log = require "doorbell.log"
+local clone = require "table.clone"
 
 ---@alias doorbell.middleware fun(ctx:doorbell.ctx, route:doorbell.route, match?:doorbell.route_match)
 
@@ -254,6 +255,7 @@ do
     end
 
     local compiler = exec_c[len] or exec_n
+    mws = clone(mws)
     return compiler(mws)
   end
 end
