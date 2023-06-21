@@ -2,12 +2,15 @@ local test = require "spec.testing"
 local cjson = require "cjson"
 local mu = require "spec.testing.mock-upstream"
 local jwt = require "resty.jwt"
+local util = require "doorbell.util"
+local const = require "doorbell.constants"
 
 local BASE_URL = "http://127.0.0.1:" .. test.constants.MOCK_UPSTREAM_PORT .. "/"
 
 local USER = "my-test-user"
 local SUB = "provider|my-test-user-sub"
 local EMAIL = "my-test-user@email.test"
+local API_KEY = test.random_string(36)
 
 local function new_openid_conf()
   return {
@@ -166,6 +169,7 @@ describe("API auth", function()
               identifiers = {
                 { sub = SUB },
                 { email = EMAIL },
+                { apikey = util.sha256(API_KEY) },
               },
             },
           },
@@ -223,7 +227,9 @@ describe("API auth", function()
         it("allows requests from trusted IP addresses", function()
           client:get(path)
           assert.same(200, client.response.status)
-          assert.is_true(client.response.json.trusted_ip)
+          if trusted_client_ip then
+            assert.is_true(client.response.json.trusted_ip)
+          end
         end)
       end
 
@@ -439,6 +445,55 @@ describe("API auth", function()
         end)
       end
 
+      local function check_valid_api_key_allowed(path)
+        it("allows requests with a proper API key", function()
+          client.headers[const.headers.api_key] = API_KEY
+          client:get(path)
+          assert.same(200, client.response.status)
+          await_user_log_entry(client.response)
+        end)
+      end
+
+      local function check_no_api_key_allowed(path)
+        it("allows requests without an API key", function()
+          client.headers[const.headers.api_key] = nil
+          client:get(path)
+          assert.same(200, client.response.status)
+        end)
+      end
+
+      local function check_no_api_key_denied(path)
+        it("rejects requests without an API key", function()
+          client.headers[const.headers.api_key] = nil
+          client:get(path)
+          assert.is_true(client.response.status == 401
+                      or client.response.status == 403)
+
+          assert.is_string(client.response.json.error)
+        end)
+      end
+
+
+      local function check_valid_api_key_denied(path)
+        it("denies requests with a valid API key", function()
+          client.headers[const.headers.api_key] = API_KEY
+          client:get(path)
+          assert.is_true(client.response.status == 401
+                      or client.response.status == 403)
+
+          assert.is_string(client.response.json.error)
+        end)
+      end
+
+      local function check_invalid_api_key_denied(path, status)
+        it("denies requests with multiple API keys", function()
+          client.headers[const.headers.api_key] = { API_KEY, "yep!" }
+          client:get(path)
+          assert.same(status or 400, client.response.status)
+          assert.is_string(client.response.json.error)
+        end)
+      end
+
 
       describe("strategy => IP", function()
         local path = "/auth-test/trusted-ip"
@@ -447,9 +502,13 @@ describe("API auth", function()
         if trusted_client_ip then
           check_allowed_ip_only(path)
           check_allowed_token(path)
+          check_valid_api_key_allowed(path)
+          check_no_api_key_allowed(path)
         else
           check_denied_ip_only(path)
           check_denied_valid_token(path)
+          check_no_api_key_denied(path)
+          check_valid_api_key_denied(path)
         end
       end)
 
@@ -468,13 +527,18 @@ describe("API auth", function()
 
         if trusted_client_ip then
           check_allowed_ip_only(path)
+          check_valid_api_key_allowed(path)
+          check_no_api_key_allowed(path)
         else
           check_denied_ip_only(path, 401)
+          check_valid_api_key_allowed(path)
+          check_no_api_key_denied(path)
+          check_invalid_api_key_denied(path, 401)
         end
       end)
 
-      describe("strategy => all", function()
-        local path = "/auth-test/all"
+      describe("strategy => IP+token", function()
+        local path = "/auth-test/ip-and-token"
         check_options(path)
         check_denied_ip_only(path, 401)
 
@@ -484,6 +548,24 @@ describe("API auth", function()
         else
           check_denied_valid_token(path)
         end
+      end)
+
+      describe("strategy => none", function()
+        local path = "/auth-test/none"
+        check_options(path)
+        check_allowed_token(path)
+        check_allowed_ip_only(path)
+        check_valid_api_key_allowed(path)
+        check_no_api_key_allowed(path)
+      end)
+
+      describe("strategy => api key", function()
+        local path = "/auth-test/api-key"
+        check_options(path)
+        check_denied_ip_only(path, 401)
+        check_valid_api_key_allowed(path)
+        check_invalid_api_key_denied(path)
+        check_no_api_key_denied(path)
       end)
     end)
   end

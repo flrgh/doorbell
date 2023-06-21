@@ -108,11 +108,12 @@ function _M.init()
 
   do
     local strategies = {
-      ["token"]      = auth.require_all(auth.OPENID),
-      ["trusted-ip"] = auth.require_all(auth.TRUSTED_IP),
-      ["any"]        = auth.require_any(auth.TRUSTED_IP, auth.OPENID),
-      ["all"]        = auth.require_all(auth.TRUSTED_IP, auth.OPENID),
-      ["none"]       = auth.require_none(),
+      ["token"]         = auth.require_all(auth.OPENID),
+      ["trusted-ip"]    = auth.require_all(auth.TRUSTED_IP),
+      ["api-key"]       = auth.require_all(auth.API_KEY),
+      ["any"]           = auth.require_any(),
+      ["ip-and-token"]  = auth.require_all(auth.TRUSTED_IP, auth.OPENID),
+      ["none"]          = auth.require_none(),
     }
 
     for name, strategy in pairs(strategies) do

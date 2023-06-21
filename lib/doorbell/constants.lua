@@ -141,6 +141,7 @@ end
 
 const.headers = {
   request_id = "x-doorbell-request-id",
+  api_key    = "x-doorbell-api-key",
 }
 
 
