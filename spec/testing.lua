@@ -13,7 +13,6 @@ local random = require "resty.random"
 require "spec.testing.assertions"
 
 local inspect = require "inspect"
-local to_hex = require("resty.string").to_hex
 
 local fmt = string.format
 
@@ -77,7 +76,7 @@ end
 function _M.random_string(len)
   len = len or 32
   local bytes = random.bytes(len, false)
-  return to_hex(bytes)
+  return ngx.encode_base64(bytes, true)
 end
 
 

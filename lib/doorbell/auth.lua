@@ -6,6 +6,7 @@ local log = require "doorbell.log"
 local http = require "doorbell.http"
 local access = require "doorbell.auth.access"
 local openid = require "doorbell.auth.openid"
+local apikey = require "doorbell.auth.api-key"
 
 local bor = bit.bor
 local band = bit.band
@@ -16,6 +17,7 @@ local REQUIRE_ALL       = lshift(1, 1)
 local REQUIRE_NONE      = lshift(1, 2)
 local AUTH_TRUSTED_IP   = lshift(1, 3)
 local AUTH_OPENID       = lshift(1, 4)
+local AUTH_API_KEY      = lshift(1, 5)
 
 local STRATEGIES = {
   {
@@ -31,6 +33,25 @@ local STRATEGIES = {
         ctx.auth_http_status = 403
         ctx.auth_client_message = "go away please"
       end
+      return false
+    end,
+  },
+
+  {
+    code = AUTH_API_KEY,
+
+    ---@param ctx doorbell.ctx
+    ---@param check_only boolean
+    handler = function(ctx, check_only)
+      local user, err, status = apikey.identify(ctx)
+      if user then
+        return true
+
+      elseif not check_only then
+        ctx.auth_http_status = status
+        ctx.auth_client_message = err
+      end
+
       return false
     end,
   },
@@ -59,6 +80,7 @@ local NUM_STRATEGIES = #STRATEGIES
 
 _M.TRUSTED_IP = AUTH_TRUSTED_IP
 _M.OPENID = AUTH_OPENID
+_M.API_KEY = AUTH_API_KEY
 
 local function is_set(input, flag)
   return band(input, flag) == flag
@@ -68,6 +90,7 @@ end
 function _M.init(conf)
   access.init(conf)
   openid.init(conf)
+  apikey.init(conf)
 end
 
 
@@ -149,7 +172,7 @@ end
 function _M.require_any(...)
   local n = select("#", ...)
   if n == 0 then
-    return _M.require_any(AUTH_TRUSTED_IP, AUTH_OPENID)
+    return _M.require_any(AUTH_TRUSTED_IP, AUTH_OPENID, AUTH_API_KEY)
   end
 
   return bor(REQUIRE_ANY, ...)
@@ -160,7 +183,7 @@ end
 function _M.require_all(...)
   local n = select("#", ...)
   if n == 0 then
-    return _M.require_all(AUTH_TRUSTED_IP, AUTH_OPENID)
+    return _M.require_all(AUTH_TRUSTED_IP, AUTH_OPENID, AUTH_API_KEY)
   end
   return bor(REQUIRE_ALL, ...)
 end
