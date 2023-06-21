@@ -49,7 +49,18 @@ local function is_expired_err(e)
 end
 
 
----@param t table
+---@class doorbell.auth.jwt : table
+---
+---@field aud   string|string[]
+---@field azp   string
+---@field exp   number
+---@field iat   number
+---@field iss   string
+---@field scope string
+---@field sub   string
+
+
+---@param t doorbell.auth.jwt
 local function token_ttl(t)
   local exp = t and t.exp
 
@@ -99,8 +110,8 @@ local CONFIGURED = false
 local DISABLED = false
 
 
----@param ctx doorbell.ctx
----@return string? token
+---@param  ctx doorbell.ctx
+---@return string? raw_token
 ---@return string? error
 ---@return ngx.http.status_code? status
 ---@return doorbell.auth.openid.token.source? source
@@ -240,23 +251,23 @@ local function ensure_discovery(check_only)
   return true
 end
 
----@param token string
+---@param raw_token string
 ---@return table? info
 ---@return string? error
-local function load_user_info(token)
-  return oidc.call_userinfo_endpoint(OIDC_OPTS, token)
+local function load_user_info(raw_token)
+  return oidc.call_userinfo_endpoint(OIDC_OPTS, raw_token)
 end
 
 
----@param t table
----@param token string
+---@param jwt       doorbell.auth.jwt
+---@param raw_token string
 ---@return doorbell.config.auth.user?
-local function get_user(t, token)
+local function get_user(jwt, raw_token)
   if not ensure_discovery(true) then
     return
   end
 
-  local sub = t.sub
+  local sub = jwt.sub
   assert(type(sub) == "string")
 
   local u = USERS_BY_SUB[sub]
@@ -265,7 +276,7 @@ local function get_user(t, token)
   end
 
   local cache_key = "oidc::userinfo::" .. sub
-  local info, err = cache:get(cache_key, nil, load_user_info, token)
+  local info, err = cache:get(cache_key, nil, load_user_info, raw_token)
 
   if not info then
     log.err("failed loading userinfo for ", sub, ": ", err)
@@ -280,12 +291,12 @@ local function get_user(t, token)
 end
 
 
----@param token string
----@return table? jwt
+---@param  raw_token string
+---@return doorbell.auth.jwt? jwt
 ---@return string? error
 ---@return number? ttl
-local function oidc_verify(token)
-  local t, err = oidc.jwt_verify(token, OIDC_OPTS, VALIDATORS)
+local function oidc_verify(raw_token)
+  local t, err = oidc.jwt_verify(raw_token, OIDC_OPTS, VALIDATORS)
 
   if is_expired_err(err) then
     return nil, E_EXPIRED
@@ -304,12 +315,12 @@ local function oidc_verify(token)
 end
 
 
----@param token string
----@return table? jwt
+---@param  raw_token string
+---@return doorbell.auth.jwt? jwt
 ---@return string? error
-local function verify_token(token)
-  local cache_key = "openid::token::" .. sha256(token)
-  local json, err = cache:get(cache_key, nil, oidc_verify, token)
+local function verify_token(raw_token)
+  local cache_key = "openid::token::" .. sha256(raw_token)
+  local json, err = cache:get(cache_key, nil, oidc_verify, raw_token)
 
   if err or not json then
     return nil, err
@@ -417,9 +428,9 @@ local function identify(ctx)
     return nil, err, status
   end
 
-  local json
-  json, err = verify_token(token)
-  if err or not json then
+  local jwt
+  jwt, err = verify_token(token)
+  if err or not jwt then
     if is_expired_err(err) then
       return nil, E_EXPIRED, 401
 
@@ -428,8 +439,8 @@ local function identify(ctx)
     end
   end
 
-  ctx.jwt = json
-  local user = get_user(json, token)
+  ctx.jwt = jwt
+  local user = get_user(jwt, token)
 
   if not user then
     return nil, E_NO_SUCH_USER, 403
