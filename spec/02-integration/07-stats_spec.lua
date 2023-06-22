@@ -54,7 +54,7 @@ describe("rule stats", function()
   local rule
 
   before_each(function()
-    client = test.client()
+    client = nginx:add_client(test.client())
     client.timeout = 5000
     client.request.path = "/ring"
     client.request.host = "127.0.0.1"
@@ -71,12 +71,6 @@ describe("rule stats", function()
       assert.same(201, client.response.status)
 
       rule = assert.is_table(client.response.json)
-    end
-  end)
-
-  after_each(function()
-    if client then
-      client:close()
     end
   end)
 
@@ -132,8 +126,8 @@ describe("rule stats", function()
       return test.fs.mtime(stats_file) > mtime
     end, 10, nil, "wait for stats file to be saved/updated")
 
-    assert.truthy(nginx:stop())
-    ngx.sleep(1)
+    assert.truthy(nginx:quit())
+    ngx.sleep(0.25)
     nginx:start()
 
     local last = stats
@@ -190,8 +184,8 @@ describe("rule stats", function()
       return test.fs.mtime(stats_file) > mtime
     end, 10, nil, "wait for stats file to be saved/updated")
 
-    assert.truthy(nginx:stop())
-    ngx.sleep(1)
+    assert.truthy(nginx:quit())
+    ngx.sleep(0.25)
     nginx:start()
 
     local last = stats

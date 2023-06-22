@@ -47,23 +47,16 @@ describe("doorbell", function()
     nginx:start()
 
     answer_client = test.client()
+    nginx:add_client(answer_client)
   end)
 
   lazy_teardown(function()
-    if client then
-      client:close()
-    end
-
-    if answer_client then
-      answer_client:close()
-    end
-
     nginx:stop()
   end)
 
   before_each(function()
-    client = test.client()
-    client.timeout = 5000
+    client = nginx:add_client(test.client())
+    client.timeout = 1000
     client.request.path = "/ring"
     client.request.host = "127.0.0.1"
     client:add_x_forwarded_headers(test.random_ipv4(), "GET", "http://answer.test/")
@@ -73,12 +66,6 @@ describe("doorbell", function()
     client.request.host = "127.0.0.1"
 
     test.fs.truncate(notify_log)
-  end)
-
-  after_each(function()
-    if client then
-      client:close()
-    end
   end)
 
   describe("/answer", function()

@@ -419,8 +419,6 @@ end
 ---@return string? error
 ---@return ngx.http.status_code? status
 local function identify(ctx)
-  log.notice("I'm RUNNING!")
-
   if DISABLED or not CONFIGURED then
     return nil, E_INTERNAL, 500
   end

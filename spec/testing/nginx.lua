@@ -16,6 +16,7 @@ local assert = require "luassert"
 local QUIT = assert(resty_signal.signum("QUIT"))
 local TERM = assert(resty_signal.signum("TERM"))
 local HUP = assert(resty_signal.signum("HUP"))
+local KILL = assert(resty_signal.signum("KILL"))
 
 local join = fs.join
 local fmt = string.format
@@ -195,15 +196,18 @@ function nginx:start()
   end
 end
 
-function nginx:stop()
+function nginx:close_clients()
+  for client in pairs(self.clients) do
+    client:close()
+  end
+end
+
+function nginx:quit()
   if not self.pid then
     return nil, "nginx is not running"
   end
 
-  for client in pairs(self.clients) do
-    client:close()
-  end
-
+  self:close_clients()
   assert(self:signal(QUIT))
 
   if not wait_pid(self.pid, dead, 5) then
@@ -219,6 +223,30 @@ function nginx:stop()
 
   return true
 end
+
+function nginx:stop()
+  if not self.pid then
+    return nil, "nginx is not running"
+  end
+
+  self:close_clients()
+
+  assert(self:signal(TERM))
+
+  if not wait_pid(self.pid, dead, 0.25) then
+    self:signal(KILL)
+
+    if not wait_pid(self.pid, dead, 5) then
+      error("timed out waiting for NGINX " .. self.pid .. " to go away")
+    end
+  end
+
+  fs.rm(self.pidfile, true)
+  self.pid = nil
+
+  return true
+end
+
 
 function nginx:restart()
   self:stop()

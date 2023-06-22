@@ -123,7 +123,7 @@ end
 
 
 describe("prometheus metrics", function()
-  local interval = 1
+  local interval = 0.5
 
   ---@type spec.testing.client
   local client
