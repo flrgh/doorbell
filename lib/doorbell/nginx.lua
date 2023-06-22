@@ -19,6 +19,9 @@ local PG_ID = 0
 local WORKER_COUNT = 0
 
 local HEARTBEAT_INTERVAL = 1
+if os.getenv("DOORBELL___TEST") then
+  HEARTBEAT_INTERVAL = 0.1
+end
 local UNHEALTHY_THRESHOLD = HEARTBEAT_INTERVAL * 0.5
 
 

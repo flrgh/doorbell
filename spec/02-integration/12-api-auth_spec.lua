@@ -208,7 +208,7 @@ describe("API auth", function()
         test.await.truthy(function()
           entry = nginx:get_json_log_entry(res.id)
           return entry
-        end, 5, 0.1, "waiting for authenticated_user in the JSON logs")
+        end, 5, 0.05, "waiting for authenticated_user in the JSON logs")
 
         assert.is_table(entry.authenticated_user)
         assert.is_string(entry.authenticated_user.name)

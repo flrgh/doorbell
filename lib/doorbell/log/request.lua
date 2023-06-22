@@ -22,6 +22,11 @@ local SEM
 local MAX_BUFFERED_ENTRIES = 100
 local FLUSH_INTERVAL       = 1
 
+if os.getenv("DOORBELL___TEST") then
+  log.debug("we're testing! setting the flush interval super low")
+  FLUSH_INTERVAL = 0.05
+end
+
 -- how many timer loops to execute before re-scheduling a new timer
 local TIMER_ITERATIONS = 1000
 
