@@ -1,6 +1,4 @@
-local _M = {
-  _VERSION = require("doorbell.constants").version,
-}
+local _M = {}
 
 local const       = require "doorbell.constants"
 local log         = require "doorbell.log"
@@ -12,6 +10,7 @@ local rules       = require "doorbell.rules"
 local matcher     = require "doorbell.rules.matcher"
 local shm         = require "doorbell.rules.shm"
 local transaction = require "doorbell.rules.transaction"
+local forwarded   = require "doorbell.auth.forwarded-request"
 
 local ngx         = ngx
 local now         = ngx.now
@@ -30,8 +29,8 @@ local pairs        = pairs
 local ipairs       = ipairs
 local type         = type
 
-local req_cache_key = require("doorbell.auth.request").cache_key
-local reset_req_cache = require("doorbell.auth.request").reset_cache
+local req_cache_key = forwarded.cache_key
+local reset_req_cache = forwarded.reset_cache
 
 local META = require("doorbell.shm").doorbell
 local SAVE_PATH

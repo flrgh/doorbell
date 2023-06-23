@@ -56,7 +56,7 @@ build = {
 
     ["doorbell.auth"] = "lib/doorbell/auth.lua",
     ["doorbell.auth.ring"] = "lib/doorbell/auth/ring.lua",
-    ["doorbell.auth.request"] = "lib/doorbell/auth/request.lua",
+    ["doorbell.auth.forwarded-request"] = "lib/doorbell/auth/forwarded-request.lua",
     ["doorbell.auth.access"] = "lib/doorbell/auth/access.lua",
     ["doorbell.auth.openid"] = "lib/doorbell/auth/openid.lua",
     ["doorbell.auth.api-key"] = "lib/doorbell/auth/api-key.lua",

@@ -1,12 +1,11 @@
 local log     = require "doorbell.log"
 local const   = require "doorbell.constants"
 local access  = require "doorbell.auth.access"
-local request = require "doorbell.auth.request"
+local forward = require "doorbell.auth.forwarded-request"
 local config  = require "doorbell.config"
 local http    = require "doorbell.http"
 local mware   = require "doorbell.middleware"
 local join    = require("doorbell.util").join
-local ip      = require "doorbell.ip"
 local manager = require "doorbell.rules.manager"
 local auth    = require "doorbell.auth"
 
@@ -188,7 +187,7 @@ local HANDLERS = {
 function _M.GET(ctx)
   UNAUTHORIZED = UNAUTHORIZED or config.unauthorized
 
-  local req, err = request.new(ctx)
+  local req, err = forward.new(ctx)
   if not req then
     log.alert("failed building request: ", err)
     return http.send(400, "bad request")
@@ -240,14 +239,10 @@ _M.middleware = {
     http.request.middleware.clear_header("Range"),
   },
 
-  [mware.phase.AUTH] = {
-    ip.require_trusted_proxy,
-  },
-
   [mware.phase.POST_RESPONSE] = {
     manager.stats_middleware,
-    request.release,
-  }
+    forward.release,
+  },
 }
 
 return _M

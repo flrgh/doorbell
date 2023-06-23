@@ -17,8 +17,6 @@ local split = require("ngx.re").split
 
 local assert = assert
 local var = ngx.var
-local exit = ngx.exit
-local HTTP_FORBIDDEN = ngx.HTTP_FORBIDDEN
 local EMPTY = {}
 local fmt = string.format
 local encode_args = ngx.encode_args
@@ -267,17 +265,6 @@ local function is_private(ip)
 end
 
 
-
----@param ctx doorbell.ctx
----@param route doorbell.route
-function _M.require_trusted_proxy(ctx, route)
-  if route.allow_untrusted ~= true and not ctx.is_trusted_proxy then
-    log.warn("denying connection from untrusted IP: ", ctx.client_addr)
-    return exit(HTTP_FORBIDDEN)
-  end
-end
-
-
 ---@return boolean
 function _M.geoip_enabled()
   return (LOCATION_DB and true) or false
@@ -305,7 +292,6 @@ end
 function _M.get_country_name(code)
   return code and country_names[code]
 end
-
 
 
 ---@param addr string
