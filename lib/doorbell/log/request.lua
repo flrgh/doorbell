@@ -36,7 +36,7 @@ local PATH       = nil
 local ENABLED    = false
 
 
----@type table[]
+---@type doorbell.request.log.entry[]
 local BUF     = new_tab(MAX_BUFFERED_ENTRIES, 0)
 local BUF_LEN = 0
 
@@ -164,7 +164,7 @@ local function log_writer(premature)
 end
 
 
----@param entry table
+---@param entry doorbell.request.log.entry
 function _M.add(entry)
   if not ENABLED then
     return

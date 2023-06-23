@@ -5,6 +5,7 @@ local context = require "doorbell.request.context"
 local const   = require "doorbell.constants"
 local log     = require "doorbell.log"
 local metrics = require "doorbell.metrics"
+local clone   = require "table.clone"
 
 
 local ngx              = ngx
@@ -16,6 +17,8 @@ local get_resp_headers = ngx.resp.get_headers
 local tonumber         = tonumber
 local tostring         = tostring
 local update_time      = ngx.update_time
+local get_query_args   = context.get_query_args
+local get_req_headers  = context.get_request_headers
 
 local WORKER_ID, WORKER_PID
 local LOG = true
@@ -103,6 +106,12 @@ function _M.log(ctx)
     res_body_size = tonumber(var.body_bytes_sent)
   end
 
+  ---@type doorbell.forwarded_request
+  local forwarded_request
+  if ctx.forwarded_request then
+    forwarded_request = clone(ctx.forwarded_request)
+  end
+
   ---@class doorbell.request.log.entry
   local entry = {
     -- client info
@@ -132,8 +141,8 @@ function _M.log(ctx)
     request_scheme         = ctx.scheme,
     request_http_host      = var.host,
     request_path           = ctx.path,
-    request_query          = context.get_query_args(ctx),
-    request_headers        = context.get_request_headers(ctx),
+    request_query          = get_query_args(ctx),
+    request_headers        = get_req_headers(ctx),
     request_uri            = ctx.uri,
     request_normalized_uri = var.uri,
     request_total_bytes    = tonumber(var.request_length),
@@ -151,7 +160,7 @@ function _M.log(ctx)
     -- rule match info
     rule                = ctx.rule,
     rule_cache_hit      = ctx.rule_cache_hit,
-    forwarded_request   = ctx.forwarded_request,
+    forwarded_request   = forwarded_request,
 
     -- debug things
     worker_id           = WORKER_ID,

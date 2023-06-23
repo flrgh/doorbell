@@ -1,3 +1,4 @@
+---@class doorbell.auth.forwarded-request
 local _M = {}
 
 local request = require "doorbell.request"
