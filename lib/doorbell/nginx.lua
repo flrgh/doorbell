@@ -348,9 +348,10 @@ end
 ---@field uptime         number
 ---@field worker_count   integer
 ---@field workers        doorbell.nginx.process.info[]
+---@field ok             boolean
 
 ---@return doorbell.nginx.info
-function _M.info()
+local function get_info()
   local pg = get_current_pg()
   local started = pg_get(pg, B_STARTED_AT)
 
@@ -364,14 +365,42 @@ function _M.info()
     uptime           = (started and t - started),
     worker_count     = WORKER_COUNT,
     workers          = {},
+    ok               = false,
   }
+
+  local healthy_count = 0
 
   each_process(function(id)
     local p = get_proc_info(pg, id, t)
     table.insert(info.workers, p)
+    if p.healthy then
+      healthy_count = healthy_count + 1
+    end
   end)
+
+  info.ok = healthy_count == WORKER_COUNT
 
   return info
 end
+
+---@param block? number
+---@return doorbell.nginx.info
+function _M.info(block)
+  local info = get_info()
+
+  if block and block > 0 and not info.ok then
+    ngx.update_time()
+    local start = ngx.now()
+    local deadline = start + block
+
+    while not info.ok and ngx.now() < deadline do
+      ngx.sleep(0.05)
+      info = get_info()
+    end
+  end
+
+  return info
+end
+
 
 return _M

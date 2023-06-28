@@ -21,36 +21,9 @@ routes["/nginx"] = {
 
   GET = function(ctx)
     local block = tonumber(request.get_query_arg(ctx, "block"))
-
-    if block and block > 0 then
-      ngx.update_time()
-      local start = ngx.now()
-      local deadline = start + block
-      local info
-      local tries = 0
-
-      repeat
-        tries = tries + 1
-        local healthy = true
-
-        info = nginx.info()
-
-        for i = 1, ngx.worker.count() do
-          healthy = info.workers[i] and info.workers[i].healthy
-          if not healthy then
-            break
-          end
-        end
-
-        if not healthy then
-          ngx.sleep(0.05)
-        end
-      until healthy or ngx.now() > deadline
-
-      return http.send(200, info)
-    end
-
-    return http.send(200, nginx.info())
+    local info = nginx.info(block)
+    local status = info.ok and 200 or 503
+    return http.send(status, info)
   end,
 }
 

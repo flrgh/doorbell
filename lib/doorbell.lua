@@ -24,6 +24,7 @@ local middleware = require "doorbell.middleware"
 local nginx = require "doorbell.nginx"
 
 local ngx        = ngx
+local var        = ngx.var
 local assert     = assert
 local send       = http.send
 local new_ctx    = request.new
@@ -182,7 +183,10 @@ end
 
 function _M.status()
   http.response.set_header("content-type", "application/json")
-  http.send(200, nginx.info())
+  local block = tonumber(var.arg_block)
+  local info = nginx.info(block)
+  local status = info.ok and 200 or 503
+  http.send(status, info)
 end
 
 
