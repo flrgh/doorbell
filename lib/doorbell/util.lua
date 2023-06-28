@@ -1,6 +1,4 @@
-local _M = {
-  _VERSION = require("doorbell.constants").version,
-}
+local _M = {}
 
 local const   = require "doorbell.constants"
 local log     = require "doorbell.log"
@@ -11,8 +9,6 @@ local clone = require "table.clone"
 local file = require "doorbell.util.file"
 local proc = require("doorbell.nginx").process
 
-local encode  = cjson.encode
-local decode  = cjson.decode
 local type    = type
 local fmt     = string.format
 local byte    = string.byte
@@ -22,7 +18,6 @@ local re_find = ngx.re.find
 local pairs   = pairs
 local sort    = table.sort
 local select  = select
-local insert  = table.insert
 local concat  = table.concat
 local to_hex  = require("resty.string").to_hex
 local run_worker_thread = ngx.run_worker_thread
@@ -33,7 +28,7 @@ local THREAD_POOL = "doorbell.util.file"
 
 local LOCK_SHM = const.shm.locks
 
-local TILDE = string.byte("~")
+local TILDE = byte("~")
 
 
 ---@return boolean
@@ -74,18 +69,6 @@ local function run_it(fn, ...)
 end
 
 
----@param t table
----@return string? encoded
----@return string? error
-local function encode_table(t)
-  -- there isn't really any case where we'd want to save anything but a json
-  -- object or array to disk
-  if type(t) ~= "table" then
-    return nil, "not a table"
-  end
-  return encode(t)
-end
-
 --- Read the contents of a file.
 ---@param fname string
 ---
@@ -105,6 +88,8 @@ local function write_file(fname, contents)
   return run_it("write", fname, contents)
 end
 
+_M.write_file = write_file
+
 ---@param fname string
 ---@param contents string
 ---@return boolean? ok
@@ -114,24 +99,15 @@ local function update_file(fname, contents)
   return run_it("update", fname, contents)
 end
 
+_M.update_file = update_file
+
 --- Read and unserialize json data from a file.
 ---
 ---@param fname string
 ---@return any? json
 ---@return string? error
 function _M.read_json_file(fname)
-  local data, err = read_file(fname)
-  if not data then
-    return nil, err
-  end
-
-  local json
-  json, err = decode(data)
-  if err then
-    return nil, err
-  end
-
-  return json
+  return run_it("read_json", fname)
 end
 
 --- Serialize and write json data to a file
@@ -141,26 +117,16 @@ end
 ---@return boolean? ok
 ---@return string? error
 function _M.write_json_file(fname, json)
-  local encoded, err = encode_table(json)
-  if not encoded then
-    return nil, err
-  end
-
-  return write_file(fname, encoded)
+  return run_it("write_json", fname, json)
 end
 
 ---@param fname string
 ---@param json table
 ---@return boolean? ok
----@return boolean? written
 ---@return string? error
+---@return boolean? written
 function _M.update_json_file(fname, json)
-  local encoded, err = encode_table(json)
-  if not encoded then
-    return nil, nil, err
-  end
-
-  return update_file(fname, encoded)
+  return run_it("update_json", fname, json)
 end
 
 --- Returns an ISO 8601 timestamp (UTC)
@@ -278,13 +244,7 @@ function _M.table_values(t, unique)
 
   local n = 0
   for _, value in pairs(t) do
-    local add = true
-
-    if unique and seen[value] then
-      add = false
-    end
-
-    if add then
+    if not unique or not seen[value] then
       n = n + 1
       values[n] = value
 
@@ -353,27 +313,28 @@ function _M.lock(ns, key, action, opts)
 end
 
 
+do
+  local buf = {}
 
-local buf = {}
+  ---@param ... string
+  ---@return string
+  function _M.join(...)
+    local n = select("#", ...)
 
----@param ... string
----@return string
-function _M.join(...)
-  local n = select("#", ...)
-  for i = 1, n do
-    local elem = select(i, ...)
-
-    if i == 1 then
-      elem = elem:gsub("^//+", "/")
-    else
-      elem = elem:gsub("^/+", "")
+    for i = 1, n do
+      local elem = select(i, ...)
+      buf[i] = elem
     end
 
-    elem = elem:gsub("/+$", "")
-    insert(buf, i, elem)
-  end
+    local s = concat(buf, "/", 1, n)
 
-  return concat(buf, "/", 1, n)
+    s = s:gsub("//+", "/")
+    if s ~= "/" then
+      s = s:gsub("/+$", "")
+    end
+
+    return s
+  end
 end
 
 ---@return string

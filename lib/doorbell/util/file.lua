@@ -4,7 +4,7 @@ local _M = {}
 local rand_bytes = require("resty.random").bytes
 local to_hex = require("resty.string").to_hex
 
-local cjson = require("cjson").new()
+local cjson = require("cjson.safe").new()
 cjson.encode_keep_buffer(true)
 cjson.encode_number_precision(16)
 cjson.encode_escape_forward_slash(false)
@@ -116,25 +116,42 @@ _M.read = read
 ---@param fname string
 ---@param data string
 ---@return boolean? ok
+---@return string? error
 function _M.write_json(fname, data)
-  return write(fname, encode(data))
+  local encoded, err = encode(data)
+  if err then
+    return nil, err
+  end
+
+  return write(fname, encoded)
 end
 
 
 ---@param fname string
 ---@param data string
----@return boolean ok
+---@return boolean? ok
 ---@return nil
 ---@return boolean written
 function _M.update_json(fname, data)
-  return update(fname, encode(data))
+  local encoded, err = encode(data)
+  if err then
+    return nil, err, false
+  end
+
+  return update(fname, encoded)
 end
 
 
 ---@param fname string
----@return any
+---@return any? json
+---@return string? error
 function _M.read_json(fname)
-  return decode(read(fname))
+  local contents, err = read(fname)
+  if not contents then
+    return nil, err
+  end
+
+  return decode(contents)
 end
 
 
