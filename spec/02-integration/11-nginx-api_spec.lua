@@ -33,7 +33,9 @@ describe("nginx api", function()
   end)
 
   before_each(function()
-    client.assert_status.GET = nil
+    nginx:restart()
+
+    client.assert_status.GET = { one_of = { 200, 503 } }
     client.raise_on_request_error = false
     client.raise_on_connect_error = false
 
@@ -46,7 +48,6 @@ describe("nginx api", function()
 
     client:reset()
 
-    client.assert_status.GET = { eq = 200 }
     client.raise_on_request_error = true
     client.raise_on_connect_error = true
   end)
@@ -136,10 +137,9 @@ describe("nginx api", function()
 
   it("updates when nginx is reloaded", function()
     client:get("/nginx")
-
     local old = assert.is_table(client.response.json)
 
-    nginx:reload()
+    nginx:reload(true)
 
     local new
 

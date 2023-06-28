@@ -11,8 +11,6 @@ local exec = require "spec.testing.exec"
 local await = require "spec.testing.await"
 local http = require "spec.testing.client"
 
-local assert = require "luassert"
-
 local QUIT = assert(resty_signal.signum("QUIT"))
 local TERM = assert(resty_signal.signum("TERM"))
 local HUP = assert(resty_signal.signum("HUP"))
@@ -100,8 +98,9 @@ end
 local nginx = {}
 
 ---@return doorbell.nginx.info?
+---@param timeout? number
 ---@return string? error
-function nginx:status()
+function nginx:status(timeout)
   if not fs.exists(self.control_socket) then
     return nil, "control socket " .. self.control_socket .. " does not exist"
   end
@@ -111,7 +110,11 @@ function nginx:status()
     return nil, "failed to create control socket HTTP client"
   end
 
-  client:get("/status")
+  if timeout and timeout > 0 then
+    client.timeout = (timeout * 1000) + 1000
+  end
+
+  client:get("/status", { query = { block = timeout } })
   client:close()
 
   if client.response and client.response.status == 200 then
@@ -167,8 +170,8 @@ function nginx:exec(...)
   table.insert(cmd, env)
 
   local ok, code, stdout, stderr = exec(unpack(cmd))
-  assert.truthy(ok, format_cmd_result(cmd, code, stdout, stderr))
-  assert.equals(0, code, format_cmd_result(cmd, code, stdout, stderr))
+  assert(ok, format_cmd_result(cmd, code, stdout, stderr))
+  assert(code == 0, format_cmd_result(cmd, code, stdout, stderr))
 end
 
 function nginx:conf_test()
@@ -188,10 +191,7 @@ function nginx:start()
     error("timed out waiting for NGINX process (" .. self.pid .. ") to exist")
   end
 
-  if not await.truthy(5, 0.05, function()
-      return self:status()
-    end)
-  then
+  if not self:status(5) then
     error("timed out waiting for NGINX control socket to be ready")
   end
 end
@@ -253,24 +253,31 @@ function nginx:restart()
   self:start()
 end
 
-function nginx:reload()
+---@param no_wait? boolean
+function nginx:reload(no_wait)
   for client in pairs(self.clients) do
     client:close()
   end
 
-  local status = self:status()
-  local pids = {}
-  for _, proc in ipairs(status.workers) do
-    assert(proc.pid)
-    table.insert(pids, proc.pid)
+  local pids
+
+  if not no_wait then
+    local status = assert(self:status(5))
+    pids = {}
+    for _, proc in ipairs(status.workers) do
+      assert(proc.pid, "missing PID for process: " .. tostring(proc.id))
+      table.insert(pids, proc.pid)
+    end
+    assert(#pids == status.worker_count)
   end
-  assert(#pids == status.worker_count)
 
   assert(self:signal(HUP))
 
-  for _, pid in ipairs(pids) do
-    if not wait_pid(pid, dead, 5) then
-      error("timed out waiting for PID " .. pid .. " to die")
+  if not no_wait then
+    for _, pid in ipairs(pids) do
+      if not wait_pid(pid, dead, 5) then
+        error("timed out waiting for PID " .. pid .. " to die")
+      end
     end
   end
 end
