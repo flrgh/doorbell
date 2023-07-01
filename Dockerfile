@@ -1,13 +1,7 @@
 ARG OPENRESTY_VERSION=1.21.4.1-0
 
 # TODO: adapt slim image
-FROM openresty/openresty:${OPENRESTY_VERSION}-alpine-fat
-
-RUN apk add --no-cache \
-        ca-certificates \
-        libmaxminddb && \
-    ln -v -s /usr/lib/libGeoIP.so.1 /usr/lib/libGeoIP.so && \
-    ln -v -s /usr/lib/libmaxminddb.so.0 /usr/lib/libmaxminddb.so
+FROM openresty/openresty:${OPENRESTY_VERSION}-alpine-fat AS builder
 
 RUN apk add --no-cache --virtual .build-deps \
         git
@@ -16,7 +10,30 @@ COPY ./doorbell-dev-1.rockspec /tmp/
 RUN luarocks install --deps-only /tmp/doorbell-dev-1.rockspec && \
     rm /tmp/doorbell-dev-1.rockspec
 
-RUN apk del .build-deps
+
+FROM rust:alpine as rusty-cli
+
+RUN apk add --no-cache \
+      git \
+      musl-dev
+
+RUN cargo install \
+      --bins \
+      --git https://github.com/flrgh/rusty-cli.git
+
+
+FROM openresty/openresty:${OPENRESTY_VERSION}-alpine
+
+COPY --from=builder /usr/local/openresty /usr/local/openresty
+COPY --from=rusty-cli /usr/local/cargo/bin/rusty-cli /usr/local/openresty/bin/resty
+
+RUN apk add --no-cache \
+        bash \
+        ca-certificates \
+        libmaxminddb \
+    && ln -v -s /usr/lib/libGeoIP.so.1 /usr/lib/libGeoIP.so \
+    && ln -v -s /usr/lib/libmaxminddb.so.0 /usr/lib/libmaxminddb.so \
+    && ln -v -s /usr/local/openresty/bin/resty /usr/local/bin/resty
 
 ARG INSTALL_PREFIX=/usr/local
 ARG RUNTIME_PREFIX=/var/run
