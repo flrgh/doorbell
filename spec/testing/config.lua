@@ -2,6 +2,9 @@ local config = {}
 
 local const = require "spec.testing.constants"
 local join = require("spec.testing.fs").join
+local sha256 = require("doorbell.util").sha256
+
+local API_KEY = "apikey"
 
 --- just a helper that returns a sensible default config for integration tests
 ---@param runtime_path? string
@@ -26,9 +29,22 @@ function config.new(runtime_path)
       },
     },
     auth = {
-      disabled = true,
+      openid = {
+        disabled = true,
+      },
+
+      users = {
+        {
+          name = "system",
+          identifiers = {
+            { apikey = sha256(API_KEY) },
+          },
+        },
+      },
     },
   }
 end
+
+config.API_KEY = API_KEY
 
 return config

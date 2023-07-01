@@ -18,7 +18,7 @@ local _M = {
   metrics_enabled = true,
   allow_untrusted = false,
   content_type    = "text/plain",
-  auth_strategy   = auth.require_all(auth.TRUSTED_IP),
+  auth_strategy   = auth.require_all(auth.TRUSTED_PROXY_IP),
 }
 
 

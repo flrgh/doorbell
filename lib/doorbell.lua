@@ -48,16 +48,13 @@ local SHM = require("doorbell.shm").doorbell
 local GLOBAL_REWRITE_MWARE = middleware.compile({
   request.middleware.pre_handler,
   router.on_match,
+  http.CORS.middleware,
 })
 
 local GLOBAL_AUTH_MWARE = middleware.compile({
   auth.middleware,
 })
 
-
-local GLOBAL_PRE_HANDLER_MWARE = middleware.compile({
-  http.CORS.middleware,
-})
 
 -- keeping these in a single table ensures that we run init() and init_worker()
 -- functions in a consistent order
@@ -158,7 +155,6 @@ function _M.content()
     handler = cors_preflight
   end
 
-  GLOBAL_PRE_HANDLER_MWARE(ctx, route, match)
   exec_route_middleware(PRE_HANDLER, ctx, route, match)
 
   if not handler then

@@ -315,8 +315,13 @@ function _M.CORS.preflight(ctx)
 end
 
 
+---@param ctx doorbell.ctx
 ---@param route doorbell.route
-function _M.CORS.middleware(_, route)
+function _M.CORS.middleware(ctx, route)
+  -- the preflight handler will take care of OPTIONS requests
+  if ctx.method == "OPTIONS" then
+    return
+  end
   add_cors_headers(route, false)
 end
 

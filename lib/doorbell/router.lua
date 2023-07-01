@@ -4,7 +4,10 @@ local util = require "doorbell.util"
 local middleware = require "doorbell.middleware"
 local auth = require "doorbell.auth"
 
-local DEFAULT_AUTH = auth.require_all(auth.TRUSTED_IP, auth.OPENID)
+local DEFAULT_AUTH = auth.chain(
+  auth.require_any(auth.API_KEY, auth.OPENID),
+  auth.require_any(auth.TRUSTED_PROXY_IP, auth.TRUSTED_DOWNSTREAM_IP)
+)
 
 local cache = require("doorbell.cache").new("routes", 1000)
 
@@ -31,7 +34,7 @@ local set_response_header = require("doorbell.http").response.set_header
 ---@field middleware      table<doorbell.middleware.phase, doorbell.middleware[]>
 ---@field _middleware     table<doorbell.middleware.phase, doorbell.middleware>
 ---
----@field auth_required   boolean
+---@field auth_required   function
 ---@field auth_strategy   integer
 
 ---@class doorbell.route_list : table

@@ -24,6 +24,7 @@ build = {
     ["doorbell.api.access"] = "lib/doorbell/api/access.lua",
     ["doorbell.api.schema"] = "lib/doorbell/api/schema.lua",
     ["doorbell.api.nginx"] = "lib/doorbell/api/nginx.lua",
+    ["doorbell.api.auth-test"] = "lib/doorbell/api/auth-test.lua",
 
     ["doorbell.cache"] = "lib/doorbell/cache.lua",
     ["doorbell.cache.shared"] = "lib/doorbell/cache/shared.lua",

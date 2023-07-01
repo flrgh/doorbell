@@ -601,6 +601,7 @@ function _M.init_request_ctx(ctx)
     ctx.geoip_net_asn           = client.asn
     ctx.geoip_net_org           = client.org
     ctx.forwarded_network_tag   = client.net_tag
+    ctx.is_trusted_downstream   = ctx.is_trusted_proxy
 
   else
     local forwarded = get_basic_info(forwarded_addr)
@@ -608,6 +609,7 @@ function _M.init_request_ctx(ctx)
     ctx.geoip_net_asn           = forwarded.asn
     ctx.geoip_net_org           = forwarded.org
     ctx.forwarded_network_tag   = forwarded.net_tag
+    ctx.is_trusted_downstream   = forwarded.trusted
   end
 end
 

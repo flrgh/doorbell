@@ -49,6 +49,7 @@ describe("/ring", function()
     client.timeout = 1000
     client.request.path = "/ring"
     client.request.host = "127.0.0.1"
+    client.api_key = nil
     nginx:add_client(client)
   end)
 

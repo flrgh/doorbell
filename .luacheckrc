@@ -5,6 +5,7 @@ globals = {
   "_TEST",
   "ngx.config.is_console",
   "ngx.run_worker_thread",
+  "table.unpack",
 }
 
 not_globals = {
