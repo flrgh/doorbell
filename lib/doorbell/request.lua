@@ -146,6 +146,7 @@ function _M.log(ctx)
     request_uri            = ctx.uri,
     request_normalized_uri = var.uri,
     request_total_bytes    = tonumber(var.request_length),
+    is_trusted_downstream  = ctx.is_trusted_downstream,
 
     -- routing
     route_path = ctx.route and ctx.route.path,

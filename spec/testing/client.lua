@@ -5,6 +5,7 @@ local cjson = require("cjson").new()
 local clone = require "table.clone"
 local const = require "doorbell.constants"
 local parse_url = require("doorbell.http").parse_url
+local test_conf = require "spec.testing.config"
 
 cjson.decode_array_with_array_mt(true)
 
@@ -26,6 +27,7 @@ local function is_conn_err(e)
       or e == "connection reset by peer"
 end
 
+---@param self spec.testing.client
 ---@param req spec.testing.client.request
 local function prepare(self, req)
   if req.json then
@@ -54,6 +56,11 @@ local function prepare(self, req)
 
   if self.unix then
     req.headers.host = req.headers.host or "doorbell"
+  end
+
+  if self.api_key then
+    req.headers[const.headers.api_key] = req.headers[const.headers.api_key]
+                                         or self.api_key
   end
 end
 
@@ -180,17 +187,19 @@ end
 
 ---@class spec.testing.client : table
 ---
----@field httpc        resty.http.client
----@field request      spec.testing.client.request
----@field response     spec.testing.client.response
----@field err          string|nil
----@field host         string
----@field port         integer|nil
----@field scheme       "http"|"https"|nil
----@field headers      spec.testing.client.headers
----@field need_connect boolean
----@field timeout      number
----@field unix         boolean
+---@field httpc                      resty.http.client
+---@field request                    spec.testing.client.request
+---@field response                   spec.testing.client.response
+---@field err                        string|nil
+---@field host                       string
+---@field port                       integer|nil
+---@field scheme                     "http"|"https"|nil
+---@field headers                    spec.testing.client.headers
+---@field need_connect               boolean
+---@field timeout                    number
+---@field unix                       boolean
+---@field api_key                    string|nil
+---@field reset_request_on_send      boolean
 ---
 ---@field raise_on_request_error     boolean
 ---@field raise_on_connect_error     boolean
@@ -214,7 +223,9 @@ end
 
 function client:reset()
   self.headers = _M.headers()
-  self.request = {}
+  self.request = {
+    headers = _M.headers(),
+  }
   self.response = nil
   self.err = nil
 end
@@ -263,6 +274,9 @@ function client:send()
     req.headers[k] = v
   end
 
+  if self.reset_request_on_send then
+    self:reset()
+  end
 
   self.httpc:set_timeout(self.timeout or 5000)
 
@@ -284,6 +298,7 @@ function client:send()
 
     if is_conn_err(err) and self.reopen then
       self.reopen = false
+      self.request = req
 
       self:send()
 
@@ -364,10 +379,16 @@ function client:add_x_forwarded_headers(addr, method, url)
   local headers = self.headers
   headers.x_forwarded_for = addr
   headers.x_forwarded_method = method
-  local parsed = assert(self:parse_uri(url, true))
-  headers.x_forwarded_proto = parsed[1]
-  headers.x_forwarded_host  = parsed[2]
-  headers.x_forwarded_uri   = parsed[4]
+
+  local parsed = assert(parse_url(url))
+  local uri = parsed.path
+  if parsed.query then
+    uri = uri .. "?" .. parsed.query
+  end
+
+  headers.x_forwarded_proto = parsed.scheme
+  headers.x_forwarded_host  = parsed.host
+  headers.x_forwarded_uri   = uri
 end
 
 for _, method in ipairs({"get", "put", "post", "delete", "patch", "options"}) do
@@ -421,6 +442,8 @@ function _M.new(url)
     assert_status          = {},
     reopen                 = false,
     unix                   = unix,
+    api_key                = test_conf.API_KEY,
+    reset_request_on_send  = false,
   }
 
   return setmetatable(self, client)

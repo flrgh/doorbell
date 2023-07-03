@@ -504,4 +504,6 @@ do
   end
 end
 
+_M.unpack = _G.table.unpack or _G.unpack
+
 return _M

@@ -12,6 +12,9 @@ local SUB = "provider|my-test-user-sub"
 local EMAIL = "my-test-user@email.test"
 local API_KEY = test.random_string(36)
 
+local TRUSTED_DOWNSTREAM = "1.2.3.4"
+local UNTRUSTED_DOWNSTREAM = "5.6.7.8"
+
 local function new_openid_conf()
   return {
     authorization_endpoint = BASE_URL .. "authorize",
@@ -143,10 +146,10 @@ end
 
 
 describe("API auth", function()
-  for _, trusted_client_ip in ipairs({ true, false }) do
-    local label = trusted_client_ip
-              and "(trusted client IP)"
-               or "(untrusted client IP)"
+  for _, trusted_proxy_ip in ipairs({ true, false }) do
+    local label = trusted_proxy_ip
+              and "(trusted proxy IP)"
+               or "(untrusted proxy IP)"
 
     describe(label, function()
 
@@ -162,7 +165,9 @@ describe("API auth", function()
       lazy_setup(function()
         conf = test.config()
         conf.auth = {
-          openid_issuer = BASE_URL,
+          openid = {
+            issuer = BASE_URL,
+          },
           users = {
             {
               name = USER,
@@ -175,8 +180,8 @@ describe("API auth", function()
           },
         }
 
-        if trusted_client_ip then
-          conf.trusted = { "0.0.0.0/0" }
+        if trusted_proxy_ip then
+          conf.trusted = { "127.0.0.1", TRUSTED_DOWNSTREAM }
         else
           conf.trusted = { "4.3.2.1/32" }
         end
@@ -188,6 +193,8 @@ describe("API auth", function()
         client = test.client()
         nginx:add_client(client)
 
+        client.api_key = nil
+        client.reset_request_on_send = true
         client.raise_on_connect_error = true
         client.reopen = true
       end)
@@ -198,7 +205,6 @@ describe("API auth", function()
       end)
 
       before_each(function()
-        client:reset()
         mu.mock.reset()
       end)
 
@@ -215,28 +221,20 @@ describe("API auth", function()
         assert.same(USER, entry.authenticated_user.name)
       end
 
-
-      local function check_options(path)
-        it("allows OPTIONS requests", function()
-          client:options(path)
-          assert.same(200, client.response.status)
-        end)
-      end
-
       local function check_allowed_ip_only(path)
-        it("allows requests from trusted IP addresses", function()
+        it("allows requests from trusted proxy IP addresses", function()
           client:get(path)
-          assert.same(200, client.response.status)
-          if trusted_client_ip then
-            assert.is_true(client.response.json.trusted_ip)
+          if trusted_proxy_ip then
+            assert.is_true(client.response.json.trusted_proxy)
           end
         end)
       end
 
-      local function check_denied_ip_only(path, status)
-        it("denies requests from trusted IP addresses (with no token)", function()
+      local function check_denied_ip_only(path)
+        it("denies requests from trusted proxy IP addresses (with no token)", function()
           client:get(path)
-          assert.same(status or 403, client.response.status)
+          assert.is_true(client.response.status == 401
+                      or client.response.status == 403)
           assert.is_string(client.response.json.error)
         end)
       end
@@ -261,8 +259,8 @@ describe("API auth", function()
             },
           })
 
-          client.headers.Authorization = "Bearer " .. token
-          client:get(path)
+          local params = { headers = { Authorization = "Bearer " .. token } }
+          client:get(path, params)
 
           assert.is_true(client.response.status == 401
                       or client.response.status == 403)
@@ -276,7 +274,7 @@ describe("API auth", function()
             email_verified = true,
           })
 
-          client:get("/auth-test/token")
+          client:get("/auth-test/any/openid", params)
 
           assert.same(200, client.response.status)
           await_user_log_entry(client.response)
@@ -447,8 +445,9 @@ describe("API auth", function()
 
       local function check_valid_api_key_allowed(path)
         it("allows requests with a proper API key", function()
-          client.headers[const.headers.api_key] = API_KEY
-          client:get(path)
+          client:get(path, {
+            headers = { [const.headers.api_key] = API_KEY },
+          })
           assert.same(200, client.response.status)
           await_user_log_entry(client.response)
         end)
@@ -456,7 +455,6 @@ describe("API auth", function()
 
       local function check_no_api_key_allowed(path)
         it("allows requests without an API key", function()
-          client.headers[const.headers.api_key] = nil
           client:get(path)
           assert.same(200, client.response.status)
         end)
@@ -464,7 +462,6 @@ describe("API auth", function()
 
       local function check_no_api_key_denied(path)
         it("rejects requests without an API key", function()
-          client.headers[const.headers.api_key] = nil
           client:get(path)
           assert.is_true(client.response.status == 401
                       or client.response.status == 403)
@@ -495,64 +492,135 @@ describe("API auth", function()
       end
 
 
-      describe("strategy => IP", function()
-        local path = "/auth-test/trusted-ip"
-        check_options(path)
+      describe("strategy => proxy IP", function()
+        local path = "/auth-test/any/proxy-ip"
 
-        if trusted_client_ip then
-          check_allowed_ip_only(path)
-          check_allowed_token(path)
-          check_valid_api_key_allowed(path)
-          check_no_api_key_allowed(path)
+        if trusted_proxy_ip then
+          it("allows requests with no auth headers (unproxied)", function()
+            client:get(path)
+            assert.same(200, client.response.status)
+            assert.is_true(client.response.json.trusted_proxy)
+          end)
+
+          it("allows requests with no auth headers (proxied, trusted downstream)", function()
+            client.headers["x-forwarded-for"] = TRUSTED_DOWNSTREAM
+            client:get(path)
+            assert.same(200, client.response.status)
+            assert.is_true(client.response.json.trusted_proxy)
+            assert.is_true(client.response.json.trusted_downstream)
+          end)
+
+          it("allows requests with no auth headers (proxied, untrusted downstream)", function()
+            client.headers["x-forwarded-for"] = UNTRUSTED_DOWNSTREAM
+            client:get(path)
+            assert.same(200, client.response.status)
+            assert.is_true(client.response.json.trusted_proxy)
+            assert.is_false(client.response.json.trusted_downstream)
+          end)
+
         else
-          check_denied_ip_only(path)
-          check_denied_valid_token(path)
-          check_no_api_key_denied(path)
+          it("denies requests with no auth headers", function()
+            client:get(path)
+            assert.same(403, client.response.status)
+            assert.is_false(client.response.json.trusted_proxy)
+          end)
+
+          it("denies requests with no auth headers (proxied, trusted downstream)", function()
+            client.headers["x-forwarded-for"] = TRUSTED_DOWNSTREAM
+            client:get(path)
+            assert.same(403, client.response.status)
+            assert.is_false(client.response.json.trusted_proxy)
+            assert.is_false(client.response.json.trusted_downstream)
+          end)
+
+          it("denies requests with no auth headers (proxied, untrusted downstream)", function()
+            client.headers["x-forwarded-for"] = UNTRUSTED_DOWNSTREAM
+            client:get(path)
+            assert.same(403, client.response.status)
+            assert.is_false(client.response.json.trusted_proxy)
+            assert.is_false(client.response.json.trusted_downstream)
+          end)
+
           check_valid_api_key_denied(path)
+          check_denied_valid_token(path)
         end
       end)
 
-      describe("strategy => token", function()
-        local path = "/auth-test/token"
-        check_options(path)
-        check_denied_ip_only(path, 401)
+      describe("strategy => downstream IP", function()
+        local path = "/auth-test/any/downstream-ip"
+
+        if trusted_proxy_ip then
+          it("allows requests with no auth headers (proxied, trusted downstream)", function()
+            client.headers["x-forwarded-for"] = TRUSTED_DOWNSTREAM
+            client:get(path)
+            assert.same(200, client.response.status)
+            assert.is_true(client.response.json.trusted_proxy)
+            assert.is_true(client.response.json.trusted_downstream)
+          end)
+
+        else
+          it("denies requests with no auth headers (proxied, trusted downstream)", function()
+            client.headers["x-forwarded-for"] = TRUSTED_DOWNSTREAM
+            client:get(path)
+            assert.same(403, client.response.status)
+            assert.same(trusted_proxy_ip, client.response.json.trusted_proxy)
+            assert.is_false(client.response.json.trusted_downstream)
+          end)
+        end
+
+        it("denies requests with no auth headers (proxied, untrusted downstream)", function()
+          client.headers["x-forwarded-for"] = UNTRUSTED_DOWNSTREAM
+          client:get(path)
+          assert.same(403, client.response.status)
+          assert.same(trusted_proxy_ip, client.response.json.trusted_proxy)
+          assert.is_false(client.response.json.trusted_downstream)
+        end)
+      end)
+
+
+      describe("strategy => openid", function()
+        local path = "/auth-test/any/openid"
+
+        it("denies requests with no auth headers (proxied, trusted downstream)", function()
+          client.headers["x-forwarded-for"] = TRUSTED_DOWNSTREAM
+          client:get(path)
+          assert.same(401, client.response.status)
+          assert.same(trusted_proxy_ip, client.response.json.trusted_proxy)
+          assert.same(trusted_proxy_ip, client.response.json.trusted_downstream)
+        end)
+
         check_allowed_token(path)
         check_bad_token(path)
+        check_valid_api_key_denied(path)
       end)
 
-      describe("strategy => any", function()
-        local path = "/auth-test/any"
-        check_options(path)
-        check_allowed_token(path)
+      describe("(any)", function()
+        describe("openid+api-key", function()
+          local path = "/auth-test/any/openid+api-key"
 
-        if trusted_client_ip then
-          check_allowed_ip_only(path)
-          check_valid_api_key_allowed(path)
-          check_no_api_key_allowed(path)
-        else
           check_denied_ip_only(path, 401)
-          check_valid_api_key_allowed(path)
-          check_no_api_key_denied(path)
-          check_invalid_api_key_denied(path, 401)
-        end
-      end)
-
-      describe("strategy => IP+token", function()
-        local path = "/auth-test/ip-and-token"
-        check_options(path)
-        check_denied_ip_only(path, 401)
-
-        if trusted_client_ip then
           check_allowed_token(path)
-          check_bad_token(path)
-        else
-          check_denied_valid_token(path)
-        end
+          check_valid_api_key_allowed(path)
+        end)
       end)
 
-      describe("strategy => none", function()
+      describe("(all)", function()
+        describe("strategy => proxy IP+openid", function()
+          local path = "/auth-test/all/proxy-ip+openid"
+          check_denied_ip_only(path)
+          check_valid_api_key_denied(path)
+
+          if trusted_proxy_ip then
+            check_allowed_token(path)
+            check_bad_token(path)
+          else
+            check_denied_valid_token(path)
+          end
+        end)
+      end)
+
+      describe("(none)", function()
         local path = "/auth-test/none"
-        check_options(path)
         check_allowed_token(path)
         check_allowed_ip_only(path)
         check_valid_api_key_allowed(path)
@@ -560,8 +628,7 @@ describe("API auth", function()
       end)
 
       describe("strategy => api key", function()
-        local path = "/auth-test/api-key"
-        check_options(path)
+        local path = "/auth-test/any/api-key"
         check_denied_ip_only(path, 401)
         check_valid_api_key_allowed(path)
         check_invalid_api_key_denied(path)

@@ -30,6 +30,7 @@ end
 
 
 _M.config = config.new
+_M.API_KEY = config.API_KEY
 
 _M.client = client.new
 
