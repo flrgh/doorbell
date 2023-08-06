@@ -406,11 +406,7 @@ function _M.init_worker()
   if not CONFIGURED then return end
 
   if ngx.worker.id() == 0 then
-    assert(ngx.timer.at(0, function(premature)
-      if not premature then
-        ensure_discovery()
-      end
-    end))
+    require("doorbell.util.timer").at(0, "openid-discovery", ensure_discovery)
   end
 end
 

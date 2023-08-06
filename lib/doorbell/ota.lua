@@ -12,6 +12,7 @@ local log = require "doorbell.log"
 local transaction = require "doorbell.rules.transaction"
 local notify = require "doorbell.notify"
 local fmt = string.format
+local timer = require "doorbell.util.timer"
 
 local DEFAULT_INTERVAL = 60
 
@@ -85,8 +86,10 @@ local function update()
 
   local headers = {}
 
-  for k, v in pairs(config.headers) do
-    headers[k] = v
+  if config.headers then
+    for k, v in pairs(config.headers) do
+      headers[k] = v
+    end
   end
 
   if state.etag then
@@ -157,18 +160,6 @@ local function update()
 end
 
 
----@param premature? boolean
-local function update_timer(premature)
-  if premature then return end
-
-  update()
-
-  if not ngx.worker.exiting() then
-    assert(ngx.timer.at(config.interval, update_timer))
-  end
-end
-
-
 ---@param conf doorbell.config
 function _M.init(conf)
   config = conf.ota
@@ -190,7 +181,7 @@ end
 function _M.init_worker()
   if not config then return end
   if ngx.worker.id() == 0 then
-    assert(ngx.timer.at(0, update_timer))
+    timer.every(config.interval, "ota-rule-updates", update)
   end
 end
 

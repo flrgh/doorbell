@@ -80,6 +80,7 @@ build = {
 
     ["doorbell.util"] = "lib/doorbell/util.lua",
     ["doorbell.util.file"] = "lib/doorbell/util/file.lua",
+    ["doorbell.util.timer"] = "lib/doorbell/util/timer.lua",
 
     ["doorbell.views"] = "lib/doorbell/views.lua",
     ["doorbell.views.answer"] = "lib/doorbell/views/answer.lua",
