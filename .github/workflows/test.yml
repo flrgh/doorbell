@@ -68,6 +68,16 @@ jobs:
               --with-stream
               --with-threads
 
+          - openresty: 1.21.4.2
+            openssl: 1.1.1n
+            openresty-opts: >-
+              --with-compat
+              --with-http_realip_module
+              --with-http_ssl_module
+              --with-pcre-jit
+              --with-stream
+              --with-threads
+
     steps:
       - uses: actions/checkout@v3
 
