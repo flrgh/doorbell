@@ -4,13 +4,11 @@ local _M = {
 
 local log   = require "doorbell.log"
 local util  = require "doorbell.util"
+local timer = require "doorbell.util.timer"
 
 local ipairs   = ipairs
 local type     = type
 local now      = ngx.now
-local timer_at = ngx.timer.at
-local exiting  = ngx.worker.exiting
-local sleep    = ngx.sleep
 local insert   = table.insert
 
 local SAVE_PATH
@@ -247,35 +245,19 @@ function _M.init(conf)
 end
 
 
-local function saver(premature, interval)
-  if premature or exiting() then
-    log.notice("NGINX is exiting. One. Last. Save...")
+local function saver()
+  local count = need_save()
+  if count > 0 then
     save()
-    return
+    need_save(-count)
   end
-
-  for _ = 1, 1000 do
-    if exiting() then
-      return saver(true)
-    end
-
-    local count = need_save()
-    if count > 0 then
-      save()
-      need_save(-count)
-    end
-
-    sleep(interval)
-  end
-
-  assert(timer_at(interval, saver, interval))
 end
 
 
 function _M.init_worker()
   if ngx.worker.id() == 0 then
     SEMAPHORE = assert(require("ngx.semaphore").new(1))
-    assert(timer_at(0, saver, 1))
+    timer.every(1, "save-stats", saver, { run_on_premature = true })
   end
 end
 

@@ -6,12 +6,11 @@ local _M = {
 
 local const = require "doorbell.constants"
 local log   = require "doorbell.log"
+local timer = require "doorbell.util.timer"
 
 local ipairs   = ipairs
 local pcall    = pcall
-local timer_at = ngx.timer.at
 local insert   = table.insert
-local exiting  = ngx.worker.exiting
 
 
 local registry = _M.registry
@@ -33,11 +32,7 @@ local metric_errors
 
 local hooks_first_run = false
 
-local function run_hooks(premature, once)
-  if premature or exiting() then
-    return
-  end
-
+local function run_hooks()
   for _, hook in ipairs(HOOKS) do
     local ok, err = pcall(hook)
     if not ok then
@@ -47,10 +42,6 @@ local function run_hooks(premature, once)
   end
 
   hooks_first_run = true
-
-  if not exiting() and not once then
-    assert(timer_at(interval, run_hooks))
-  end
 end
 
 ---@param conf doorbell.config
@@ -70,7 +61,7 @@ function _M.init(conf)
         if enabled and prometheus then
           if not hooks_first_run then
             log.debug("running hooks for the first time in the request path")
-            run_hooks(false, true)
+            run_hooks()
           end
           prometheus:collect()
         end
@@ -166,7 +157,7 @@ function _M.init_worker()
     { "type" }
   ))
 
-  assert(timer_at(0, run_hooks))
+  timer.every(interval, "metric-hooks", run_hooks)
 end
 
 ---@return boolean

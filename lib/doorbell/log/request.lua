@@ -2,9 +2,9 @@ local _M = {}
 
 local log = require "doorbell.log"
 local util = require "doorbell.util"
+local timer = require "doorbell.util.timer"
 
 local sem               = require "ngx.semaphore"
-local timer_at          = ngx.timer.at
 local exiting           = ngx.worker.exiting
 local run_worker_thread = ngx.run_worker_thread
 local now               = ngx.now
@@ -16,6 +16,7 @@ local flush_in_main_thread = require("doorbell.request.file-logger").write
 
 ---@type ngx.semaphore
 local SEM
+
 
 -- flush the log buffer when it reaches MAX_BUFFERED_ENTRIES
 -- *or* when the last flush was FLUSH_INTERVAL seconds ago
@@ -29,7 +30,10 @@ end
 
 -- how many timer loops to execute before re-scheduling a new timer
 local TIMER_ITERATIONS = 1000
-
+---@type doorbell.util.timer.opts
+local TIMER_OPTS = {
+  run_on_premature = true,
+}
 
 ---@type string
 local PATH       = nil
@@ -159,7 +163,7 @@ local function log_writer(premature)
     flush(true)
 
   else
-    assert(timer_at(0, log_writer))
+    assert(timer.at(0, "request-logger", log_writer, TIMER_OPTS))
   end
 end
 
@@ -193,7 +197,7 @@ end
 
 function _M.init_worker()
   SEM = assert(sem.new())
-  assert(timer_at(0, log_writer))
+  timer.at(0, "request-logger", log_writer, TIMER_OPTS)
 end
 
 

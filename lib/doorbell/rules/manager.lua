@@ -11,12 +11,11 @@ local matcher     = require "doorbell.rules.matcher"
 local shm         = require "doorbell.rules.shm"
 local transaction = require "doorbell.rules.transaction"
 local forwarded   = require "doorbell.auth.forwarded-request"
+local timer       = require "doorbell.util.timer"
 
 local ngx         = ngx
 local now         = ngx.now
-local timer_at    = ngx.timer.at
 local sleep       = ngx.sleep
-local exiting     = ngx.worker.exiting
 local get_phase   = ngx.get_phase
 local null        = ngx.null
 local start_time  = ngx.req.start_time
@@ -202,13 +201,14 @@ local function rebuild_matcher()
   check_match = match
 end
 
+
 --- flush any expired rules from shared memory
-local function flush_expired(premature, schedule, locked)
-  if premature or exiting() then
+local function flush_expired(locked)
+  local unlock, err = lock_storage("flush-expired", locked)
+  if not unlock then
+    log.err("failed locking storage for expired rule cleanup: ", err)
     return
   end
-
-  local unlock = lock_storage("flush-expired", locked)
 
   shm.flush_expired()
   stats.flush_expired()
@@ -230,7 +230,8 @@ local function flush_expired(premature, schedule, locked)
 
   if count > 0 then
     for _, rule in ipairs(delete) do
-      local ok, err = delete_rule(rule)
+      local ok
+      ok, err = delete_rule(rule)
       if not ok then
         count = count - 1
         log.errf("failed deleting rule %s: %s", rule.hash, err)
@@ -245,10 +246,6 @@ local function flush_expired(premature, schedule, locked)
   end
 
   unlock()
-
-  if schedule then
-    assert(timer_at(1, flush_expired, schedule))
-  end
 end
 
 
@@ -270,11 +267,16 @@ end
 ---@param fname string
 ---@return integer? version
 local function save(fname)
-  local unlock = lock_storage("save")
+  local unlock, err = lock_storage("save")
+  if not unlock then
+    log.err("failed locking storage: ", err)
+    return
+  end
+
   local version = get_version()
   local list = get_all_rules()
 
-  local ok, err, written = util.update_json_file(fname, storage.serialize(list))
+  local ok, werr, written = util.update_json_file(fname, storage.serialize(list))
   if ok then
     if written then
       log.noticef("saved %s rules to %s", #list, fname)
@@ -283,7 +285,7 @@ local function save(fname)
       log.debug("rule filesystem state was unchanged")
     end
   else
-    log.errf("failed saving rules to %s: %s", fname, err)
+    log.errf("failed saving rules to %s: %s", fname, werr)
     return unlock()
   end
 
@@ -292,18 +294,11 @@ local function save(fname)
   return unlock(version)
 end
 
-local function saver(premature)
-  if premature then
-    return
-  end
-
+local saver
+do
   local last = now()
 
-  for _ = 1, 1000 do
-    if exiting() then
-      return
-    end
-
+  function saver()
     local c = need_save()
     if c > 0 then
       save(SAVE_PATH)
@@ -313,13 +308,8 @@ local function saver(premature)
     elseif (now() - last) > 60 then
       save(SAVE_PATH)
       last = now()
-
-    else
-      sleep(1)
     end
   end
-
-  assert(timer_at(0, saver))
 end
 
 
@@ -531,7 +521,7 @@ end
 
 --- reload rules from disk
 ---@param dir string
----@return boolean ok
+---@return boolean? ok
 ---@return string? error
 function _M.load(dir)
   local fname = util.join(dir, "rules.json")
@@ -539,9 +529,13 @@ function _M.load(dir)
   -- don't attempt to acquire a lock if we're in init
   local locked = get_phase() == "init"
 
-  local unlock = lock_storage("load-from-disk", locked)
+  local unlock, err = lock_storage("load-from-disk", locked)
+  if not unlock then
+    return nil, err
+  end
 
-  local data, err = util.read_json_file(fname)
+  local data
+  data, err = util.read_json_file(fname)
   if not data then
     return unlock(nil, err)
   end
@@ -583,8 +577,8 @@ end
 
 function _M.init_worker()
   if ngx.worker.id() == 0 then
-    assert(timer_at(0, flush_expired, true))
-    assert(timer_at(0, saver))
+    timer.every(1, "flush-expired-rules", flush_expired)
+    timer.every(1, "save-rules", saver, { run_on_premature = true })
   end
 
   stats.init_worker()
