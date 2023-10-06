@@ -64,7 +64,7 @@ describe("rules.manager", function()
       }))
 
       assert.is_nil(new)
-      assert.matches("exists", err)
+      assert.matches("duplicate rule hash", err)
 
       assert.same(rule, manager.get(rule.hash))
     end)

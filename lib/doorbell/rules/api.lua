@@ -11,6 +11,7 @@ local null = ngx.null
 ---@return doorbell.rule? rule
 ---@return string?        error
 ---@return integer?       status_code
+---@return doorbell.rule? conflict
 function _M.insert(opts)
   local rule, err = rules.new(opts)
 

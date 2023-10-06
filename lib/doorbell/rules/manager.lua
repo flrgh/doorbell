@@ -319,6 +319,7 @@ end
 ---@return doorbell.rule? rule
 ---@return string?        error
 ---@return integer?       status_code
+---@return doorbell.rule? conflict
 local function create(rule, nobuild, overwrite)
   assert(rules.is_rule(rule), "passed an uninitialized rule to the manager")
 
@@ -338,10 +339,11 @@ local function create(rule, nobuild, overwrite)
     errorf("failed adding/updating rule: %s", err)
   end
 
-  ok, err = trx:commit()
+  local act
+  ok, err, act = trx:commit()
   if not ok then
-    if err == "exists" then
-      return nil, err, 400
+    if act.conflict then
+      return nil, err, 400, act.conflict
     end
     errorf("failed to commit transaction: %s", err)
   end
@@ -375,6 +377,7 @@ end
 ---@return doorbell.rule? rule
 ---@return string? error
 ---@return integer? status_code
+---@return doorbell.rule? conflict
 function _M.add(rule, nobuild)
   return create(rule, nobuild, false)
 end

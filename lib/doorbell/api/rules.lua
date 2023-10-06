@@ -51,9 +51,12 @@ routes["/rules"] = {
 
     json.source = const.sources.api
 
-    local rule, err, status = rules.insert(json)
+    local rule, err, status, conflict = rules.insert(json)
     if not rule then
-      local msg = { error = err }
+      local msg = {
+        error = err,
+        conflict = conflict,
+      }
 
       if status >= 500 then
         log.err("failed creating rule: ", err)

@@ -63,7 +63,7 @@ describe("rules.api", function()
       })
 
       assert.is_nil(new)
-      assert.matches("exists", err)
+      assert.matches("duplicate rule", err)
 
       assert.same(rule, api.get(rule.hash))
     end)

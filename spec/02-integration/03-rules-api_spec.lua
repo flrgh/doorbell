@@ -157,7 +157,8 @@ describe("rules API", function()
 
         assert.is_nil(err)
         assert.same(400, res.status)
-        assert.same({ error = "exists" }, res.json)
+        assert.matches("duplicate rule", res.json.error)
+        assert.is_table(res.json.conflict)
       end)
 
       it("returns a 400 if a rule by the same ID already exists", function()
@@ -185,7 +186,8 @@ describe("rules API", function()
 
         assert.is_nil(err)
         assert.same(400, res.status)
-        assert.same({ error = "exists" }, res.json)
+        assert.matches("duplicate rule", res.json.error)
+        assert.is_table(res.json.conflict)
       end)
     end)
 
