@@ -64,9 +64,10 @@ local function apply(payload)
     end
   end
 
-  ok, err = trx:commit()
+  local _, act
+  ok, _, act = trx:commit()
   if not ok then
-    log.errf("failed to commit OTA transaction: %s", err)
+    log.errf("failed to commit OTA transaction:\n%s", log.inspect(act))
     return false
   end
 

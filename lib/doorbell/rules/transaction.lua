@@ -53,6 +53,8 @@ _M.DELETE_WHERE = DELETE_WHERE
 ---@field params table
 ---
 ---@field error string|nil
+---
+---@field conflict doorbell.rule|table|nil
 
 
 ---@class doorbell.rules.transaction : table
@@ -187,9 +189,8 @@ local ACTIONS = {
   [INSERT] = function(tx, rule, act)
     local ok, err, current = insert_at(tx, tx.len + 1, rule)
     if not ok then
-      act.insert_error = err
-      act.error = "exists"
-      act.current = current
+      act.error = err
+      act.conflict = current
       return false
     end
 
@@ -259,9 +260,10 @@ local ACTIONS = {
       end
     end
 
-    local ok, err = insert_at(tx, pos, rule)
+    local ok, err, current = insert_at(tx, pos, rule)
     if not ok then
       act.error = err
+      act.conflict = current
       return false
     end
 
@@ -288,7 +290,7 @@ end
 
 ---@return boolean? success
 ---@return string? error
----@return any? action
+---@return doorbell.transaction.action? action
 function trx:commit()
   local commit = {
     id = COMMIT,
