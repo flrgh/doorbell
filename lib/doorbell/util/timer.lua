@@ -96,6 +96,7 @@ end
 ---@param name string
 ---@param fn function
 ---@param opts? doorbell.util.timer.opts
+---@return true
 function _M.every(period, name, fn, opts)
   fn = wrapped(name, fn)
 
@@ -106,6 +107,8 @@ function _M.every(period, name, fn, opts)
 
   opts = opts or EMPTY
   assert(timer_at(0, run_every, time, name, period, fn, opts))
+
+  return true
 end
 
 
@@ -113,6 +116,7 @@ end
 ---@param name string
 ---@param fn function
 ---@param opts? doorbell.util.timer.opts
+---@return true
 function _M.at(timeout, name, fn, opts)
   fn = wrapped(name, fn)
   opts = opts or EMPTY
@@ -125,6 +129,8 @@ function _M.at(timeout, name, fn, opts)
       fn()
     end))
   end
+
+  return true
 end
 
 return _M

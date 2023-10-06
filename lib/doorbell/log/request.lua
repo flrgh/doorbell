@@ -163,7 +163,7 @@ local function log_writer(premature)
     flush(true)
 
   else
-    assert(timer.at(0, "request-logger", log_writer, TIMER_OPTS))
+    timer.at(0, "request-logger", log_writer, TIMER_OPTS)
   end
 end
 
