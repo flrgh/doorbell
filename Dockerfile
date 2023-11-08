@@ -10,22 +10,19 @@ COPY ./doorbell-dev-1.rockspec /tmp/
 RUN luarocks install --deps-only /tmp/doorbell-dev-1.rockspec && \
     rm /tmp/doorbell-dev-1.rockspec
 
-
-FROM rust:alpine as rusty-cli
-
-RUN apk add --no-cache \
-      git \
-      musl-dev
-
-RUN cargo install \
-      --bins \
-      --git https://github.com/flrgh/rusty-cli.git
+ARG RUSTY_CLI_VERSION=0.1.0-pre-6
+RUN curl \
+        --proto '=https' \
+        --tlsv1.2 \
+        -LsSf \
+        https://github.com/flrgh/rusty-cli/releases/download/v${RUSTY_CLI_VERSION}/rusty-cli-installer.sh \
+    | sh \
+    && mv -v ~/.cargo/bin/rusty-cli /usr/local/openresty/bin/resty
 
 
 FROM openresty/openresty:${OPENRESTY_VERSION}-alpine
 
 COPY --from=builder /usr/local/openresty /usr/local/openresty
-COPY --from=rusty-cli /usr/local/cargo/bin/rusty-cli /usr/local/openresty/bin/resty
 
 RUN apk add --no-cache \
         bash \
