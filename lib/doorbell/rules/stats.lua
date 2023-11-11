@@ -21,6 +21,14 @@ local META  = require("doorbell.shm").doorbell
 
 local EMPTY = {}
 
+local MATCH_COUNT = "match_count"
+local LAST_MATCH = "last_match"
+
+---@alias doorbell.rule.stat.id
+---| "match_count"
+---| "last_match"
+
+
 local function need_save(x)
   local key = "stats:need-save"
 
@@ -31,21 +39,30 @@ local function need_save(x)
   return META:get(key) or 0
 end
 
-local function tpl(f)
-  ---@param rule string|doorbell.rule
-  return function(rule)
-    local id
-    if type(rule) == "table" then
-      id = rule.hash
-    else
-      id = rule
-    end
-    return f:format(id)
+
+---@param typ doorbell.rule.stat.id
+---@param rule doorbell.rule.stat.rule_or_hash
+---@return string
+local function make_key(typ, rule)
+  ---@type string
+  local id
+  if type(rule) == "table" then
+    id = rule.hash
+  else
+    id = rule
   end
+
+  return id .. ":" .. typ
 end
 
-local match_count_key = tpl("%s:match_count")
-local match_last_key  = tpl("%s:last_match")
+
+---@param key string
+---@return string rule_hash
+---@return string stat_id
+local function unmake_key(key)
+  local id, stat = key:match("([^:]+):(.+)")
+  return id, stat
+end
 
 
 ---@return table<string, doorbell.rule.stat>
@@ -59,7 +76,7 @@ local function get_all()
   end
 
   for _, key in ipairs(keys) do
-    local id, stat = key:match("([^:]+):(.+)")
+    local id, stat = unmake_key(key)
     if id and stat then
       local value = SHM:get(key)
       if value then
@@ -118,7 +135,7 @@ end
 ---@return number?
 ---@return string? error
 local function last_matched(rule, stamp, ttl)
-  local key = match_last_key(rule)
+  local key = make_key(LAST_MATCH, rule)
   return get_or_set(key, stamp, ttl)
 end
 
@@ -129,7 +146,7 @@ end
 ---@return number?
 ---@return string? error
 local function match_count(rule, count, ttl)
-  local key = match_count_key(rule)
+  local key = make_key(MATCH_COUNT, rule)
   return get_or_set(key, count, ttl)
 end
 
@@ -143,7 +160,7 @@ function _M.inc_match_count(rule, value, ts)
     return
   end
 
-  local new, err = SHM:incr(match_count_key(rule), value or 1, 0, ttl)
+  local new, err = SHM:incr(make_key(MATCH_COUNT, rule), value or 1, 0, ttl)
   if new then
     need_save(1)
   else
@@ -168,8 +185,8 @@ end
 
 ---@param rule doorbell.rule
 function _M.delete(rule)
-  local ok, err = SHM:set(match_last_key(rule), nil)
-  local bok, berr = SHM:set(match_count_key(rule), nil)
+  local ok, err = SHM:set(make_key(LAST_MATCH, rule), nil)
+  local bok, berr = SHM:set(make_key(MATCH_COUNT, rule), nil)
 
   return ok and bok, err or berr
 end
@@ -196,7 +213,7 @@ local function save()
 
 
   local written
-  ok, written, err = util.update_json_file(SAVE_PATH, stats)
+  ok, err, written = util.update_json_file(SAVE_PATH, stats)
 
   SEMAPHORE:post(1)
 
@@ -271,12 +288,20 @@ end
 ---@field match_count number
 ---@field last_match number
 
+---@alias doorbell.rule.stat.rule_or_hash
+---| doorbell.rule
+---| doorbell.rule.fields.hash
 
 ---@param rule_or_hash doorbell.rule|string
 ---@return doorbell.rule.stat? stat
-function _M.get(rule_or_hash)
-  local last = SHM:get(match_last_key(rule_or_hash))
-  local count = SHM:get(match_count_key(rule_or_hash))
+---@overload fun(doorbell.rule.stat.rule_or_hash, doorbell.rule.stat.id):number
+function _M.get(rule_or_hash, stat)
+  if stat then
+    return SHM:get(make_key(stat, rule_or_hash))
+  end
+
+  local last = SHM:get(make_key(LAST_MATCH, rule_or_hash))
+  local count = SHM:get(make_key(MATCH_COUNT, rule_or_hash))
 
   return {
     last_match = last or 0,
@@ -287,8 +312,8 @@ end
 
 ---@param rule doorbell.rule
 function _M.decorate(rule)
-  rule.last_match = SHM:get(match_last_key(rule)) or 0
-  rule.match_count  = SHM:get(match_count_key(rule)) or 0
+  rule.last_match = SHM:get(make_key(LAST_MATCH, rule)) or 0
+  rule.match_count  = SHM:get(make_key(MATCH_COUNT, rule)) or 0
   return rule
 end
 
