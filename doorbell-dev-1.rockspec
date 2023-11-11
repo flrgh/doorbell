@@ -96,28 +96,27 @@ build = {
 supported_platforms = { "linux" }
 
 dependencies = {
-  "inspect",
-  "lua_system_constants = 0.1.4",
-  "lua-resty-ljsonschema == 1.1.3",
-  "lua-cjson >= 2.1.0",
-  "lua-resty-http >= 0.16.1-0",
+  "inspect == 3.1.3",
+  "lua_system_constants == 0.1.4",
+  "lua-resty-ljsonschema == 1.1.6-2",
+  "lua-resty-http == 0.17.1",
   "lua-resty-ipmatcher == 0.6.1",
   "lua-resty-jit-uuid == 0.0.7",
   "lua-resty-openidc == 1.7.6",
   "lua-resty-pushover == 0.1.0",
   "lua-resty-template == 2.0",
   "luafilesystem-ffi == 0.3.0",
-  "luajit-geoip == 2.1.0",
-  "luasocket",
-  "nginx-lua-prometheus == 0.20221218",
-  "penlight >= 1.0.0",
-  "api7-lua-resty-jwt = 0.2.4",
+  "luajit-geoip >= 2.1.0",
+  "luasocket == 3.1.0",
+  "nginx-lua-prometheus == 0.20230607",
+  "penlight == 1.13.1",
+  "api7-lua-resty-jwt == 0.2.5",
   "lua-resty-mlcache = 2.6.0",
 }
 
 test_dependencies = {
-  "luafilesystem",
-  "busted >= 2.1.1",
+  "luafilesystem >= 1.8.0",
+  "busted >= 2.2.0",
   "busted-htest >= 1.0.0",
 }
 

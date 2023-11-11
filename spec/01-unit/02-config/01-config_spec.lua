@@ -58,7 +58,7 @@ describe("doorbell.config", function()
 
         assert.error_matches(function()
           config.init()
-        end, [[property base_url validation failed: wrong type: expected string, got number]], nil, true)
+        end, [[property base_url validation failed: wrong type: expected string, got integer]], nil, true)
       end)
 
       it("must be able to be parsed", function()
@@ -89,7 +89,7 @@ describe("doorbell.config", function()
 
         assert.error_matches(function()
           config.init()
-        end, [[property asset_path validation failed: wrong type: expected string, got number]], nil, true)
+        end, [[property asset_path validation failed: wrong type: expected string, got integer]], nil, true)
       end)
     end)
 
@@ -102,7 +102,7 @@ describe("doorbell.config", function()
 
         assert.error_matches(function()
           config.init()
-        end, [[property log_path validation failed: wrong type: expected string, got number]], nil, true)
+        end, [[property log_path validation failed: wrong type: expected string, got integer]], nil, true)
       end)
     end)
 
@@ -115,7 +115,7 @@ describe("doorbell.config", function()
 
         assert.error_matches(function()
           config.init()
-        end, [[property runtime_path validation failed: wrong type: expected string, got number]], nil, true)
+        end, [[property runtime_path validation failed: wrong type: expected string, got integer]], nil, true)
       end)
     end)
 
@@ -128,7 +128,7 @@ describe("doorbell.config", function()
 
         assert.error_matches(function()
           config.init()
-        end, [[property allow validation failed: wrong type: expected array, got number]], nil, true)
+        end, [[property allow validation failed: wrong type: expected array, got integer]], nil, true)
       end)
     end)
 
@@ -141,7 +141,7 @@ describe("doorbell.config", function()
 
         assert.error_matches(function()
           config.init()
-        end, [[property deny validation failed: wrong type: expected array, got number]], nil, true)
+        end, [[property deny validation failed: wrong type: expected array, got integer]], nil, true)
       end)
     end)
 
@@ -154,7 +154,7 @@ describe("doorbell.config", function()
 
         assert.error_matches(function()
           config.init()
-        end, [[property trusted validation failed: wrong type: expected array, got number]], nil, true)
+        end, [[property trusted validation failed: wrong type: expected array, got integer]], nil, true)
       end)
 
       it("can be sourced from DOORBELL_TRUSTED", function()
@@ -178,7 +178,7 @@ describe("doorbell.config", function()
 
         assert.error_matches(function()
           config.init()
-        end, [[property metrics validation failed: wrong type: expected object, got number]], nil, true)
+        end, [[property metrics validation failed: wrong type: expected object, got integer]], nil, true)
       end)
     end)
 
@@ -191,7 +191,7 @@ describe("doorbell.config", function()
 
         assert.error_matches(function()
           config.init()
-        end, [[property ota validation failed: wrong type: expected object, got number]], nil, true)
+        end, [[property ota validation failed: wrong type: expected object, got integer]], nil, true)
       end)
     end)
 
@@ -275,7 +275,7 @@ describe("doorbell.config", function()
 
         assert.error_matches(function()
           config.init()
-        end, [[property notify validation failed: wrong type: expected object, got number]], nil, true)
+        end, [[property notify validation failed: wrong type: expected object, got integer]], nil, true)
 
         env.CONFIG_STRING = json {
           base_url = "http://localhost",
