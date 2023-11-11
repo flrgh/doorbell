@@ -15,8 +15,8 @@ local NOOP = function() end
 
 ---@class doorbell.util.timer.opts : table
 ---
----@field stop_on_error boolean
----@field run_on_premature boolean
+---@field stop_on_error? boolean
+---@field run_on_premature? boolean
 
 
 local function updated_time()

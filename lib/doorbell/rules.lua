@@ -174,6 +174,22 @@ table.sort(SERIALIZED_FIELDS)
 --- Network Organization
 ---@alias doorbell.rule.fields.org string
 
+---@alias doorbell.rule.fields.action doorbell.action
+
+---@alias doorbell.rule.fields.terminate boolean
+
+---@alias doorbell.rule.fields.deny_action doorbell.deny_action
+
+---@alias doorbell.rule.fields.expires doorbell.schema.timestamp
+
+---@alias doorbell.rule.fields.id string
+
+---@alias doorbell.rule.fields.comment string
+
+---@alias doorbell.rule.fields.source doorbell.source
+
+---@alias doorbell.rule.fields.created doorbell.schema.timestamp
+
 
 ---@class doorbell.rule.dehydrated: table
 ---
@@ -187,24 +203,29 @@ table.sort(SERIALIZED_FIELDS)
 ---@field path        doorbell.rule.fields.path
 ---@field ua          doorbell.rule.fields.ua
 ---
----@field action      doorbell.action
----@field terminate   boolean
----@field deny_action doorbell.deny_action
+---@field action      doorbell.rule.fields.action
+---@field terminate   doorbell.rule.fields.terminate
+---@field deny_action doorbell.rule.fields.deny_action
 ---
----@field expires     number
+---@field expires     doorbell.rule.fields.expires
+---@field auto_renew  number
 ---
----@field id      string
----@field comment string
----@field source  doorbell.source
----@field created number
+---@field id      doorbell.rule.fields.id
+---@field comment doorbell.rule.fields.comment
+---@field source  doorbell.rule.fields.source
+---@field created doorbell.rule.fields.created
 
+
+---@alias doorbell.rule.shorthand_fields.ttl integer
 
 ---@class doorbell.rule.shorthand_fields : table
 ---
----@field ttl integer
+---@field ttl doorbell.rule.shorthand_fields.ttl
 
 
----@class doorbell.rule.new.opts : doorbell.rule.dehydrated : doorbell.rule.shorthand_fields
+---@class doorbell.rule.new.opts : doorbell.rule.dehydrated
+---
+---@field ttl doorbell.rule.shorthand_fields.ttl
 
 
 ---@class doorbell.rule.update.opts : doorbell.rule.shorthand_fields
@@ -224,6 +245,12 @@ table.sort(SERIALIZED_FIELDS)
 ---@field org         doorbell.rule.fields.org
 ---@field ua          string
 
+--- hash of this rule's match conditions
+---@alias doorbell.rule.fields.hash string
+
+--- number of match conditions this rule has
+---@alias doorbell.rule.fields.conditions integer
+
 
 ---@alias doorbell.rules doorbell.rule[]
 
@@ -231,9 +258,9 @@ local rule_mt
 do
   ---@class doorbell.rule : doorbell.rule.dehydrated
   ---
-  ---@field conditions integer # number of match conditions this rule has
+  ---@field conditions doorbell.rule.fields.conditions
   ---
-  ---@field hash string        # hash of the rule match conditions
+  ---@field hash doorbell.rule.fields.hash
   ---
   local rule = {}
 
@@ -418,7 +445,6 @@ function _M.new(opts)
 
   populate(opts)
 
-  ---@type doorbell.rule
   local rule = {
     id          = opts.id,
     action      = opts.action,

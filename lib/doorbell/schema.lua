@@ -5,6 +5,7 @@ local http = require "doorbell.http"
 local util = require "doorbell.util"
 local isarray = require "table.isarray"
 
+---@alias doorbell.schema.timestamp number
 
 ---@type fun(doorbell.schema, table):function
 local generate_validator = require("resty.ljsonschema").generate_validator
@@ -108,37 +109,61 @@ end
 
 ---@class doorbell.schema.base : table
 ---
----@field title string
+---@field title? string
 ---
----@field description string
+---@field description? string
 ---
----@field allOf doorbell.schema[]
+---@field allOf? doorbell.schema[]
+---
+---@field anyOf? doorbell.schema[]
+---
+---@field not? doorbell.schema
+---
+---@field post_validate? fun(value:any):boolean?, string?
+---
+---@field validate? fun(value:any):boolean?, string?
+---
+---@field examples? doorbell.schema.example[]
+---
+---@field default? any
+
+
+---@class doorbell.schema.anyOf : doorbell.schema.base
 ---
 ---@field anyOf doorbell.schema[]
+
+
+---@class doorbell.schema.allOf : doorbell.schema.base
+---
+---@field allOf doorbell.schema[]
+
+
+---@class doorbell.schema.not : doorbell.schema.base
 ---
 ---@field not doorbell.schema
+
+
+---@class doorbell.schema.oneOf : doorbell.schema.base
 ---
----@field post_validate fun(value:any):boolean?, string?
----
----@field validate fun(value:any):boolean?, string?
----
----@field examples doorbell.schema.example[]
----
----@field default any
+---@field oneOf doorbell.schema[]
 
 
 ---@class doorbell.schema.object : doorbell.schema.base
 ---
----@field type "object"
+---@field type? "object"
 ---
----@field properties table<string, doorbell.schema>
+---@field properties? table<string, doorbell.schema>
 ---
----@field patternProperties table<string, doorbell.schema>
+---@field patternProperties? table<string, doorbell.schema>
 ---
----@field additionalProperties boolean,
+---@field additionalProperties? boolean,
 ---
----@field required string[]
+---@field required? string[]
 
+
+---@class doorbell.schema.null : doorbell.schema.base
+---
+---@field type "null"
 
 ---@class doorbell.schema.array : doorbell.schema.base
 ---
@@ -184,6 +209,11 @@ end
 ---| doorbell.schema.string
 ---| doorbell.schema.boolean
 ---| doorbell.schema.number
+---| doorbell.schema.null
+---| doorbell.schema.anyOf
+---| doorbell.schema.allOf
+---| doorbell.schema.oneOf
+---| doorbell.schema.not
 
 
 ---@param cidr string|string[]
