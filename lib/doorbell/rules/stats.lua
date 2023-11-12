@@ -24,6 +24,9 @@ local EMPTY = {}
 local MATCH_COUNT = "match_count"
 local LAST_MATCH = "last_match"
 
+_M.MATCH_COUNT = MATCH_COUNT
+_M.LAST_MATCH = LAST_MATCH
+
 ---@alias doorbell.rule.stat.id
 ---| "match_count"
 ---| "last_match"
@@ -292,14 +295,15 @@ end
 ---| doorbell.rule
 ---| doorbell.rule.fields.hash
 
----@param rule_or_hash doorbell.rule|string
----@return doorbell.rule.stat? stat
----@overload fun(doorbell.rule.stat.rule_or_hash, doorbell.rule.stat.id):number
-function _M.get(rule_or_hash, stat)
-  if stat then
-    return SHM:get(make_key(stat, rule_or_hash))
-  end
+---@param rule_or_hash doorbell.rule.stat.rule_or_hash
+---@return number|nil
+function _M.get_last_match(rule_or_hash)
+  return SHM:get(make_key(LAST_MATCH, rule_or_hash))
+end
 
+---@param rule_or_hash doorbell.rule.stat.rule_or_hash
+---@return doorbell.rule.stat? stat
+function _M.get(rule_or_hash)
   local last = SHM:get(make_key(LAST_MATCH, rule_or_hash))
   local count = SHM:get(make_key(MATCH_COUNT, rule_or_hash))
 

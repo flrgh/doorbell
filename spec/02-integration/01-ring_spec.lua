@@ -255,6 +255,100 @@ describe("/ring", function()
     end, 5, 0.1, "expected request to be denied after temp allow rule expired")
   end)
 
+  describe("rule auto-renewal", function()
+    ---@type spec.testing.client
+    local api
+
+    before_each(function()
+      client:add_x_forwarded_headers("1.2.3.4", "GET", "http://api.test/")
+
+      api = test.client()
+      nginx:add_client(api)
+    end)
+
+    it("renews rules when they are matched within the renewal period", function()
+      local ua = "renewal-test-success"
+      local ttl = 5
+      local renew = 3
+
+      assert(api:post("/rules", {
+        json = {
+          ua = ua,
+          action = "allow",
+          ttl = ttl,
+          renew_period = renew,
+        }
+      }))
+      assert.same(201, api.response.status)
+
+      local rule = api.response.json
+      local expires = rule.expires
+      assert.is_number(rule.expires)
+      assert.is_number(rule.renew_period)
+      assert.same(renew, rule.renew_period)
+
+      client.headers["user-agent"] = ua
+
+      test.await.no_error(function()
+        client:send()
+        assert.is_nil(client.err)
+        assert.equals(200, client.response.status)
+      end, 5, 0.1, "expected request to be allowed for rule")
+
+      -- expires should be unchanged at this point
+      api:get("/rules/" .. rule.id)
+      assert.is_nil(api.err)
+      assert.equals(200, api.response.status)
+      assert.equals(expires, api.response.json.expires)
+
+      test.await.no_error(function()
+        client:send()
+        assert.is_nil(client.err)
+        assert.equals(200, client.response.status)
+
+        api:get("/rules/" .. rule.id)
+        assert.is_nil(api.err)
+        assert.equals(200, api.response.status)
+        local new_expires = assert.is_number(api.response.json.expires)
+        assert(new_expires > expires)
+
+        local extended_by = new_expires - ngx.now()
+        local diff = math.abs(extended_by - renew)
+        assert(diff < 2)
+
+      end, ttl * 2, 0.5, "expected rule.expires to be updated")
+    end)
+
+    it("allows rules to expire when they are not matched within the renewal period", function()
+      local ua = "renewal-test-failure"
+      local ttl = 5
+      local renew = ttl - 1
+
+      assert(api:post("/rules", {
+        json = {
+          ua = ua,
+          action = "allow",
+          ttl = ttl,
+          renew_period = renew,
+        }
+      }))
+      assert.same(201, api.response.status)
+
+      client.headers["user-agent"] = ua
+
+      test.await.no_error(function()
+        client:send()
+        assert.is_nil(client.err)
+        assert.equals(200, client.response.status)
+      end, 5, 0.1, "expected request to be allowed for rule")
+
+      ngx.sleep(ttl * 1.5)
+      client:send()
+      assert.is_nil(client.err)
+      assert.equals(401, client.response.status)
+    end)
+  end)
+
   -- This approval path is pretty well-covered by the integration tests for the /answer
   -- endpoint, so we're not going to test that here.
   describe("policy: request-approval", function()

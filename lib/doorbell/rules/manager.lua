@@ -213,34 +213,46 @@ local function flush_expired(locked)
   shm.flush_expired()
   stats.flush_expired()
 
-  ---@type doorbell.rule[]
-  local delete = {}
+  local deleted = 0
+  local updated = 0
+
   local t = now()
   local min_ttl = const.periods.hour
+  local tx
   for _, rule in ipairs(get_all_rules()) do
+    if rule:can_renew() then
+      local last_matched = stats.get_last_match(rule)
+      if last_matched and rule:in_renew_period(last_matched) then
+        local new_expires = last_matched + rule.renew_period
+        log.debugf("renewing rule %s, expires %s => %s",
+                   rule.id, rule.expires, new_expires)
+
+        tx = tx or assert(transaction.new())
+        tx:update(rule.id, { expires = new_expires })
+        updated = updated + 1
+      end
+    end
+
     local expired, ttl = rule:expired(t)
     if expired then
-      insert(delete, rule)
+      tx = tx or assert(transaction.new())
+      tx:delete_where({ id = rule.id })
+      deleted = deleted + 1
     else
       min_ttl = min(min_ttl, ttl)
     end
   end
 
-  local count = #delete
-
-  if count > 0 then
-    for _, rule in ipairs(delete) do
-      local ok
-      ok, err = delete_rule(rule)
-      if not ok then
-        count = count - 1
-        log.errf("failed deleting rule %s: %s", rule.hash, err)
-      end
+  if tx then
+    local ok
+    ok, err = tx:commit()
+    if ok then
+      log.debugf("renewed %s rules, deleted %s expired rules", updated, deleted)
+    else
+      log.errf("failed to update/delete expired rules: %s", err)
     end
 
     need_save(1)
-    log.debugf("removed %s expired rules", count)
-
   else
     log.debug("no expired rules to delete")
   end
@@ -253,6 +265,7 @@ end
 local function get_version()
   return shm.get_current_version()
 end
+
 
 local function reload()
   local start = now()

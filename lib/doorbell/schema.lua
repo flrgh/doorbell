@@ -480,6 +480,14 @@ rule.fields.org = {
   type = "string",
 }
 
+rule.fields.renew_period = {
+  description = "Period for automatic renewal. If the rule is matched within "
+             .. "`renewal_period` seconds of its expiration, it's expiration "
+             .. "will be updated to NOW() + `renewal_period`",
+  type = "number",
+  minimum = 0,
+}
+
 for name, field in pairs(rule.fields) do
   field.title = name
   validator(field)
@@ -588,24 +596,25 @@ rule.entity = {
   type = "object",
 
   properties = {
-    action      = rule.fields.action,
-    addr        = rule.fields.addr,
-    asn         = rule.fields.asn,
-    cidr        = rule.fields.cidr,
-    comment     = rule.fields.comment,
-    conditions  = rule.fields.conditions,
-    created     = rule.fields.created,
-    deny_action = rule.fields.deny_action,
-    expires     = rule.fields.expires,
-    hash        = rule.fields.hash,
-    host        = rule.fields.host,
-    id          = rule.fields.id,
-    method      = rule.fields.method,
-    org         = rule.fields.org,
-    path        = rule.fields.path,
-    source      = rule.fields.source,
-    terminate   = rule.fields.terminate,
-    ua          = rule.fields.ua,
+    action       = rule.fields.action,
+    addr         = rule.fields.addr,
+    asn          = rule.fields.asn,
+    cidr         = rule.fields.cidr,
+    comment      = rule.fields.comment,
+    conditions   = rule.fields.conditions,
+    created      = rule.fields.created,
+    deny_action  = rule.fields.deny_action,
+    expires      = rule.fields.expires,
+    hash         = rule.fields.hash,
+    host         = rule.fields.host,
+    id           = rule.fields.id,
+    method       = rule.fields.method,
+    org          = rule.fields.org,
+    path         = rule.fields.path,
+    renew_period = rule.fields.renew_period,
+    source       = rule.fields.source,
+    terminate    = rule.fields.terminate,
+    ua           = rule.fields.ua,
   },
 
   additionalProperties = false,
@@ -632,24 +641,25 @@ rule.create = {
   required = { "action", "source" },
 
   properties = {
-    action      = rule.fields.action,
-    asn         = rule.fields.asn,
-    deny_action = rule.fields.deny_action,
-    addr        = rule.fields.addr,
-    cidr        = rule.fields.cidr,
-    comment     = rule.fields.comment,
-    created     = rule.fields.created,
-    country     = rule.fields.country,
-    expires     = rule.fields.expires,
-    host        = rule.fields.host,
-    id          = rule.fields.id,
-    method      = rule.fields.method,
-    org         = rule.fields.org,
-    path        = rule.fields.path,
-    source      = rule.fields.source,
-    terminate   = rule.fields.terminate,
-    ttl         = rule.fields.ttl,
-    ua          = rule.fields.ua,
+    action       = rule.fields.action,
+    asn          = rule.fields.asn,
+    deny_action  = rule.fields.deny_action,
+    addr         = rule.fields.addr,
+    cidr         = rule.fields.cidr,
+    comment      = rule.fields.comment,
+    created      = rule.fields.created,
+    country      = rule.fields.country,
+    expires      = rule.fields.expires,
+    host         = rule.fields.host,
+    id           = rule.fields.id,
+    method       = rule.fields.method,
+    org          = rule.fields.org,
+    path         = rule.fields.path,
+    renew_period = rule.fields.renew_period,
+    source       = rule.fields.source,
+    terminate    = rule.fields.terminate,
+    ttl          = rule.fields.ttl,
+    ua           = rule.fields.ua,
   },
 
   additionalProperties = false,
@@ -711,21 +721,22 @@ rule.patch = {
   type = "object",
 
   properties = {
-    action      = rule.fields.action,
-    asn         = rule.fields.asn,
-    deny_action = rule.fields.deny_action,
-    addr        = rule.fields.addr,
-    cidr        = rule.fields.cidr,
-    comment     = rule.fields.comment,
-    country     = rule.fields.country,
-    expires     = rule.fields.expires,
-    host        = rule.fields.host,
-    method      = rule.fields.method,
-    org         = rule.fields.org,
-    path        = rule.fields.path,
-    terminate   = rule.fields.terminate,
-    ttl         = rule.fields.ttl,
-    ua          = rule.fields.ua,
+    action       = rule.fields.action,
+    asn          = rule.fields.asn,
+    deny_action  = rule.fields.deny_action,
+    addr         = rule.fields.addr,
+    cidr         = rule.fields.cidr,
+    comment      = rule.fields.comment,
+    country      = rule.fields.country,
+    expires      = rule.fields.expires,
+    host         = rule.fields.host,
+    method       = rule.fields.method,
+    org          = rule.fields.org,
+    path         = rule.fields.path,
+    renew_period = rule.fields.renew_period,
+    terminate    = rule.fields.terminate,
+    ttl          = rule.fields.ttl,
+    ua           = rule.fields.ua,
   },
 
   additionalProperties = false,
@@ -1485,6 +1496,7 @@ validator(auth.access.api.pre_approval)
 ---@field subject doorbell.subject
 ---@field token   string
 ---@field ttl     number
+---@field renew   any
 
 
 ---@type doorbell.schema.object
@@ -1499,6 +1511,7 @@ auth.access.api.intent = {
     subject = auth.common.subject,
     token   = auth.common.token,
     ttl     = auth.common.ttl,
+    renew   = "?",
   },
 
   required = {

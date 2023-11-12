@@ -137,6 +137,7 @@ local SERIALIZED_FIELDS = {
   "method",
   "org",
   "path",
+  "renew_period",
   "source",
   "terminate",
   "ua",
@@ -190,6 +191,7 @@ table.sort(SERIALIZED_FIELDS)
 
 ---@alias doorbell.rule.fields.created doorbell.schema.timestamp
 
+---@alias doorbell.rule.fields.renew_period number
 
 ---@class doorbell.rule.dehydrated: table
 ---
@@ -207,8 +209,8 @@ table.sort(SERIALIZED_FIELDS)
 ---@field terminate   doorbell.rule.fields.terminate
 ---@field deny_action doorbell.rule.fields.deny_action
 ---
----@field expires     doorbell.rule.fields.expires
----@field auto_renew  number
+---@field expires      doorbell.rule.fields.expires
+---@field renew_period doorbell.rule.fields.renew_period
 ---
 ---@field id      doorbell.rule.fields.id
 ---@field comment doorbell.rule.fields.comment
@@ -295,6 +297,31 @@ do
     self:update_hash()
     self.conditions = count_conditions(self)
     return self
+  end
+
+  ---@return boolean
+  function rule:can_renew()
+    return self.expires
+       and self.expires > 0
+       and self.renew_period
+       and self.renew_period > 0
+        or false
+  end
+
+  ---@return boolean
+  function rule:in_renew_period(last_matched_at)
+    if last_matched_at
+      and last_matched_at > 0
+      and self.expires
+      and self.expires > 0
+      and self.renew_period
+      and self.renew_period > 0
+      and (self.expires - last_matched_at) <= self.renew_period
+    then
+      return true
+    end
+
+    return false
   end
 
   rule_mt = {
@@ -428,6 +455,10 @@ local function populate(opts)
   if not opts.created then
     opts.created = t
   end
+
+  if not opts.renew_period then
+    opts.renew_period = 0
+  end
 end
 
 _M.populate = populate
@@ -446,23 +477,24 @@ function _M.new(opts)
   populate(opts)
 
   local rule = {
-    id          = opts.id,
-    action      = opts.action,
-    addr        = opts.addr,
-    asn         = opts.asn,
-    cidr        = opts.cidr,
-    created     = opts.created,
-    deny_action = opts.deny_action,
-    expires     = opts.expires,
-    host        = opts.host,
-    method      = opts.method,
-    path        = opts.path,
-    source      = opts.source,
-    terminate   = opts.terminate,
-    ua          = opts.ua,
-    org         = opts.org,
-    comment     = opts.comment,
-    country     = opts.country,
+    id           = opts.id,
+    action       = opts.action,
+    addr         = opts.addr,
+    asn          = opts.asn,
+    cidr         = opts.cidr,
+    created      = opts.created,
+    deny_action  = opts.deny_action,
+    expires      = opts.expires,
+    host         = opts.host,
+    method       = opts.method,
+    path         = opts.path,
+    source       = opts.source,
+    terminate    = opts.terminate,
+    ua           = opts.ua,
+    org          = opts.org,
+    comment      = opts.comment,
+    country      = opts.country,
+    renew_period = opts.renew_period,
   }
 
   setmetatable(rule, rule_mt)

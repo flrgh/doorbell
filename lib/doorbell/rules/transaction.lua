@@ -373,7 +373,7 @@ end
 
 
 ---@param hash_or_id string
----@param updates doorbell.transaction.updates
+---@param updates table|doorbell.rule.update.opts
 ---@return boolean success
 function trx:update(hash_or_id, updates)
   assert(type(hash_or_id) == "string")
