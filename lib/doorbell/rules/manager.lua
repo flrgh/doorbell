@@ -252,6 +252,7 @@ local function flush_expired(locked)
       log.errf("failed to update/delete expired rules: %s", err)
     end
 
+    inc_version()
     need_save(1)
   else
     log.debug("no expired rules to delete")
