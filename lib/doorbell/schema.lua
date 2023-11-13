@@ -1357,16 +1357,17 @@ auth.common.ttl     = { type = "number" }
 
 
 ---@class doorbell.forwarded_request : table
----@field addr     string
----@field asn?     integer
----@field scheme   string
----@field host     string
----@field uri      string
----@field org?     string
----@field path     string
----@field method   string
----@field ua       string
----@field country? string
+---@field addr        string
+---@field asn?        integer
+---@field scheme      string
+---@field host        string
+---@field uri         string
+---@field org?        string
+---@field path        string
+---@field method      string
+---@field ua          string
+---@field country?    string
+---@field received_at number
 
 
 ---@type doorbell.schema.object

@@ -12,7 +12,6 @@ local ngx              = ngx
 local var              = ngx.var
 local now              = ngx.now
 local http_version     = ngx.req.http_version
-local start_time       = ngx.req.start_time
 local get_resp_headers = ngx.resp.get_headers
 local tonumber         = tonumber
 local tostring         = tostring
@@ -90,7 +89,7 @@ function _M.log(ctx)
     return
   end
 
-  local start = start_time()
+  local start = ctx.start_time
 
   update_time()
   local log_time = now()

@@ -430,9 +430,11 @@ function _M.match(req)
   end
 
   if rule then
-    local time = now()
+    local time = req.received_at
     if rule:expired(time) then
-      return
+      log.noticef("matched rule %s, but it expired at %s",
+                  rule.id, rule.expires)
+      return nil, cached
     end
 
     if not cached then

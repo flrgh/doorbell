@@ -3,6 +3,7 @@ local _M = {
 }
 
 local rules = require "doorbell.rules"
+local log = require "doorbell.log"
 
 local ipmatcher = require "resty.ipmatcher"
 
@@ -101,6 +102,8 @@ function _M.new(list)
     ---@param value string|integer
     local function add_criteria(rule, match, value)
       if rule:expired(time) then
+        log.debugf("not adding rule %s to matcher (expired at %s)",
+                   rule.id, rule.expires)
         return
       end
 
@@ -218,7 +221,8 @@ function _M.new(list)
 
   ---@param match doorbell.match
   ---@param matched doorbell.rule[]
-  local function update_match(match, matched)
+  ---@param received_at number
+  local function update_match(match, matched, received_at)
     if match.terminate then return end
     if not matched then return end
 
@@ -229,7 +233,9 @@ function _M.new(list)
       local conditions = rule.conditions
       local terminate = rule.terminate
 
-      if terminate or conditions >= match.conditions then
+      if (terminate or conditions >= match.conditions)
+         and not rule:expired(received_at)
+      then
         local hash = rule.hash
         local count = (match[hash] or 0) + 1
         match[hash] = count
@@ -275,19 +281,20 @@ function _M.new(list)
     local country = req.country
     local asn     = req.asn or 0
     local org     = req.org or ""
+    local received_at = req.received_at
 
     local match = new_match()
 
-    update_match(match, addrs[addr])
-    update_match(match, paths_plain[path])
-    update_match(match, methods[method])
-    update_match(match, hosts[host])
-    update_match(match, uas_plain[ua])
-    update_match(match, asns[asn])
-    update_match(match, orgs_plain[org])
+    update_match(match, addrs[addr], received_at)
+    update_match(match, paths_plain[path], received_at)
+    update_match(match, methods[method], received_at)
+    update_match(match, hosts[host], received_at)
+    update_match(match, uas_plain[ua], received_at)
+    update_match(match, asns[asn], received_at)
+    update_match(match, orgs_plain[org], received_at)
 
     if country then
-      update_match(match, countries[country])
+      update_match(match, countries[country], received_at)
     end
 
     if not match.terminate then
@@ -298,18 +305,18 @@ function _M.new(list)
       --
       -- first, see if we have a match with the maximal number of conditions met
       if match.conditions < max_possible_conditions then
-        update_match(match, cidrs:match(addr))
+        update_match(match, cidrs:match(addr), received_at)
 
         if not match.terminate then
-          update_match(match, regex_match(paths_regex, path))
+          update_match(match, regex_match(paths_regex, path), received_at)
         end
 
         if not match.terminate then
-          update_match(match, regex_match(uas_regex, ua))
+          update_match(match, regex_match(uas_regex, ua), received_at)
         end
 
         if not match.terminate then
-          update_match(match, regex_match(orgs_regex, org))
+          update_match(match, regex_match(orgs_regex, org), received_at)
         end
       end
     end

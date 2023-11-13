@@ -200,6 +200,7 @@ describe("rules.manager", function()
         ua     = "test",
         method = "GET",
         path   = "/",
+        received_at = ngx.now(),
       }
     end)
 

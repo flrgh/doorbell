@@ -18,6 +18,7 @@ local var             = ngx.var
 local get_method      = ngx.req.get_method
 local get_path        = http.extract_path
 local get_phase       = ngx.get_phase
+local start_time      = ngx.req.start_time
 
 
 ---@class doorbell.ctx : table
@@ -62,6 +63,8 @@ local get_phase       = ngx.get_phase
 ---@field auth integer
 ---@field auth_http_status ngx.http.status_code
 ---@field auth_client_message string
+---
+---@field start_time number # time request processing started
 
 
 ---@param ctx? table
@@ -85,6 +88,8 @@ function _M.new(ctx)
   ctx.path = get_path(ctx.uri)
 
   ctx.doorbell_init = true
+
+  ctx.start_time = start_time()
   return ctx
 end
 

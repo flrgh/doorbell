@@ -13,7 +13,7 @@ local sha = require "resty.sha256"
 
 local pool    = "doorbell.auth.forwarded_request"
 local narr    = 0
-local nrec    = 10
+local nrec    = 11
 local fetch   = tb.fetch
 local release = tb.release
 
@@ -27,6 +27,7 @@ function _M.new(ctx, headers)
     return nil, "untrusted client IP address"
   end
 
+  ---@type doorbell.forwarded_request
   local r = fetch(pool, narr, nrec)
   ctx.forwarded_request = r
 
@@ -69,6 +70,8 @@ function _M.new(ctx, headers)
 
   r.asn = ctx.geoip_net_asn
   r.org = ctx.geoip_net_org
+
+  r.received_at = ctx.start_time
 
   return r
 end
