@@ -665,17 +665,22 @@ function _M.answer(ans)
     ua = req.request.ua
   end
 
+  local renew
+  if ans.renew and ans.ttl and ans.ttl > 0 then
+    renew = ans.ttl / 2
+  end
 
   local rule, status
   rule, err, status = api.insert({
-    action    = ans.action,
-    addr      = addr,
-    host      = host,
-    path      = path,
-    ttl       = ans.ttl,
-    ua        = ua,
-    source    = const.sources.api,
-    terminate = ans.scope == SCOPES.global,
+    action       = ans.action,
+    addr         = addr,
+    host         = host,
+    path         = path,
+    ttl          = ans.ttl,
+    ua           = ua,
+    renew_period = renew,
+    source       = const.sources.api,
+    terminate    = ans.scope == SCOPES.global,
   })
 
   if not rule then

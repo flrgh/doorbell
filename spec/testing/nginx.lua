@@ -208,6 +208,7 @@ function nginx:quit()
   end
 
   self:close_clients()
+  self.clients = {}
   assert(self:signal(QUIT))
 
   if not wait_pid(self.pid, dead, 5) then
@@ -230,6 +231,7 @@ function nginx:stop()
   end
 
   self:close_clients()
+  self.clients = {}
 
   assert(self:signal(TERM))
 
@@ -255,9 +257,7 @@ end
 
 ---@param no_wait? boolean
 function nginx:reload(no_wait)
-  for client in pairs(self.clients) do
-    client:close()
-  end
+  self:close_clients()
 
   local pids
 

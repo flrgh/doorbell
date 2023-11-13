@@ -113,7 +113,7 @@ return function(ctx)
     scope   = args.scope,
     subject = args.subject,
     ttl     = PERIODS[args.period] or args.period,
-    renew   = args.renew,
+    renew   = args.renew == "on",
   }
 
 

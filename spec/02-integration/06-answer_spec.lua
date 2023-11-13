@@ -123,6 +123,7 @@ describe("doorbell", function()
           subject = const.subjects.ua,
           scope   = const.scopes.host,
           period  = "hour",
+          renew   = "on",
         }
 
         res, err = answer_client:send()
@@ -148,6 +149,26 @@ describe("doorbell", function()
 
           return true
         end, 5, nil, "waiting for client request to return 201")
+
+        local api = nginx:add_client(test.client())
+        api:get("/rules")
+        assert.is_nil(api.err)
+        assert.same(200, api.response.status)
+        assert.is_table(api.response.json)
+        assert.is_table(api.response.json.data)
+
+        local rule
+        for _, found in ipairs(api.response.json.data) do
+          if found.ua == ua then
+            rule = found
+            break
+          end
+        end
+
+        assert.is_table(rule, "couldn't find matching rule after approving access")
+        local hour = 60 * 60
+        assert.near(ngx.now() + hour, rule.expires, 60)
+        assert.same(hour / 2, rule.renew_period)
       end)
 
     end)
