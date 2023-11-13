@@ -223,7 +223,7 @@ local function flush_expired(locked)
     if rule:can_renew() then
       local last_matched = stats.get_last_match(rule)
       if last_matched and rule:in_renew_period(last_matched) then
-        local new_expires = last_matched + rule.renew_period
+        local new_expires = rule.expires + rule.renew_period
         log.debugf("renewing rule %s, expires %s => %s",
                    rule.id, rule.expires, new_expires)
 
