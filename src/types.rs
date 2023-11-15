@@ -1,9 +1,9 @@
 use crate::geo::*;
 
+use chrono::{DateTime, Utc};
 use regex::Regex;
 use std::cmp::Ordering;
 use std::net::IpAddr;
-use chrono::{Utc, DateTime};
 
 #[derive(Debug, Clone)]
 pub(crate) enum Pattern {

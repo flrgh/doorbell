@@ -15,8 +15,11 @@ config = "0.13"
 http = "0.2"
 log = "0.4"
 r2d2 = "0.8"
-r2d2_sqlite = "0.21"
+r2d2_sqlite = "0.23"
 regex = "1"
+rusqlite = { version = "0.30.0", features = ["chrono", "time"] }
 serde = "1"
 serde_derive = "1"
+strum = { version = "0.25.0", features = ["derive"] }
+strum_macros = "0.25.3"
 uuid = { version = "1", features = ["v4", "serde"] }
