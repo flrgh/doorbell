@@ -12,12 +12,11 @@ pub struct Conf {
 
 impl Conf {
     pub fn new() -> Result<Self, ConfigError> {
-        let conf = Config::builder()
+        Config::builder()
             .add_source(File::with_name("config.default"))
             .add_source(File::with_name("config").required(false))
             .add_source(Environment::with_prefix("DOORBELL"))
-            .build()?;
-
-        conf.try_deserialize()
+            .build()?
+            .try_deserialize()
     }
 }

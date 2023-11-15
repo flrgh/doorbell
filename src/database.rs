@@ -2,70 +2,67 @@ use actix_web::{error, web, Error};
 use anyhow::Result;
 
 use crate::rules::Rule;
-use r2d2_sqlite::rusqlite;
-use r2d2_sqlite::rusqlite::Statement;
+use sqlx::{SqliteConnection, SqlitePool, Connection, prelude::*, Acquire};
 use serde::{Deserialize, Serialize};
 use std::{thread::sleep, time::Duration};
 
-pub type Pool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
-pub type Connection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
-
-const NO_PARAMS: &[&dyn rusqlite::ToSql] = &[];
-
 const INIT_METADATA: &str = include_str!("migrations/_metadata.sql");
-
 const MIGRATIONS: &[&str] = &[include_str!("migrations/0000_init.sql")];
 
-fn get_meta<T>(conn: &rusqlite::Connection, key: &str) -> Option<T>
+async fn get_meta<T>(conn: &SqliteConnection, key: &str) -> Option<T>
 where
     T: std::str::FromStr,
 {
-    conn.query_row("SELECT value FROM meta WHERE key = ?1", [key], |row| {
-        row.get(0)
-    })
-    .unwrap_or(None)
-    .and_then(|s: String| s.parse::<T>().ok())
+    let res = conn.fetch_one(
+        sqlx::query("SELECT value FROM meta WHERE key = ?")
+            .bind(key)
+    ).await.unwrap();
+
+    res.get("value")
 }
 
-fn set_meta<T>(conn: &rusqlite::Connection, key: &str, value: T)
+async fn set_meta<T>(conn: &SqliteConnection, key: &str, value: T)
 where
     T: std::string::ToString,
 {
     conn.execute(
-        "INSERT INTO meta (key, value) VALUES (?1, ?2)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        [key, &value.to_string()],
-    )
-    .unwrap();
+        sqlx::query(
+            "INSERT INTO meta (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+
+        ).bind([key, &value.to_string().as_ref()]),
+    ).await.unwrap();
 }
 
-fn init(db: &std::path::PathBuf) {
-    let conn = rusqlite::Connection::open(db).unwrap();
-    dbg!(&conn);
-    conn.execute_batch(INIT_METADATA).unwrap();
+async fn init(db: &std::path::PathBuf) {
+    let db = db.to_string_lossy();
+    let mut conn = SqliteConnection::connect(db.as_ref()).await.unwrap();
 
-    let version: usize = get_meta(&conn, "db_version").unwrap_or(0);
+    dbg!(&conn);
+    conn.begin().await.unwrap();
+
+    conn.execute(INIT_METADATA).await.unwrap();
+
+    let version: usize = get_meta(&conn, "db_version").await.unwrap_or(0);
     assert!(version <= MIGRATIONS.len());
 
     for (i, m) in MIGRATIONS.iter().skip(version).enumerate() {
         eprintln!("Running migration {i}");
-        conn.execute_batch(m).unwrap();
+        conn.execute(m).await.unwrap();
         set_meta(&conn, "db_version", i + 1);
     }
 }
 
-pub(crate) fn connect(db: &std::path::PathBuf) {
+pub(crate) async fn connect(db: &std::path::PathBuf) {
     init(db);
 
-    let manager = r2d2_sqlite::SqliteConnectionManager::file(db);
-    let pool = Pool::new(manager).unwrap();
-    let conn = pool.get().unwrap();
+    let pool = sqlx::SqlitePool::connect(db).await.unwrap();
     dbg!(pool);
+    list_rules(&pool);
 }
 
-pub(crate) fn list_rules(conn: &Connection) {
-    let mut s = conn
-        .prepare(
+pub(crate) async fn list_rules(pool: &SqlitePool) {
+    let q = sqlx::query(
             "SELECT
                 id,
                 hash,
@@ -79,24 +76,12 @@ pub(crate) fn list_rules(conn: &Connection) {
                 updated_at,
                 conditions
             FROM rules",
-        )
-        .unwrap();
+        );
 
-    s.query_map([], |row| {
-        dbg!(&row);
-        Ok(Rule {
-            id: row.get(0)?,
-            hash: row.get(1)?,
-            action: row.get(2)?,
-            deny_action: row.get(3)?,
-            terminate: row.get(4)?,
-            expires: row.get(5)?,
-            source: row.get(6)?,
-            comment: row.get(7)?,
-            created_at: row.get(8)?,
-            updated_at: row.get(9)?,
-            conditions: row.get(10)?,
-        })
+    pool.fetch_all(q).await.unwrap().iter().map(|row| {
+        row.try_into::<Rule>()
     })
-    .unwrap();
+    .for_each(|r| {
+        dbg!(&r);
+    });
 }

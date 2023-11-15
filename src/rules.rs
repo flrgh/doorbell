@@ -2,9 +2,7 @@ use std::net::IpAddr;
 //use std::collections::HashMap;
 use chrono::prelude::*;
 use cidr::IpCidr;
-use uuid::Uuid;
-use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
-use rusqlite::Result as RusqliteResult;
+//use uuid::Uuid;
 
 use std::cmp::Ordering;
 
@@ -45,17 +43,13 @@ impl Condition {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, PartialOrd, Ord, strum_macros::Display, strum_macros::EnumString)]
+#[derive(
+    PartialEq, Eq, Clone, Debug, PartialOrd, Ord, strum_macros::Display, strum_macros::EnumString,
+)]
 #[strum(serialize_all = "lowercase")]
 pub(crate) enum Action {
     Deny,
     Allow,
-}
-
-impl FromSql for Action {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        Self::try_from(value.as_str()?).map_err(|_| FromSqlError::InvalidType)
-    }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug, Default, strum_macros::Display, strum_macros::EnumString)]
@@ -66,13 +60,9 @@ pub(crate) enum DenyAction {
     Tarpit,
 }
 
-impl FromSql for DenyAction {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        Self::try_from(value.as_str()?).map_err(|_| FromSqlError::InvalidType)
-    }
-}
-
-#[derive(PartialEq, Eq, Clone, Debug, PartialOrd, Ord, strum_macros::Display, strum_macros::EnumString)]
+#[derive(
+    PartialEq, Eq, Clone, Debug, PartialOrd, Ord, strum_macros::Display, strum_macros::EnumString,
+)]
 #[strum(serialize_all = "lowercase")]
 pub(crate) enum Source {
     Api,
@@ -81,9 +71,26 @@ pub(crate) enum Source {
     Ota,
 }
 
-impl FromSql for Source {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        Self::try_from(value.as_str()?).map_err(|_| FromSqlError::InvalidType)
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) struct Uuid {
+    inner: uuid::Uuid,
+}
+
+impl std::ops::Deref for Uuid {
+    type Target = uuid::Uuid;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl TryFrom<&str> for Uuid {
+    type Error = uuid::Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Ok(Self {
+            inner: uuid::Uuid::try_parse(value)?,
+        })
     }
 }
 
