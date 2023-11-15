@@ -1,8 +1,9 @@
 use crate::geo::*;
-use http;
+
 use regex::Regex;
 use std::cmp::Ordering;
 use std::net::IpAddr;
+use chrono::{Utc, DateTime};
 
 #[derive(Debug, Clone)]
 pub(crate) enum Pattern {
@@ -53,10 +54,9 @@ impl TryFrom<&str> for Pattern {
     type Error = regex::Error;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        if value.starts_with('~') {
-            Ok(Pattern::Regex(Regex::new(&value[1..])?))
-        } else {
-            Ok(Pattern::Plain(value.to_string()))
+        match value.strip_prefix('~') {
+            Some(re) => Ok(Self::Regex(Regex::new(re)?)),
+            None => Ok(Self::Plain(value.to_string())),
         }
     }
 }
@@ -72,4 +72,5 @@ pub(crate) struct AccessRequest {
     pub(crate) country_code: Option<CountryCode>,
     pub(crate) asn: Option<u32>,
     pub(crate) org: Option<String>,
+    pub(crate) timestamp: DateTime<Utc>,
 }

@@ -1,7 +1,6 @@
 use actix_web::{error, web, Error};
 use anyhow::Result;
-use r2d2;
-use r2d2_sqlite;
+
 use r2d2_sqlite::rusqlite;
 use r2d2_sqlite::rusqlite::Statement;
 use serde::{Deserialize, Serialize};
@@ -33,10 +32,10 @@ where
 {
     let mut stmt = conn.prepare("INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value").unwrap();
 
-    stmt.execute(&[key, &value.to_string()]).unwrap();
+    stmt.execute([key, &value.to_string()]).unwrap();
 }
 
-fn init(db: &str) {
+fn init(db: &std::path::PathBuf) {
     let conn = rusqlite::Connection::open(db).unwrap();
     dbg!(&conn);
     conn.execute_batch(INIT_METADATA).unwrap();
@@ -44,17 +43,14 @@ fn init(db: &str) {
     let version: usize = get_meta(&conn, "db_version").unwrap_or(0);
     assert!(version <= MIGRATIONS.len());
 
-    for i in version..MIGRATIONS.len() {
-        println!("Running migration {}", i);
-        conn.execute_batch(MIGRATIONS[i]).unwrap();
+    for (i, m) in MIGRATIONS.iter().skip(version).enumerate() {
+        eprintln!("Running migration {}", i);
+        conn.execute_batch(m).unwrap();
         set_meta(&conn, "db_version", i + 1);
     }
-
-    dbg!(version);
-    todo!()
 }
 
-pub(crate) fn connect(db: &str) {
+pub(crate) fn connect(db: &std::path::PathBuf) {
     init(db);
 
     let manager = r2d2_sqlite::SqliteConnectionManager::file(db);

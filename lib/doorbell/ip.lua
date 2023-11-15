@@ -118,6 +118,8 @@ local function lookup_country_code(addr)
   return LOCATION_DB:lookup_value(addr, "country", "iso_code")
 end
 
+---@param ip string
+---@return boolean
 local function is_trusted(ip)
   return (trusted_ips:match(ip) and true) or false
 end
@@ -324,6 +326,9 @@ function _M.get_net_info(addr)
 end
 
 
+---@param forwarded string[]
+---@param pos? integer
+---@return string? addr
 local function get_forwarded(forwarded, pos)
   pos = pos or #forwarded
   local addr = forwarded[pos]
