@@ -1,18 +1,36 @@
 #![allow(dead_code, unused)]
 
-pub mod cli;
+mod cli;
 mod config;
 mod database;
-pub mod geo;
-pub mod rules;
-pub mod types;
+mod geo;
+mod rules;
+mod types;
 use database as db;
 
-use actix_web::{web, App, HttpRequest, HttpServer, Responder};
+use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 
+struct State<'a> {
+    rules: crate::rules::RuleCollection<'a>,
+}
+
+#[get("/")]
 async fn index(req: HttpRequest) -> impl Responder {
     println!("REQ: {:?}", req);
     "Hello world!"
+}
+
+#[get("/ring")]
+async fn ring(req: HttpRequest, state: web::Data<State<'_>>) -> impl Responder {
+    let method = req.method();
+    let headers = req.headers();
+    let addr = headers.get("x-forwarded-for").unwrap();
+    let proto = headers.get("x-forwarded-proto").unwrap();
+    let host = headers.get("x-forwarded-host").unwrap();
+    let uri = headers.get("x-forwarded-uri").unwrap();
+    let method = headers.get("x-forwarded-method").unwrap();
+
+    "later"
 }
 
 #[actix_web::main]
@@ -21,8 +39,15 @@ async fn main() -> std::io::Result<()> {
     dbg!(&conf);
     db::connect(&conf.db);
 
-    HttpServer::new(|| App::new().route("/", web::get().to(index)))
-        .bind(("127.0.0.1", 8080))?
-        .run()
-        .await
+    HttpServer::new(|| {
+        App::new()
+            .app_data(web::Data::new(State {
+                rules: Default::default(),
+            }))
+            .service(index)
+            .service(ring)
+    })
+    .bind(&conf.listen)?
+    .run()
+    .await
 }

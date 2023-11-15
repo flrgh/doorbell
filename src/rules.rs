@@ -2,7 +2,8 @@ use std::net::IpAddr;
 //use std::collections::HashMap;
 use chrono::prelude::*;
 use cidr::IpCidr;
-use http;
+use uuid::Uuid;
+
 use std::cmp::Ordering;
 
 use crate::geo::*;
@@ -24,19 +25,19 @@ pub(crate) enum Condition {
 impl Condition {
     fn matches(&self, req: &AccessRequest) -> bool {
         match self {
-            Condition::Addr(addr) => req.addr == *addr,
+            Condition::Addr(addr) => req.addr.eq(addr),
             Condition::Network(cidr) => cidr.contains(&req.addr),
             Condition::UserAgent(pattern) => pattern.matches(&req.user_agent),
             Condition::Host(pattern) => pattern.matches(&req.host),
             Condition::Path(pattern) => pattern.matches(&req.path),
             Condition::CountryCode(code) => req.country_code == Some(*code),
-            Condition::Method(method) => req.method == *method,
+            Condition::Method(method) => req.method.eq(method),
             Condition::Asn(asn) => req.asn == Some(*asn),
             Condition::Org(pattern) => {
                 if let Some(org) = &req.org {
                     return pattern.matches(org);
                 }
-                return false;
+                false
             }
         }
     }
@@ -65,7 +66,7 @@ pub(crate) enum Source {
 
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct Rule {
-    pub(crate) id: String,
+    pub(crate) id: Uuid,
     pub(crate) action: Action,
     pub(crate) deny_action: Option<DenyAction>,
     pub(crate) hash: String,
@@ -80,12 +81,7 @@ pub(crate) struct Rule {
 
 impl Rule {
     pub fn matches(&self, req: &AccessRequest) -> bool {
-        for condition in &self.conditions {
-            if !condition.matches(req) {
-                return false;
-            }
-        }
-        true
+        self.conditions.iter().all(|cond| cond.matches(req))
     }
 
     pub fn is_expired(&self) -> bool {
@@ -107,7 +103,7 @@ impl Rule {
 
 impl PartialOrd for Rule {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        todo!()
+        Some(self.cmp(other))
     }
 }
 
@@ -133,10 +129,11 @@ impl Ord for Rule {
             return self.created_at.cmp(&other.created_at);
         }
 
-        return self.hash.cmp(&other.hash);
+        self.hash.cmp(&other.hash)
     }
 }
 
+#[derive(Default, Debug)]
 pub(crate) struct RuleCollection<'a> {
     pub(crate) rules: Vec<Rule>,
     //pub(crate) by_id: HashMap<String, &'a Rule>,
@@ -148,9 +145,10 @@ impl<'a> RuleCollection<'a> {
     pub fn get_match(&'a self, req: &AccessRequest) -> Option<&'a Rule> {
         let mut matched: Option<&'a Rule> = None;
 
-        let now = &Utc::now();
-
-        let iter = self.rules.iter().filter(|r| !r.is_expired_at(now));
+        let iter = self
+            .rules
+            .iter()
+            .filter(|r| !r.is_expired_at(&req.timestamp));
 
         for rule in iter {
             if rule.matches(req) {

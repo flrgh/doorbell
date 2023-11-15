@@ -771,3 +771,11 @@ impl TryFrom<&str> for CountryCode {
         }
     }
 }
+
+impl TryFrom<String> for CountryCode {
+    type Error = InvalidCountryCode;
+
+    fn try_from(input: String) -> Result<Self, Self::Error> {
+        Self::try_from(input.as_ref())
+    }
+}

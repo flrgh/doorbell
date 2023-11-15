@@ -14,14 +14,5 @@ CREATE TABLE IF NOT EXISTS rules (
 	created_at 	DATETIME 	NOT NULL,
 	updated_at 	DATETIME,
 
-	-- conditions
-	addr 		TEXT,
-	user_agent 	TEXT,
-	network 	TEXT,
-	host 		TEXT,
-	method 		TEXT,
-	path 		TEXT,
-	country_code    TEXT,
-	asn             INTEGER,
-	org             TEXT
+	conditions      TEXT
 ) WITHOUT ROWID;

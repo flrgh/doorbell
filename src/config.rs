@@ -1,11 +1,13 @@
 use config::{Config, ConfigError, Environment, File};
 use serde_derive::Deserialize;
 use std::env;
+use std::net::SocketAddr;
+use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 pub struct Conf {
-    pub db: String,
-    pub base_url: String,
+    pub db: PathBuf,
+    pub listen: SocketAddr,
 }
 
 impl Conf {
