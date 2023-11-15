@@ -3,6 +3,8 @@ use std::net::IpAddr;
 use chrono::prelude::*;
 use cidr::IpCidr;
 use uuid::Uuid;
+use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
+use rusqlite::Result as RusqliteResult;
 
 use std::cmp::Ordering;
 
@@ -43,25 +45,46 @@ impl Condition {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, Clone, Debug, PartialOrd, Ord, strum_macros::Display, strum_macros::EnumString)]
+#[strum(serialize_all = "lowercase")]
 pub(crate) enum Action {
     Deny,
     Allow,
 }
 
-#[derive(Default, Debug, Eq, PartialEq)]
+impl FromSql for Action {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        Self::try_from(value.as_str()?).map_err(|_| FromSqlError::InvalidType)
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Debug, Default, strum_macros::Display, strum_macros::EnumString)]
+#[strum(serialize_all = "lowercase")]
 pub(crate) enum DenyAction {
     #[default]
     Exit,
     Tarpit,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+impl FromSql for DenyAction {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        Self::try_from(value.as_str()?).map_err(|_| FromSqlError::InvalidType)
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Debug, PartialOrd, Ord, strum_macros::Display, strum_macros::EnumString)]
+#[strum(serialize_all = "lowercase")]
 pub(crate) enum Source {
     Api,
     User,
     Config,
     Ota,
+}
+
+impl FromSql for Source {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        Self::try_from(value.as_str()?).map_err(|_| FromSqlError::InvalidType)
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]

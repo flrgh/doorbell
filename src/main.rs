@@ -22,13 +22,13 @@ async fn index(req: HttpRequest) -> impl Responder {
 
 #[get("/ring")]
 async fn ring(req: HttpRequest, state: web::Data<State<'_>>) -> impl Responder {
-    let method = req.method();
     let headers = req.headers();
     let addr = headers.get("x-forwarded-for").unwrap();
     let proto = headers.get("x-forwarded-proto").unwrap();
     let host = headers.get("x-forwarded-host").unwrap();
     let uri = headers.get("x-forwarded-uri").unwrap();
     let method = headers.get("x-forwarded-method").unwrap();
+    let user_agent = headers.get("user-agent").unwrap();
 
     "later"
 }
