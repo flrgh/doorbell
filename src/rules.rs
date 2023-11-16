@@ -3,14 +3,16 @@ use std::net::IpAddr;
 use chrono::prelude::*;
 use cidr::IpCidr;
 //use uuid::Uuid;
-
 use std::cmp::Ordering;
+use sqlx::FromRow;
+use strum_macros::Display as EnumDisplay;
+use strum_macros::EnumString;
 
 use crate::geo::*;
 use crate::types::*;
 
 #[derive(Debug, Eq, PartialEq)]
-pub(crate) enum Condition {
+pub enum Condition {
     Addr(IpAddr),
     Network(IpCidr),
     UserAgent(Pattern),
@@ -44,16 +46,19 @@ impl Condition {
 }
 
 #[derive(
-    PartialEq, Eq, Clone, Debug, PartialOrd, Ord, strum_macros::Display, strum_macros::EnumString,
+    PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString, sqlx::Type,
 )]
 #[strum(serialize_all = "lowercase")]
+#[sqlx(rename_all = "lowercase")]
 pub(crate) enum Action {
     Deny,
     Allow,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Default, strum_macros::Display, strum_macros::EnumString)]
+
+#[derive(PartialEq, Eq, Clone, Debug, Default, EnumDisplay, EnumString, sqlx::Type)]
 #[strum(serialize_all = "lowercase")]
+#[sqlx(rename_all = "lowercase")]
 pub(crate) enum DenyAction {
     #[default]
     Exit,
@@ -61,9 +66,10 @@ pub(crate) enum DenyAction {
 }
 
 #[derive(
-    PartialEq, Eq, Clone, Debug, PartialOrd, Ord, strum_macros::Display, strum_macros::EnumString,
+    PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString, sqlx::Type,
 )]
 #[strum(serialize_all = "lowercase")]
+#[sqlx(rename_all = "lowercase")]
 pub(crate) enum Source {
     Api,
     User,
@@ -94,24 +100,72 @@ impl TryFrom<&str> for Uuid {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+
+#[derive(Debug, Eq, PartialEq, sqlx::Type, sqlx::FromRow)]
 pub(crate) struct Rule {
-    pub(crate) id: Uuid,
-    pub(crate) action: Action,
-    pub(crate) deny_action: Option<DenyAction>,
-    pub(crate) hash: String,
-    pub(crate) conditions: Vec<Condition>,
-    pub(crate) created_at: DateTime<Utc>,
-    pub(crate) updated_at: Option<DateTime<Utc>>,
-    pub(crate) terminate: bool,
-    pub(crate) comment: Option<String>,
-    pub(crate) source: Source,
-    pub(crate) expires: Option<DateTime<Utc>>,
+    pub id: uuid::Uuid,
+    pub action: Action,
+    pub deny_action: Option<DenyAction>,
+    pub hash: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub terminate: bool,
+    pub comment: Option<String>,
+    pub source: Source,
+    pub expires: Option<DateTime<Utc>>,
+
+    pub addr: Option<IpAddr>,
+    pub cidr: Option<IpCidr>,
+    pub user_agent: Option<String>,
+    pub host: Option<Pattern>,
+    pub path: Option<Pattern>,
+    pub country_code: Option<CountryCode>,
+    pub method: Option<http::Method>,
+    pub asn: Option<u32>,
+    pub org: Option<Pattern>,
+}
+
+pub struct RuleConditions<'a> {
+    count: usize,
+    offset: usize,
+    conditions: [Option<&'a Condition>; 9],
+}
+
+impl<'a> Iterator for RuleConditions<'a> {
+    type Item = &'a Condition;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        todo!()
+    }
+}
+
+impl<'a> ExactSizeIterator for RuleConditions<'a> {
+    fn len(&self) -> usize {
+        self.count
+    }
 }
 
 impl Rule {
+    pub fn conditions(&self) -> RuleConditions {
+        todo!()
+        //let conditions = [
+        //    self.addr.and_then(|addr| Some(Condition::Addr(addr))),
+        //    self.cidr.and_then(|cidr| Some(Condition::Network(cidr))),
+        //    self.user_agent.and_then(|user_agent| Some(Condition::UserAgent(user_agent))),
+        //    self.host.and_then(|host| Some(Condition::Host(host))),
+        //    self.path.and_then(|path| Some(Condition::Path(path))),
+        //    self.path.and_then(|path| Some(Condition::Path(path))),
+        //];
+
+        //RuleConditions {
+        //    count: conditions.len(),
+        //    offset: 0,
+        //    conditions,
+        //}
+    }
+
     pub fn matches(&self, req: &AccessRequest) -> bool {
-        self.conditions.iter().all(|cond| cond.matches(req))
+        self.conditions().all(|cond| cond.matches(req))
     }
 
     pub fn is_expired(&self) -> bool {
@@ -143,8 +197,8 @@ impl Ord for Rule {
             return Ordering::Less;
         }
 
-        if self.conditions.len() != other.conditions.len() {
-            return other.conditions.len().cmp(&self.conditions.len());
+        if self.conditions().len() != other.conditions().len() {
+            return other.conditions().len().cmp(&self.conditions().len());
         }
 
         if self.action != other.action {
@@ -188,7 +242,7 @@ impl<'a> RuleCollection<'a> {
                 }
 
                 if let Some(last) = matched {
-                    if last.conditions.len() < rule.conditions.len() {
+                    if last.conditions().len() < rule.conditions().len() {
                         matched = Some(rule);
                     }
                 }

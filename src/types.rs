@@ -4,14 +4,25 @@ use chrono::{DateTime, Utc};
 use regex::Regex;
 use std::cmp::Ordering;
 use std::net::IpAddr;
+use std::fmt::Display;
+use sqlx::Type;
 
 #[derive(Debug, Clone)]
-pub(crate) enum Pattern {
+pub enum Pattern {
     Plain(String),
     Regex(Regex),
 }
 
 impl Eq for Pattern {}
+
+impl From<Pattern> for String {
+    fn from(value: Pattern) -> Self {
+        match value {
+            Pattern::Plain(s) => s,
+            Pattern::Regex(s) => format!("~{}", s.as_str()),
+        }
+    }
+}
 
 impl PartialEq for Pattern {
     fn eq(&self, other: &Self) -> bool {
@@ -42,7 +53,7 @@ impl PartialOrd for Pattern {
 }
 
 impl Pattern {
-    pub(crate) fn matches(&self, s: &str) -> bool {
+    pub fn matches(&self, s: &str) -> bool {
         match self {
             Pattern::Plain(p) => s == p,
             Pattern::Regex(r) => r.is_match(s),
@@ -62,15 +73,15 @@ impl TryFrom<&str> for Pattern {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct AccessRequest {
-    pub(crate) addr: IpAddr,
-    pub(crate) user_agent: String,
-    pub(crate) host: String,
-    pub(crate) method: http::Method,
-    pub(crate) uri: String,
-    pub(crate) path: String,
-    pub(crate) country_code: Option<CountryCode>,
-    pub(crate) asn: Option<u32>,
-    pub(crate) org: Option<String>,
-    pub(crate) timestamp: DateTime<Utc>,
+pub struct AccessRequest {
+    pub addr: IpAddr,
+    pub user_agent: String,
+    pub host: String,
+    pub method: http::Method,
+    pub uri: String,
+    pub path: String,
+    pub country_code: Option<CountryCode>,
+    pub asn: Option<u32>,
+    pub org: Option<String>,
+    pub timestamp: DateTime<Utc>,
 }

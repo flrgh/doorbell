@@ -37,7 +37,7 @@ async fn ring(req: HttpRequest, state: web::Data<State<'_>>) -> impl Responder {
 async fn main() -> std::io::Result<()> {
     let conf = config::Conf::new().unwrap();
     dbg!(&conf);
-    db::connect(&conf.db);
+    db::connect(&conf.db).await;
 
     HttpServer::new(|| {
         App::new()
