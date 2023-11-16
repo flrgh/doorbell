@@ -5,11 +5,12 @@ use crate::rules::Rule;
 use sqlx::{SqliteConnection, SqlitePool, Connection, prelude::*, Acquire};
 use serde::{Deserialize, Serialize};
 use std::{thread::sleep, time::Duration};
+use sqlx::FromRow;
 
 const INIT_METADATA: &str = include_str!("migrations/_metadata.sql");
 const MIGRATIONS: &[&str] = &[include_str!("migrations/0000_init.sql")];
 
-async fn get_meta<T>(conn: &SqliteConnection, key: &str) -> Option<T>
+async fn get_meta<T>(conn: &mut SqliteConnection, key: &str) -> Option<T>
 where
     T: std::str::FromStr,
 {
@@ -18,70 +19,65 @@ where
             .bind(key)
     ).await.unwrap();
 
-    res.get("value")
+    let elem: Option<&str> = res.get("value");
+    if let Some(value) = elem {
+        T::from_str(value).ok()
+    } else {
+        None
+    }
 }
 
-async fn set_meta<T>(conn: &SqliteConnection, key: &str, value: T)
+async fn set_meta<T>(conn: &mut SqliteConnection, key: &str, value: T)
 where
-    T: std::string::ToString,
+    T: std::string::ToString + Send + Sync,
 {
     conn.execute(
         sqlx::query(
             "INSERT INTO meta (key, value) VALUES (?, ?)
                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
 
-        ).bind([key, &value.to_string().as_ref()]),
+        ).bind(key)
+        .bind(value.to_string())
     ).await.unwrap();
 }
 
-async fn init(db: &std::path::PathBuf) {
+async fn init(db: &std::path::Path) -> SqlitePool {
     let db = db.to_string_lossy();
     let mut conn = SqliteConnection::connect(db.as_ref()).await.unwrap();
 
     dbg!(&conn);
-    conn.begin().await.unwrap();
+    //conn.begin().await.unwrap();
 
     conn.execute(INIT_METADATA).await.unwrap();
 
-    let version: usize = get_meta(&conn, "db_version").await.unwrap_or(0);
+    let version: usize = get_meta(&mut conn, "db_version").await.unwrap_or(0);
     assert!(version <= MIGRATIONS.len());
 
     for (i, m) in MIGRATIONS.iter().skip(version).enumerate() {
         eprintln!("Running migration {i}");
-        conn.execute(m).await.unwrap();
-        set_meta(&conn, "db_version", i + 1);
+        sqlx::query(m).execute(&mut conn).await.unwrap();
+        set_meta(&mut conn, "db_version", i + 1);
     }
+
+    sqlx::SqlitePool::connect(db.as_ref()).await.unwrap()
 }
 
-pub(crate) async fn connect(db: &std::path::PathBuf) {
-    init(db);
+pub(crate) async fn connect(db: &std::path::Path) {
+    let pool = init(db).await;
 
-    let pool = sqlx::SqlitePool::connect(db).await.unwrap();
-    dbg!(pool);
-    list_rules(&pool);
+    dbg!(&pool);
+    list_rules(&pool).await;
 }
 
 pub(crate) async fn list_rules(pool: &SqlitePool) {
-    let q = sqlx::query(
-            "SELECT
-                id,
-                hash,
-                action,
-                deny_action,
-                terminate,
-                expires,
-                source,
-                comment,
-                created_at,
-                updated_at,
-                conditions
-            FROM rules",
-        );
+    let rows = sqlx::query("SELECT * FROM rules")
+        .fetch_all(pool)
+        .await
+        .unwrap();
 
-    pool.fetch_all(q).await.unwrap().iter().map(|row| {
-        row.try_into::<Rule>()
-    })
-    .for_each(|r| {
-        dbg!(&r);
-    });
+    dbg!(rows.len());
+
+    for row in rows {
+        println!("{}", row.get::<String, _>("id"));
+    }
 }
