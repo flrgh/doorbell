@@ -3,73 +3,36 @@ use std::net::IpAddr;
 use chrono::prelude::*;
 use cidr::IpCidr;
 //use uuid::Uuid;
+use sqlx::sqlite::SqliteRow;
+use sqlx::Row;
 use std::cmp::Ordering;
-use sqlx::FromRow;
 use strum_macros::Display as EnumDisplay;
 use strum_macros::EnumString;
 
+use self::condition::*;
 use crate::geo::*;
 use crate::types::*;
 
-#[derive(Debug, Eq, PartialEq)]
-pub enum Condition {
-    Addr(IpAddr),
-    Network(IpCidr),
-    UserAgent(Pattern),
-    Host(Pattern),
-    Path(Pattern),
-    CountryCode(CountryCode),
-    Method(http::Method),
-    Asn(u32),
-    Org(Pattern),
-}
+pub mod condition;
+pub mod repo;
 
-impl Condition {
-    fn matches(&self, req: &AccessRequest) -> bool {
-        match self {
-            Condition::Addr(addr) => req.addr.eq(addr),
-            Condition::Network(cidr) => cidr.contains(&req.addr),
-            Condition::UserAgent(pattern) => pattern.matches(&req.user_agent),
-            Condition::Host(pattern) => pattern.matches(&req.host),
-            Condition::Path(pattern) => pattern.matches(&req.path),
-            Condition::CountryCode(code) => req.country_code == Some(*code),
-            Condition::Method(method) => req.method.eq(method),
-            Condition::Asn(asn) => req.asn == Some(*asn),
-            Condition::Org(pattern) => {
-                if let Some(org) = &req.org {
-                    return pattern.matches(org);
-                }
-                false
-            }
-        }
-    }
-}
-
-#[derive(
-    PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString, sqlx::Type,
-)]
+#[derive(PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString)]
 #[strum(serialize_all = "lowercase")]
-#[sqlx(rename_all = "lowercase")]
 pub(crate) enum Action {
     Deny,
     Allow,
 }
 
-
-#[derive(PartialEq, Eq, Clone, Debug, Default, EnumDisplay, EnumString, sqlx::Type)]
+#[derive(PartialEq, Eq, Clone, Debug, Default, EnumDisplay, EnumString)]
 #[strum(serialize_all = "lowercase")]
-#[sqlx(rename_all = "lowercase")]
 pub(crate) enum DenyAction {
     #[default]
     Exit,
     Tarpit,
 }
 
-#[derive(
-    PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString, sqlx::Type,
-)]
+#[derive(PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString)]
 #[strum(serialize_all = "lowercase")]
-#[sqlx(rename_all = "lowercase")]
 pub(crate) enum Source {
     Api,
     User,
@@ -100,8 +63,7 @@ impl TryFrom<&str> for Uuid {
     }
 }
 
-
-#[derive(Debug, Eq, PartialEq, sqlx::Type, sqlx::FromRow)]
+#[derive(Debug, Eq, PartialEq)]
 pub(crate) struct Rule {
     pub id: uuid::Uuid,
     pub action: Action,
@@ -116,13 +78,95 @@ pub(crate) struct Rule {
 
     pub addr: Option<IpAddr>,
     pub cidr: Option<IpCidr>,
-    pub user_agent: Option<String>,
+    pub user_agent: Option<Pattern>,
     pub host: Option<Pattern>,
     pub path: Option<Pattern>,
     pub country_code: Option<CountryCode>,
     pub method: Option<http::Method>,
     pub asn: Option<u32>,
     pub org: Option<Pattern>,
+}
+
+use anyhow::{anyhow, Context, Result};
+use sqlx::sqlite::SqliteColumn;
+use sqlx::Column;
+
+fn get_column<T>(row: &SqliteRow, name: &str) -> anyhow::Result<T>
+where
+    T: std::str::FromStr,
+    <T as std::str::FromStr>::Err: std::fmt::Display,
+{
+    match row.get::<Option<&str>, _>(&name) {
+        Some(value) => match value.parse::<T>() {
+            Ok(value) => Ok(value),
+            Err(e) => Err(anyhow!("Could not parse {name} from `{value}`: {e}")),
+        },
+        None => Err(anyhow!("Missing required value for {name}")),
+    }
+}
+
+fn try_get_column<T>(row: &SqliteRow, name: &str) -> anyhow::Result<Option<T>>
+where
+    T: std::str::FromStr,
+    <T as std::str::FromStr>::Err: std::fmt::Display,
+{
+    match row.get::<Option<&str>, _>(&name) {
+        Some(value) => match value.parse::<T>() {
+            Ok(value) => Ok(Some(value)),
+            Err(e) => Err(anyhow!("Could not parse {name} from `{value}`: {e}")),
+        },
+        None => Ok(None),
+    }
+}
+impl Rule {
+    pub fn try_from_row(row: &SqliteRow) -> anyhow::Result<Self> {
+        use anyhow::Context;
+        use sqlx::sqlite::SqliteColumn;
+        use sqlx::Column;
+
+        row.columns().iter().for_each(|c| {
+            let name = c.name();
+            let value: Option<String> = row.try_get(c.name()).ok();
+            dbg!((name, value));
+        });
+
+        Ok(Self {
+            id: get_column(row, "id")?,
+            hash: get_column(row, "hash")?,
+
+            created_at: NaiveDateTime::parse_from_str(
+                &get_column::<String>(row, "created_at")?,
+                "%Y-%m-%d %H:%M:%S",
+            )?
+            .and_utc(),
+
+            updated_at: try_get_column::<String>(row, "updated_at")?.and_then(|t| {
+                NaiveDateTime::parse_from_str(&t, "%Y-%m-%d %H:%M:%S")
+                    .ok()
+                    .map(|dt| dt.and_utc())
+            }),
+
+            comment: try_get_column(row, "comment")?,
+            source: get_column(row, "source")?,
+
+            action: get_column(row, "action")?,
+            deny_action: try_get_column(row, "deny_action")?,
+
+            terminate: try_get_column(row, "terminate")?.unwrap_or(false),
+
+            expires: try_get_column(row, "expires")?,
+
+            addr: try_get_column(row, "addr")?,
+            cidr: try_get_column(row, "cidr")?,
+            user_agent: try_get_column(row, "user_agent")?,
+            host: try_get_column(row, "host")?,
+            path: try_get_column(row, "path")?,
+            method: try_get_column(row, "method")?,
+            country_code: try_get_column(row, "country_code")?,
+            org: try_get_column(row, "org")?,
+            asn: try_get_column(row, "asn")?,
+        })
+    }
 }
 
 pub struct RuleConditions<'a> {
@@ -214,6 +258,14 @@ impl Ord for Rule {
         }
 
         self.hash.cmp(&other.hash)
+    }
+}
+
+impl crate::types::PrimaryKey for Rule {
+    type Key = uuid::Uuid;
+
+    fn primary_key(&self) -> Self::Key {
+        self.id
     }
 }
 

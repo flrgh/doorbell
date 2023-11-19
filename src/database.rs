@@ -1,11 +1,13 @@
 use actix_web::{error, web, Error};
 use anyhow::Result;
 
+use crate::rules::repo::Repository as RulesRepository;
 use crate::rules::Rule;
-use sqlx::{SqliteConnection, SqlitePool, Connection, prelude::*, Acquire};
+use crate::types::Repository;
 use serde::{Deserialize, Serialize};
-use std::{thread::sleep, time::Duration};
 use sqlx::FromRow;
+use sqlx::{prelude::*, Acquire, Connection, SqliteConnection, SqlitePool};
+use std::{thread::sleep, time::Duration};
 
 const INIT_METADATA: &str = include_str!("migrations/_metadata.sql");
 const MIGRATIONS: &[&str] = &[include_str!("migrations/0000_init.sql")];
@@ -14,10 +16,10 @@ async fn get_meta<T>(conn: &mut SqliteConnection, key: &str) -> Option<T>
 where
     T: std::str::FromStr,
 {
-    let res = conn.fetch_one(
-        sqlx::query("SELECT value FROM meta WHERE key = ?")
-            .bind(key)
-    ).await.unwrap();
+    let res = conn
+        .fetch_one(sqlx::query("SELECT value FROM meta WHERE key = ?").bind(key))
+        .await
+        .unwrap();
 
     let elem: Option<&str> = res.get("value");
     if let Some(value) = elem {
@@ -35,10 +37,12 @@ where
         sqlx::query(
             "INSERT INTO meta (key, value) VALUES (?, ?)
                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-
-        ).bind(key)
-        .bind(value.to_string())
-    ).await.unwrap();
+        )
+        .bind(key)
+        .bind(value.to_string()),
+    )
+    .await
+    .unwrap();
 }
 
 async fn init(db: &std::path::Path) -> SqlitePool {
@@ -70,14 +74,9 @@ pub(crate) async fn connect(db: &std::path::Path) {
 }
 
 pub(crate) async fn list_rules(pool: &SqlitePool) {
-    let rows = sqlx::query("SELECT * FROM rules")
-        .fetch_all(pool)
-        .await
-        .unwrap();
+    let repo = RulesRepository::new(pool);
 
-    dbg!(rows.len());
+    let rules = repo.get_all().await.unwrap();
 
-    for row in rows {
-        println!("{}", row.get::<String, _>("id"));
-    }
+    dbg!(rules);
 }

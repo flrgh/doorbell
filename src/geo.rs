@@ -1,6 +1,6 @@
+use sqlx::Type;
 use strum_macros::Display as EnumDisplay;
 use strum_macros::EnumString;
-use sqlx::Type;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, EnumDisplay, EnumString, sqlx::Type)]
 #[strum(serialize_all = "UPPERCASE")]
