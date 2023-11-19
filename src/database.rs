@@ -46,8 +46,12 @@ where
 }
 
 async fn init(db: &std::path::Path) -> SqlitePool {
-    let db = db.to_string_lossy();
-    let mut conn = SqliteConnection::connect(db.as_ref()).await.unwrap();
+    let mut conn = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(db)
+        .create_if_missing(true)
+        .connect()
+        .await
+        .unwrap();
 
     dbg!(&conn);
     //conn.begin().await.unwrap();
@@ -63,14 +67,18 @@ async fn init(db: &std::path::Path) -> SqlitePool {
         set_meta(&mut conn, "db_version", i + 1);
     }
 
-    sqlx::SqlitePool::connect(db.as_ref()).await.unwrap()
+    sqlx::sqlite::SqlitePoolOptions::new()
+        .connect(db.to_str().unwrap())
+        .await
+        .unwrap()
 }
 
-pub(crate) async fn connect(db: &std::path::Path) {
+pub(crate) async fn connect(db: &std::path::Path) -> SqlitePool {
     let pool = init(db).await;
 
     dbg!(&pool);
     list_rules(&pool).await;
+    pool
 }
 
 pub(crate) async fn list_rules(pool: &SqlitePool) {
