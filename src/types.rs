@@ -13,6 +13,7 @@ pub enum Pattern {
     Regex(Regex),
 }
 
+
 impl Eq for Pattern {}
 
 impl From<Pattern> for String {
@@ -23,6 +24,13 @@ impl From<Pattern> for String {
         }
     }
 }
+
+impl From<&Pattern> for String {
+    fn from(value: &Pattern) -> Self {
+        value.clone().into()
+    }
+}
+
 
 impl PartialEq for Pattern {
     fn eq(&self, other: &Self) -> bool {
@@ -100,21 +108,27 @@ pub trait PrimaryKey {
     fn primary_key(&self) -> Self::Key;
 }
 
+pub trait Update {
+    type Updates;
+}
+
 use async_trait::async_trait;
 
 #[async_trait]
-pub trait Repository<T: PrimaryKey> {
+pub trait Repository<T: PrimaryKey + Update> {
     type Err;
 
     async fn get(&self, id: T::Key) -> Result<Option<T>, Self::Err>;
 
     async fn get_all(&self) -> Result<Vec<T>, Self::Err>;
 
-    async fn insert(&self, item: &T) -> Result<(), Self::Err>;
+    async fn insert(&self, item: T) -> Result<(), Self::Err>;
 
-    async fn upsert(&self, item: &T) -> Result<(), Self::Err>;
+    async fn upsert(&self, item: T) -> Result<(), Self::Err>;
 
-    async fn update(&self, id: T::Key, item: &T) -> Result<(), Self::Err>;
+    async fn update(&self, id: T::Key, updates: T::Updates) -> Result<(), Self::Err>;
 
     async fn delete(&self, id: T::Key) -> Result<Option<T>, Self::Err>;
+
+    async fn truncate(&self) -> Result<(), Self::Err>;
 }

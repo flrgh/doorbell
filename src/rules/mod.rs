@@ -8,6 +8,8 @@ use sqlx::Row;
 use std::cmp::Ordering;
 use strum_macros::Display as EnumDisplay;
 use strum_macros::EnumString;
+use sqlx::Type;
+use md5;
 
 use self::condition::*;
 use crate::geo::*;
@@ -16,23 +18,26 @@ use crate::types::*;
 pub mod condition;
 pub mod repo;
 
-#[derive(PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString)]
+#[derive(PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString, Type)]
 #[strum(serialize_all = "lowercase")]
+#[sqlx(rename_all = "lowercase")]
 pub(crate) enum Action {
     Deny,
     Allow,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Default, EnumDisplay, EnumString)]
+#[derive(PartialEq, Eq, Clone, Debug, Default, EnumDisplay, EnumString, Type)]
 #[strum(serialize_all = "lowercase")]
+#[sqlx(rename_all = "lowercase")]
 pub(crate) enum DenyAction {
     #[default]
     Exit,
     Tarpit,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString)]
+#[derive(PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString, Type)]
 #[strum(serialize_all = "lowercase")]
+#[sqlx(rename_all = "lowercase")]
 pub(crate) enum Source {
     Api,
     User,
@@ -63,7 +68,7 @@ impl TryFrom<&str> for Uuid {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Type)]
 pub(crate) struct Rule {
     pub id: uuid::Uuid,
     pub action: Action,
@@ -82,10 +87,191 @@ pub(crate) struct Rule {
     pub host: Option<Pattern>,
     pub path: Option<Pattern>,
     pub country_code: Option<CountryCode>,
+
+
     pub method: Option<http::Method>,
     pub asn: Option<u32>,
     pub org: Option<Pattern>,
 }
+
+impl Rule {
+    pub fn calculate_hash(rule: &Rule) -> String {
+        let mut ctx = md5::Context::new();
+
+        if let Some(ref addr) = rule.addr {
+            let addr = addr.to_string().as_bytes().to_owned();
+            ctx.consume(addr);
+        } else {
+            ctx.consume([0]);
+        }
+
+        if let Some(ref cidr) = rule.cidr {
+            let cidr = cidr.to_string().as_bytes().to_owned();
+            ctx.consume(cidr);
+        } else {
+            ctx.consume([0]);
+        }
+
+        if let Some(ref user_agent) = rule.user_agent {
+            let user_agent: String = user_agent.into();
+            ctx.consume(user_agent)
+        } else {
+            ctx.consume([0]);
+        }
+
+        if let Some(ref host) = rule.host {
+            let host: String = host.into();
+            ctx.consume(host)
+        } else {
+            ctx.consume([0]);
+        }
+
+        if let Some(ref path) = rule.path {
+            let path: String = path.into();
+            ctx.consume(path)
+        } else {
+            ctx.consume([0]);
+        }
+
+        if let Some(ref org) = rule.org {
+            let org: String = org.into();
+            ctx.consume(org);
+        } else {
+            ctx.consume([0]);
+        }
+
+        if let Some(ref method) = rule.method {
+            let method = method.to_string();
+            ctx.consume(method);
+        } else {
+            ctx.consume([0]);
+        }
+
+        if let Some(ref country_code) = rule.country_code {
+            let country_code = country_code.to_string();
+            ctx.consume(country_code);
+        } else {
+            ctx.consume([0]);
+        }
+
+        if let Some(ref asn) = rule.asn {
+            let asn = asn.to_string();
+            ctx.consume(asn);
+        } else {
+            ctx.consume([0]);
+        }
+
+
+        let digest = ctx.compute();
+        format!("{:x}", digest)
+    }
+}
+
+impl Update for Rule {
+    type Updates = RuleUpdates;
+}
+
+#[derive(Debug, Eq, PartialEq, Type)]
+pub(crate) struct RuleUpdates {
+    pub action: Option<Action>,
+    pub deny_action: Option<Option<DenyAction>>,
+    pub updated_at: Option<Option<DateTime<Utc>>>,
+    pub terminate: Option<bool>,
+    pub comment: Option<Option<String>>,
+    pub expires: Option<Option<DateTime<Utc>>>,
+
+    pub addr: Option<Option<IpAddr>>,
+    pub cidr: Option<Option<IpCidr>>,
+    pub user_agent: Option<Option<Pattern>>,
+    pub host: Option<Option<Pattern>>,
+    pub path: Option<Option<Pattern>>,
+    pub country_code: Option<Option<CountryCode>>,
+    pub method: Option<Option<http::Method>>,
+    pub asn: Option<Option<u32>>,
+    pub org: Option<Option<Pattern>>,
+}
+
+impl RuleUpdates {
+    fn update(self, rule: &mut Rule) {
+        let RuleUpdates {
+            action,
+            deny_action,
+            updated_at,
+            terminate,
+            comment,
+            expires,
+            addr,
+            cidr,
+            user_agent,
+            host,
+            path,
+            country_code,
+            method,
+            asn,
+            org,
+        } = self;
+
+        if let Some(action) = action {
+            rule.action = action;
+        }
+
+        if let Some(deny_action) = deny_action {
+            rule.deny_action = deny_action;
+        }
+
+        if let Some(terminate) = terminate {
+            rule.terminate = terminate;
+        }
+
+        if let Some(comment) = comment {
+            rule.comment = comment;
+        }
+
+        if let Some(expires) = expires {
+            rule.expires = expires;
+        }
+
+        if let Some(addr) = addr {
+            rule.addr = addr;
+        }
+
+        if let Some(cidr) = cidr {
+            rule.cidr = cidr;
+        }
+
+        if let Some(user_agent) = user_agent {
+            rule.user_agent = user_agent;
+        }
+
+        if let Some(host) = host {
+            rule.host = host;
+        }
+
+        if let Some(path) = path {
+            rule.path = path;
+        }
+
+        if let Some(method) = method {
+            rule.method = method;
+        }
+
+        if let Some(asn) = asn {
+            rule.asn = asn;
+        }
+
+        if let Some(country_code) = country_code {
+            rule.country_code = country_code;
+        }
+
+        if let Some(org) = org {
+            rule.org = org;
+        }
+
+        rule.updated_at = Some(chrono::Utc::now());
+        rule.hash = Rule::calculate_hash(rule);
+    }
+}
+
 
 use anyhow::{anyhow, Context, Result};
 use sqlx::sqlite::SqliteColumn;
