@@ -1,5 +1,6 @@
 use actix_web::{error, web, Error};
 use anyhow::Result;
+use std::sync::Arc;
 
 use crate::rules::repo::Repository as RulesRepository;
 use crate::rules::Rule;
@@ -77,14 +78,5 @@ pub(crate) async fn connect(db: &std::path::Path) -> SqlitePool {
     let pool = init(db).await;
 
     dbg!(&pool);
-    list_rules(&pool).await;
     pool
-}
-
-pub(crate) async fn list_rules(pool: &SqlitePool) {
-    let repo = RulesRepository::new(pool);
-
-    let rules = repo.get_all().await.unwrap();
-
-    dbg!(rules);
 }

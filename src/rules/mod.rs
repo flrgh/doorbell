@@ -5,11 +5,10 @@ use cidr::IpCidr;
 //use uuid::Uuid;
 use sqlx::sqlite::SqliteRow;
 use sqlx::Row;
+use sqlx::Type;
 use std::cmp::Ordering;
 use strum_macros::Display as EnumDisplay;
 use strum_macros::EnumString;
-use sqlx::Type;
-use md5;
 
 use self::condition::*;
 use crate::geo::*;
@@ -18,10 +17,11 @@ use crate::types::*;
 pub mod condition;
 pub mod repo;
 
-#[derive(PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString, Type)]
+#[derive(PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString, Type, Default)]
 #[strum(serialize_all = "lowercase")]
 #[sqlx(rename_all = "lowercase")]
 pub(crate) enum Action {
+    #[default]
     Deny,
     Allow,
 }
@@ -35,10 +35,11 @@ pub(crate) enum DenyAction {
     Tarpit,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString, Type)]
+#[derive(PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString, Type, Default)]
 #[strum(serialize_all = "lowercase")]
 #[sqlx(rename_all = "lowercase")]
 pub(crate) enum Source {
+    #[default]
     Api,
     User,
     Config,
@@ -68,7 +69,7 @@ impl TryFrom<&str> for Uuid {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Type)]
+#[derive(Debug, Eq, PartialEq, Type, Default)]
 pub(crate) struct Rule {
     pub id: uuid::Uuid,
     pub action: Action,
@@ -88,10 +89,50 @@ pub(crate) struct Rule {
     pub path: Option<Pattern>,
     pub country_code: Option<CountryCode>,
 
-
     pub method: Option<http::Method>,
     pub asn: Option<u32>,
     pub org: Option<Pattern>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct RuleBuilder {
+    pub id: Option<uuid::Uuid>,
+    pub action: Option<Action>,
+    pub deny_action: Option<DenyAction>,
+    pub terminate: Option<bool>,
+    pub comment: Option<String>,
+    pub source: Option<Source>,
+    pub expires: Option<DateTime<Utc>>,
+    pub addr: Option<IpAddr>,
+    pub cidr: Option<IpCidr>,
+    pub user_agent: Option<Pattern>,
+    pub host: Option<Pattern>,
+    pub path: Option<Pattern>,
+    pub country_code: Option<CountryCode>,
+    pub method: Option<http::Method>,
+    pub asn: Option<u32>,
+    pub org: Option<Pattern>,
+}
+
+impl RuleBuilder {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn with_id(mut self, id: uuid::Uuid) -> Self {
+        self.id = Some(id);
+        self
+    }
+
+    pub fn with_action(mut self, action: Action) -> Self {
+        self.action = Some(action);
+        self
+    }
+
+    pub fn with_deny_action(mut self, da: DenyAction) -> Self {
+        self.deny_action = Some(da);
+        self
+    }
 }
 
 impl Rule {
@@ -160,7 +201,6 @@ impl Rule {
         } else {
             ctx.consume([0]);
         }
-
 
         let digest = ctx.compute();
         format!("{:x}", digest)
@@ -271,7 +311,6 @@ impl RuleUpdates {
         rule.hash = Rule::calculate_hash(rule);
     }
 }
-
 
 use anyhow::{anyhow, Context, Result};
 use sqlx::sqlite::SqliteColumn;
