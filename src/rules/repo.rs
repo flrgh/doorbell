@@ -2,17 +2,19 @@ use crate::rules::*;
 use crate::types;
 use anyhow;
 use async_trait::async_trait;
-use sqlx::{prelude::*, Acquire, Connection, SqliteConnection, SqlitePool};
 use sqlx::Type;
+use sqlx::{prelude::*, Acquire, Connection, SqliteConnection, SqlitePool};
+use std::sync::Arc;
+use tokio;
 
 use super::DenyAction;
 
-pub struct Repository<'a> {
-    pool: &'a SqlitePool,
+pub struct Repository {
+    pool: Arc<SqlitePool>,
 }
 
-impl<'a> Repository<'a> {
-    pub fn new(pool: &'a SqlitePool) -> Self {
+impl Repository {
+    pub fn new(pool: Arc<SqlitePool>) -> Self {
         Self { pool }
     }
 }
@@ -41,7 +43,6 @@ struct RuleRow {
     org: Option<String>,
 }
 
-
 impl TryInto<Rule> for RuleRow {
     type Error = anyhow::Error;
 
@@ -51,18 +52,16 @@ impl TryInto<Rule> for RuleRow {
             action: self.action.parse()?,
             deny_action: match self.deny_action {
                 None => None,
-                Some(da) => {
-                    match da.parse() {
-                        Ok(da) => Some(da),
-                        Err(e) => {
-                            return Err(anyhow::anyhow!(e));
-                        }
+                Some(da) => match da.parse() {
+                    Ok(da) => Some(da),
+                    Err(e) => {
+                        return Err(anyhow::anyhow!(e));
                     }
-                }
+                },
             },
             hash: self.hash,
             created_at: self.created_at.and_utc(),
-            updated_at: todo!(),
+            updated_at: self.updated_at.map(|t| t.and_utc()),
             terminate: self.terminate.unwrap_or(false),
             comment: self.comment,
             source: self.source.parse()?,
@@ -125,7 +124,9 @@ impl From<Rule> for RuleRow {
             user_agent: val.user_agent.map(|user_agent| user_agent.into()),
             host: val.host.map(|host| host.into()),
             path: val.path.map(|path| path.into()),
-            country_code: val.country_code.map(|country_code| country_code.to_string()),
+            country_code: val
+                .country_code
+                .map(|country_code| country_code.to_string()),
             method: val.method.map(|method| method.to_string()),
             asn: val.asn.map(|asn| asn.to_string()),
             org: val.org.map(|org| org.into()),
@@ -133,11 +134,13 @@ impl From<Rule> for RuleRow {
     }
 }
 
-impl<'a> Repository<'a> {
+impl Repository {
     async fn do_insert(&self, item: Rule, upsert: bool) -> anyhow::Result<()> {
         let item: RuleRow = item.into();
         if upsert {
-            sqlx::query_as!(Rule, "
+            sqlx::query_as!(
+                Rule,
+                "
                 INSERT or REPLACE INTO rules (
                     id,
                     hash,
@@ -183,7 +186,9 @@ impl<'a> Repository<'a> {
                 item.org
             )
         } else {
-            sqlx::query_as!(Rule, "
+            sqlx::query_as!(
+                Rule,
+                "
                 INSERT INTO rules (
                     id,
                     hash,
@@ -229,15 +234,15 @@ impl<'a> Repository<'a> {
                 item.org
             )
         }
-            .execute(self.pool)
-            .await
-            .map(|r| ())
-            .map_err(|e| anyhow::anyhow!(e))
+        .execute(self.pool.as_ref())
+        .await
+        .map(|r| ())
+        .map_err(|e| anyhow::anyhow!(e))
     }
 }
 
 #[async_trait]
-impl<'a> types::Repository<Rule> for Repository<'a> {
+impl types::Repository<Rule> for Repository {
     type Err = anyhow::Error;
 
     async fn get(
@@ -245,19 +250,19 @@ impl<'a> types::Repository<Rule> for Repository<'a> {
         id: <Rule as crate::types::PrimaryKey>::Key,
     ) -> Result<Option<Rule>, Self::Err> {
         let row = sqlx::query_as!(RuleRow, "SELECT * FROM rules WHERE id = ?", id)
-            .fetch_one(self.pool)
+            .fetch_one(self.pool.as_ref())
             .await;
 
         match row {
             Ok(row) => Ok(Some(row.try_into()?)),
             Err(sqlx::Error::RowNotFound) => Ok(None),
-            Err(e) => Err(anyhow::anyhow!(e))
+            Err(e) => Err(anyhow::anyhow!(e)),
         }
     }
 
     async fn get_all(&self) -> Result<Vec<Rule>, Self::Err> {
         let rows = sqlx::query_as!(RuleRow, "SELECT * FROM rules")
-            .fetch_all(self.pool)
+            .fetch_all(self.pool.as_ref())
             .await?;
 
         let mut rules = Vec::with_capacity(rows.len());
@@ -268,11 +273,11 @@ impl<'a> types::Repository<Rule> for Repository<'a> {
     }
 
     async fn insert(&self, item: Rule) -> Result<(), Self::Err> {
-       self.do_insert(item, false).await
+        self.do_insert(item, false).await
     }
 
     async fn upsert(&self, item: Rule) -> Result<(), Self::Err> {
-       self.do_insert(item, true).await
+        self.do_insert(item, true).await
     }
 
     async fn update(
@@ -297,7 +302,7 @@ impl<'a> types::Repository<Rule> for Repository<'a> {
 
         if old.is_some() {
             sqlx::query!("DELETE FROM rules WHERE id = ?", id)
-                .execute(self.pool)
+                .execute(self.pool.as_ref())
                 .await?;
         }
 
@@ -306,7 +311,7 @@ impl<'a> types::Repository<Rule> for Repository<'a> {
 
     async fn truncate(&self) -> Result<(), Self::Err> {
         sqlx::query!("DELETE FROM rules")
-            .execute(self.pool)
+            .execute(self.pool.as_ref())
             .await
             .map(|r| ())
             .map_err(|e| anyhow::anyhow!(e))
@@ -316,19 +321,42 @@ impl<'a> types::Repository<Rule> for Repository<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::Repository as RepoTrait;
 
-    struct Ctx<'a> {
-        pool: SqlitePool,
-        repo: Repository<'a>,
+    struct Ctx {
+        pool: Arc<SqlitePool>,
+        repo: Repository,
     }
 
-    async fn init() -> Ctx<'static> {
-        let path = std::path::Path::new("./doorbell-test.db");
-        let pool = crate::database::connect(&path).await;
-        let repo = Repository::new(&pool);
+    async fn init() -> Ctx {
+        let path = std::path::Path::new("./test/doorbell-test.db");
+        let pool = Arc::new(crate::database::connect(path).await);
+        let repo = Repository::new(pool.clone());
+
+        repo.truncate().await.unwrap();
+
         Ctx { pool, repo }
     }
 
-    fn test_repo() {
+    #[tokio::test]
+    async fn test_repo() {
+        let ctx = init().await;
+        let repo = ctx.repo;
+
+        {
+            let mut rule = Rule::default();
+            rule.hash = String::from("my hash");
+            repo.insert(rule).await.unwrap();
+        }
+
+        {
+            let mut rule = Rule::default();
+            rule.id = uuid::Uuid::new_v4();
+            rule.hash = String::from("my other hash");
+            repo.insert(rule).await.unwrap();
+        }
+
+
+        println!("{:?}", repo.get_all().await);
     }
 }

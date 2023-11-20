@@ -13,7 +13,6 @@ pub enum Pattern {
     Regex(Regex),
 }
 
-
 impl Eq for Pattern {}
 
 impl From<Pattern> for String {
@@ -30,7 +29,6 @@ impl From<&Pattern> for String {
         value.clone().into()
     }
 }
-
 
 impl PartialEq for Pattern {
     fn eq(&self, other: &Self) -> bool {
@@ -132,3 +130,10 @@ pub trait Repository<T: PrimaryKey + Update> {
 
     async fn truncate(&self) -> Result<(), Self::Err>;
 }
+
+pub trait Validate {
+    type Err;
+
+    fn validate(&self) -> Result<(), Self::Err>;
+}
+
