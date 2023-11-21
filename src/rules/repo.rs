@@ -1,5 +1,6 @@
 use crate::rules::*;
 use crate::types;
+use crate::types::Repository as RepoTrait;
 use anyhow;
 use async_trait::async_trait;
 use sqlx::Type;
@@ -242,13 +243,11 @@ impl Repository {
 }
 
 #[async_trait]
-impl types::Repository<Rule> for Repository {
+impl RepoTrait<Rule> for Repository {
     type Err = anyhow::Error;
 
-    async fn get(
-        &self,
-        id: <Rule as crate::types::PrimaryKey>::Key,
-    ) -> Result<Option<Rule>, Self::Err> {
+    async fn get(&self, id: <Rule as types::PrimaryKey>::Key) -> Result<Option<Rule>, Self::Err> {
+        let id = id.to_string();
         let row = sqlx::query_as!(RuleRow, "SELECT * FROM rules WHERE id = ?", id)
             .fetch_one(self.pool.as_ref())
             .await;
@@ -282,8 +281,8 @@ impl types::Repository<Rule> for Repository {
 
     async fn update(
         &self,
-        id: <Rule as crate::types::PrimaryKey>::Key,
-        updates: <Rule as crate::types::Update>::Updates,
+        id: <Rule as types::PrimaryKey>::Key,
+        updates: <Rule as types::Update>::Updates,
     ) -> Result<(), Self::Err> {
         let Some(mut rule) = self.get(id).await? else {
             return Err(anyhow::anyhow!("rule {id} not found"));
@@ -296,15 +295,14 @@ impl types::Repository<Rule> for Repository {
 
     async fn delete(
         &self,
-        id: <Rule as crate::types::PrimaryKey>::Key,
+        id: <Rule as types::PrimaryKey>::Key,
     ) -> Result<Option<Rule>, Self::Err> {
         let old = self.get(id).await?;
 
-        if old.is_some() {
-            sqlx::query!("DELETE FROM rules WHERE id = ?", id)
-                .execute(self.pool.as_ref())
-                .await?;
-        }
+        let id = id.to_string();
+        sqlx::query!("DELETE FROM rules WHERE id = ?", id)
+            .execute(self.pool.as_ref())
+            .await?;
 
         Ok(old)
     }
@@ -328,35 +326,45 @@ mod tests {
         repo: Repository,
     }
 
-    async fn init() -> Ctx {
-        let path = std::path::Path::new("./test/doorbell-test.db");
-        let pool = Arc::new(crate::database::connect(path).await);
-        let repo = Repository::new(pool.clone());
+    impl Ctx {
+        async fn init() -> Self {
+            let path = std::path::Path::new("./test/doorbell-test.db");
+            let pool = Arc::new(crate::database::connect(path).await);
+            let repo = Repository::new(pool.clone());
 
-        repo.truncate().await.unwrap();
+            repo.truncate().await.unwrap();
 
-        Ctx { pool, repo }
+            Self { pool, repo }
+        }
     }
 
     #[tokio::test]
     async fn test_repo() {
-        let ctx = init().await;
-        let repo = ctx.repo;
+        let ctx = Ctx::init().await;
+        let repo = &ctx.repo;
 
         {
-            let mut rule = Rule::default();
-            rule.hash = String::from("my hash");
+            let rule = Rule {
+                hash: String::from("my hash"),
+                ..Rule::default()
+            };
             repo.insert(rule).await.unwrap();
         }
 
-        {
-            let mut rule = Rule::default();
-            rule.id = uuid::Uuid::new_v4();
-            rule.hash = String::from("my other hash");
-            repo.insert(rule).await.unwrap();
-        }
+        assert_eq!(1, repo.get_all().await.unwrap().len());
 
+        let rule = Rule {
+            id: uuid::Uuid::new_v4(),
+            hash: String::from("my other hash"),
+            ..Rule::default()
+        };
 
-        println!("{:?}", repo.get_all().await);
+        repo.insert(rule.clone()).await.unwrap();
+
+        assert_eq!(2, repo.get_all().await.unwrap().len());
+        println!("{:#?}", repo.get_all().await);
+
+        let got = repo.get(rule.id).await.unwrap();
+        assert_eq!(Some(rule), got);
     }
 }

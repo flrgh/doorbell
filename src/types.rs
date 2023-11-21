@@ -1,5 +1,6 @@
 use crate::geo::*;
 
+use crate::types::Repository as RepoTrait;
 use chrono::{DateTime, Utc};
 use regex::Regex;
 use sqlx::Type;
@@ -104,16 +105,19 @@ pub trait PrimaryKey {
     type Key;
 
     fn primary_key(&self) -> Self::Key;
+    fn primary_key_column() -> &'static str;
 }
 
 pub trait Update {
     type Updates;
+
+    fn update(&mut self, updates: Self::Updates);
 }
 
 use async_trait::async_trait;
 
 #[async_trait]
-pub trait Repository<T: PrimaryKey + Update> {
+pub trait Repository<T: Entity> {
     type Err;
 
     async fn get(&self, id: T::Key) -> Result<Option<T>, Self::Err>;
@@ -137,3 +141,6 @@ pub trait Validate {
     fn validate(&self) -> Result<(), Self::Err>;
 }
 
+pub trait Entity: Validate + PrimaryKey + Update {
+    fn table_name() -> &'static str;
+}

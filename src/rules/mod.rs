@@ -8,16 +8,24 @@ use sqlx::Row;
 use sqlx::Type;
 use std::cmp::Ordering;
 use strum_macros::Display as EnumDisplay;
+use strum_macros::EnumIs;
 use strum_macros::EnumString;
 
 use self::condition::*;
 use crate::geo::*;
 use crate::types::*;
+use anyhow::{anyhow, Context, Result};
+use sqlx::sqlite::SqliteColumn;
+use sqlx::Column;
+
 
 pub mod condition;
 pub mod repo;
+pub mod matcher;
 
-#[derive(PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString, Type, Default)]
+#[derive(
+    PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString, Type, Default, EnumIs,
+)]
 #[strum(serialize_all = "lowercase")]
 #[sqlx(rename_all = "lowercase")]
 pub(crate) enum Action {
@@ -26,7 +34,7 @@ pub(crate) enum Action {
     Allow,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Default, EnumDisplay, EnumString, Type)]
+#[derive(PartialEq, Eq, Clone, Debug, Default, EnumDisplay, EnumString, Type, EnumIs)]
 #[strum(serialize_all = "lowercase")]
 #[sqlx(rename_all = "lowercase")]
 pub(crate) enum DenyAction {
@@ -35,7 +43,9 @@ pub(crate) enum DenyAction {
     Tarpit,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString, Type, Default)]
+#[derive(
+    PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString, Type, Default, EnumIs,
+)]
 #[strum(serialize_all = "lowercase")]
 #[sqlx(rename_all = "lowercase")]
 pub(crate) enum Source {
@@ -69,7 +79,7 @@ impl TryFrom<&str> for Uuid {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Type, Default)]
+#[derive(Debug, Eq, PartialEq, Type, Clone, Default)]
 pub(crate) struct Rule {
     pub id: uuid::Uuid,
     pub action: Action,
@@ -209,6 +219,10 @@ impl Rule {
 
 impl Update for Rule {
     type Updates = RuleUpdates;
+
+    fn update(&mut self, updates: Self::Updates) {
+        updates.update(self);
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Type)]
@@ -312,87 +326,6 @@ impl RuleUpdates {
     }
 }
 
-use anyhow::{anyhow, Context, Result};
-use sqlx::sqlite::SqliteColumn;
-use sqlx::Column;
-
-fn get_column<T>(row: &SqliteRow, name: &str) -> anyhow::Result<T>
-where
-    T: std::str::FromStr,
-    <T as std::str::FromStr>::Err: std::fmt::Display,
-{
-    match row.get::<Option<&str>, _>(&name) {
-        Some(value) => match value.parse::<T>() {
-            Ok(value) => Ok(value),
-            Err(e) => Err(anyhow!("Could not parse {name} from `{value}`: {e}")),
-        },
-        None => Err(anyhow!("Missing required value for {name}")),
-    }
-}
-
-fn try_get_column<T>(row: &SqliteRow, name: &str) -> anyhow::Result<Option<T>>
-where
-    T: std::str::FromStr,
-    <T as std::str::FromStr>::Err: std::fmt::Display,
-{
-    match row.get::<Option<&str>, _>(&name) {
-        Some(value) => match value.parse::<T>() {
-            Ok(value) => Ok(Some(value)),
-            Err(e) => Err(anyhow!("Could not parse {name} from `{value}`: {e}")),
-        },
-        None => Ok(None),
-    }
-}
-impl Rule {
-    pub fn try_from_row(row: &SqliteRow) -> anyhow::Result<Self> {
-        use anyhow::Context;
-        use sqlx::sqlite::SqliteColumn;
-        use sqlx::Column;
-
-        row.columns().iter().for_each(|c| {
-            let name = c.name();
-            let value: Option<String> = row.try_get(c.name()).ok();
-            dbg!((name, value));
-        });
-
-        Ok(Self {
-            id: get_column(row, "id")?,
-            hash: get_column(row, "hash")?,
-
-            created_at: NaiveDateTime::parse_from_str(
-                &get_column::<String>(row, "created_at")?,
-                "%Y-%m-%d %H:%M:%S",
-            )?
-            .and_utc(),
-
-            updated_at: try_get_column::<String>(row, "updated_at")?.and_then(|t| {
-                NaiveDateTime::parse_from_str(&t, "%Y-%m-%d %H:%M:%S")
-                    .ok()
-                    .map(|dt| dt.and_utc())
-            }),
-
-            comment: try_get_column(row, "comment")?,
-            source: get_column(row, "source")?,
-
-            action: get_column(row, "action")?,
-            deny_action: try_get_column(row, "deny_action")?,
-
-            terminate: try_get_column(row, "terminate")?.unwrap_or(false),
-
-            expires: try_get_column(row, "expires")?,
-
-            addr: try_get_column(row, "addr")?,
-            cidr: try_get_column(row, "cidr")?,
-            user_agent: try_get_column(row, "user_agent")?,
-            host: try_get_column(row, "host")?,
-            path: try_get_column(row, "path")?,
-            method: try_get_column(row, "method")?,
-            country_code: try_get_column(row, "country_code")?,
-            org: try_get_column(row, "org")?,
-            asn: try_get_column(row, "asn")?,
-        })
-    }
-}
 
 pub struct RuleConditions<'a> {
     count: usize,
@@ -486,58 +419,45 @@ impl Ord for Rule {
     }
 }
 
-impl crate::types::PrimaryKey for Rule {
+impl PrimaryKey for Rule {
     type Key = uuid::Uuid;
 
     fn primary_key(&self) -> Self::Key {
         self.id
     }
-}
 
-#[derive(Default, Debug)]
-pub(crate) struct RuleCollection<'a> {
-    pub(crate) rules: Vec<Rule>,
-    //pub(crate) by_id: HashMap<String, &'a Rule>,
-    //pub(crate) by_hash: HashMap<String, &'a Rule>,
-    pd: std::marker::PhantomData<&'a ()>,
-}
-
-impl<'a> RuleCollection<'a> {
-    pub fn get_match(&'a self, req: &AccessRequest) -> Option<&'a Rule> {
-        let mut matched: Option<&'a Rule> = None;
-
-        let iter = self
-            .rules
-            .iter()
-            .filter(|r| !r.is_expired_at(&req.timestamp));
-
-        for rule in iter {
-            if rule.matches(req) {
-                if rule.terminate {
-                    matched = Some(rule);
-                    break;
-                }
-
-                if let Some(last) = matched {
-                    if last.conditions().len() < rule.conditions().len() {
-                        matched = Some(rule);
-                    }
-                }
-            }
-        }
-
-        matched
+    fn primary_key_column() -> &'static str {
+        "id"
     }
+}
 
-    pub fn drop_expired(&mut self) -> usize {
-        let before = self.rules.len();
-        self.rules.retain(|r| !r.is_expired());
+impl Validate for Rule {
+    type Err = anyhow::Error;
 
-        let dropped = before - self.rules.len();
-        if dropped > 0 {
-            self.rules.sort();
+    fn validate(&self) -> std::result::Result<(), Self::Err> {
+        if self.addr.is_none()
+            && self.asn.is_none()
+            && self.cidr.is_none()
+            && self.country_code.is_none()
+            && self.host.is_none()
+            && self.method.is_none()
+            && self.org.is_none()
+            && self.path.is_none()
+            && self.user_agent.is_none()
+        {
+            return Err(anyhow::anyhow!("rule must have at least one condition"));
         }
 
-        dropped
+        if self.source.is_config() && self.expires.is_some() {
+            return Err(anyhow::anyhow!("config rules cannot expire"));
+        }
+
+        Ok(())
+    }
+}
+
+impl Entity for Rule {
+    fn table_name() -> &'static str {
+        "rules"
     }
 }
