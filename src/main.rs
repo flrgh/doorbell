@@ -11,7 +11,7 @@ use database as db;
 use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 
 struct State<'a> {
-    rules: crate::rules::RuleCollection<'a>,
+    matcher: crate::rules::matcher::Matcher<'a>,
 }
 
 #[get("/")]
@@ -42,7 +42,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(|| {
         App::new()
             .app_data(web::Data::new(State {
-                rules: Default::default(),
+                matcher: Default::default(),
             }))
             .service(index)
             .service(ring)
