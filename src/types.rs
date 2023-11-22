@@ -3,15 +3,24 @@ use crate::geo::*;
 use crate::types::Repository as RepoTrait;
 use chrono::{DateTime, Utc};
 use regex::Regex;
+use serde_derive::{Deserialize, Serialize};
 use sqlx::Type;
 use std::cmp::Ordering;
 use std::fmt::Display;
 use std::net::IpAddr;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged, try_from = "&str", into = "String")]
 pub enum Pattern {
     Plain(String),
     Regex(Regex),
+}
+
+fn serialize_regex<S>(regex: &Regex, s: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    todo!()
 }
 
 impl Eq for Pattern {}

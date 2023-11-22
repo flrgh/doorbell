@@ -1,8 +1,11 @@
+use serde::{Deserialize, Serialize};
 use sqlx::Type;
 use strum_macros::Display as EnumDisplay;
 use strum_macros::EnumString;
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, EnumDisplay, EnumString, sqlx::Type)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Copy, EnumDisplay, EnumString, sqlx::Type, Serialize, Deserialize,
+)]
 #[strum(serialize_all = "UPPERCASE")]
 #[sqlx(rename_all = "UPPERCASE")]
 pub enum CountryCode {

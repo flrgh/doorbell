@@ -12,7 +12,8 @@ async-trait = "0.1.74"
 base64 = "0.21.5"
 boon = "0.5.1"
 chrono = "0.4"
-cidr = "0.2"
+cidr = { version = "0.2", features = ["serde"] }
+cidr-utils = { version = "0.5.11", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 config = "0.13"
 http = "0.2"

@@ -1,8 +1,8 @@
 use std::net::IpAddr;
 //use std::collections::HashMap;
 use chrono::prelude::*;
-use cidr::IpCidr;
 //use uuid::Uuid;
+use serde_derive::Deserialize;
 use sqlx::sqlite::SqliteRow;
 use sqlx::Row;
 use sqlx::Type;
@@ -18,13 +18,28 @@ use anyhow::{anyhow, Context, Result};
 use sqlx::sqlite::SqliteColumn;
 use sqlx::Column;
 
-
 pub mod condition;
-pub mod repo;
+pub mod manager;
 pub mod matcher;
+pub mod repo;
+
+pub use manager::Manager;
+pub use matcher::Matcher;
+pub use cidr_utils::cidr::IpCidr;
 
 #[derive(
-    PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString, Type, Default, EnumIs,
+    PartialEq,
+    Eq,
+    Clone,
+    Debug,
+    PartialOrd,
+    Ord,
+    EnumDisplay,
+    EnumString,
+    Type,
+    Default,
+    EnumIs,
+    Deserialize,
 )]
 #[strum(serialize_all = "lowercase")]
 #[sqlx(rename_all = "lowercase")]
@@ -34,7 +49,9 @@ pub(crate) enum Action {
     Allow,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Default, EnumDisplay, EnumString, Type, EnumIs)]
+#[derive(
+    PartialEq, Eq, Clone, Debug, Default, EnumDisplay, EnumString, Type, EnumIs, Deserialize,
+)]
 #[strum(serialize_all = "lowercase")]
 #[sqlx(rename_all = "lowercase")]
 pub(crate) enum DenyAction {
@@ -44,7 +61,18 @@ pub(crate) enum DenyAction {
 }
 
 #[derive(
-    PartialEq, Eq, Clone, Debug, PartialOrd, Ord, EnumDisplay, EnumString, Type, Default, EnumIs,
+    PartialEq,
+    Eq,
+    Clone,
+    Debug,
+    PartialOrd,
+    Ord,
+    EnumDisplay,
+    EnumString,
+    Type,
+    Default,
+    EnumIs,
+    Deserialize,
 )]
 #[strum(serialize_all = "lowercase")]
 #[sqlx(rename_all = "lowercase")]
@@ -99,7 +127,7 @@ pub(crate) struct Rule {
     pub path: Option<Pattern>,
     pub country_code: Option<CountryCode>,
 
-    pub method: Option<http::Method>,
+    pub method: Option<HttpMethod>,
     pub asn: Option<u32>,
     pub org: Option<Pattern>,
 }
@@ -119,7 +147,7 @@ pub(crate) struct RuleBuilder {
     pub host: Option<Pattern>,
     pub path: Option<Pattern>,
     pub country_code: Option<CountryCode>,
-    pub method: Option<http::Method>,
+    pub method: Option<HttpMethod>,
     pub asn: Option<u32>,
     pub org: Option<Pattern>,
 }
@@ -240,7 +268,7 @@ pub(crate) struct RuleUpdates {
     pub host: Option<Option<Pattern>>,
     pub path: Option<Option<Pattern>>,
     pub country_code: Option<Option<CountryCode>>,
-    pub method: Option<Option<http::Method>>,
+    pub method: Option<Option<HttpMethod>>,
     pub asn: Option<Option<u32>>,
     pub org: Option<Option<Pattern>>,
 }
@@ -325,7 +353,6 @@ impl RuleUpdates {
         rule.hash = Rule::calculate_hash(rule);
     }
 }
-
 
 pub struct RuleConditions<'a> {
     count: usize,

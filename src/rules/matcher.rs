@@ -1,19 +1,21 @@
 use crate::rules::Rule;
 
-use crate::rules::condition::*;
 use crate::geo::*;
+use crate::rules::condition::*;
 use crate::types::*;
 
-
 #[derive(Default, Debug)]
-pub(crate) struct Matcher<'a> {
+pub struct Matcher<'a> {
     rules: Vec<&'a Rule>,
     max_conditions: usize,
 }
 
 impl<'a> Matcher<'a> {
     pub fn new() -> Self {
-        Self { rules: vec![], max_conditions: 0 }
+        Self {
+            rules: vec![],
+            max_conditions: 0,
+        }
     }
 
     pub fn update(&'a mut self, rules: &'a Vec<Rule>) {

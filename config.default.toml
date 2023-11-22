@@ -1,2 +1,7 @@
 listen = "127.0.0.1:9876"
 db = "doorbell.db"
+allow = []
+deny = []
+trusted_proxies = [
+	"127.0.0.1/8",
+]
