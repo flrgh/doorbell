@@ -20,7 +20,7 @@ impl Repository {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, sqlx::Type)]
+#[derive(Debug, Eq, PartialEq, sqlx::Type, sqlx::FromRow)]
 struct RuleRow {
     id: String,
     action: String,
@@ -138,10 +138,8 @@ impl From<Rule> for RuleRow {
 impl Repository {
     async fn do_insert(&self, item: Rule, upsert: bool) -> anyhow::Result<()> {
         let item: RuleRow = item.into();
-        if upsert {
-            sqlx::query_as!(
-                Rule,
-                "
+        sqlx::query(if upsert {
+            "
                 INSERT or REPLACE INTO rules (
                     id,
                     hash,
@@ -166,30 +164,9 @@ impl Repository {
                     ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?
                 )
-            ",
-                item.id,
-                item.hash,
-                item.action,
-                item.deny_action,
-                item.created_at,
-                item.terminate,
-                item.comment,
-                item.source,
-                item.expires,
-                item.addr,
-                item.cidr,
-                item.user_agent,
-                item.host,
-                item.path,
-                item.country_code,
-                item.method,
-                item.asn,
-                item.org
-            )
-        } else {
-            sqlx::query_as!(
-                Rule,
                 "
+        } else {
+            "
                 INSERT INTO rules (
                     id,
                     hash,
@@ -214,27 +191,26 @@ impl Repository {
                     ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?
                 )
-            ",
-                item.id,
-                item.hash,
-                item.action,
-                item.deny_action,
-                item.created_at,
-                item.terminate,
-                item.comment,
-                item.source,
-                item.expires,
-                item.addr,
-                item.cidr,
-                item.user_agent,
-                item.host,
-                item.path,
-                item.country_code,
-                item.method,
-                item.asn,
-                item.org
-            )
-        }
+                "
+        })
+        .bind(item.id)
+        .bind(item.hash)
+        .bind(item.action)
+        .bind(item.deny_action)
+        .bind(item.created_at)
+        .bind(item.terminate)
+        .bind(item.comment)
+        .bind(item.source)
+        .bind(item.expires)
+        .bind(item.addr)
+        .bind(item.cidr)
+        .bind(item.user_agent)
+        .bind(item.host)
+        .bind(item.path)
+        .bind(item.country_code)
+        .bind(item.method)
+        .bind(item.asn)
+        .bind(item.org)
         .execute(self.pool.as_ref())
         .await
         .map(|r| ())
@@ -248,7 +224,8 @@ impl RepoTrait<Rule> for Repository {
 
     async fn get(&self, id: <Rule as types::PrimaryKey>::Key) -> Result<Option<Rule>, Self::Err> {
         let id = id.to_string();
-        let row = sqlx::query_as!(RuleRow, "SELECT * FROM rules WHERE id = ?", id)
+        let row = sqlx::query_as::<_, RuleRow>("SELECT * FROM rules WHERE id = ?")
+            .bind(id)
             .fetch_one(self.pool.as_ref())
             .await;
 
@@ -260,7 +237,7 @@ impl RepoTrait<Rule> for Repository {
     }
 
     async fn get_all(&self) -> Result<Vec<Rule>, Self::Err> {
-        let rows = sqlx::query_as!(RuleRow, "SELECT * FROM rules")
+        let rows = sqlx::query_as::<_, RuleRow>("SELECT * FROM rules")
             .fetch_all(self.pool.as_ref())
             .await?;
 
@@ -300,7 +277,8 @@ impl RepoTrait<Rule> for Repository {
         let old = self.get(id).await?;
 
         let id = id.to_string();
-        sqlx::query!("DELETE FROM rules WHERE id = ?", id)
+        sqlx::query("DELETE FROM rules WHERE id = ?")
+            .bind(id)
             .execute(self.pool.as_ref())
             .await?;
 
@@ -308,7 +286,24 @@ impl RepoTrait<Rule> for Repository {
     }
 
     async fn truncate(&self) -> Result<(), Self::Err> {
-        sqlx::query!("DELETE FROM rules")
+        sqlx::query("DELETE FROM rules")
+            .execute(self.pool.as_ref())
+            .await
+            .map(|r| ())
+            .map_err(|e| anyhow::anyhow!(e))
+    }
+}
+
+impl Repository {
+    pub async fn delete_where<T>(&self, column: &str, value: T) -> anyhow::Result<()>
+        where
+        T: Send,
+        T: sqlx::Type<sqlx::Sqlite>,
+        T: for<'a> sqlx::Encode<'a, sqlx::Sqlite>,
+    {
+        sqlx::query("DELETE FROM rules WHERE ? = ?")
+            .bind(column)
+            .bind(value)
             .execute(self.pool.as_ref())
             .await
             .map(|r| ())
