@@ -1,5 +1,5 @@
 use crate::rules::condition::*;
-use crate::rules::{Action, DenyAction, Rule, Source, IpCidr};
+use crate::rules::{Action, DenyAction, IpCidr, Rule, Source};
 use config::{Config, ConfigError, Environment, File};
 use serde_derive::Deserialize;
 use std::env;

@@ -4,9 +4,9 @@ mod cli;
 mod config;
 mod database;
 mod geo;
+mod net;
 mod rules;
 mod types;
-mod net;
 use database as db;
 
 use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
@@ -54,7 +54,6 @@ async fn ring(req: HttpRequest, state: web::Data<State<'_>>) -> impl Responder {
         forwarded
     };
 
-
     let Some(xfp) = headers.get("x-forwarded-proto") else {
         return HttpResponse::new(http::StatusCode::BAD_REQUEST);
     };
@@ -71,7 +70,8 @@ async fn ring(req: HttpRequest, state: web::Data<State<'_>>) -> impl Responder {
         return HttpResponse::new(http::StatusCode::BAD_REQUEST);
     };
 
-    let user_agent = headers.get("user-agent")
+    let user_agent = headers
+        .get("user-agent")
         .map(|h| h.as_bytes())
         .unwrap_or(b"");
 
