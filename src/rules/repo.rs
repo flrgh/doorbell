@@ -296,7 +296,7 @@ impl RepoTrait<Rule> for Repository {
 
 impl Repository {
     pub async fn delete_where<T>(&self, column: &str, value: T) -> anyhow::Result<()>
-        where
+    where
         T: Send,
         T: sqlx::Type<sqlx::Sqlite>,
         T: for<'a> sqlx::Encode<'a, sqlx::Sqlite>,

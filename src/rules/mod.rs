@@ -23,9 +23,9 @@ pub mod manager;
 pub mod matcher;
 pub mod repo;
 
+pub use cidr_utils::cidr::IpCidr;
 pub use manager::Manager;
 pub use matcher::Matcher;
-pub use cidr_utils::cidr::IpCidr;
 
 #[derive(
     PartialEq,
