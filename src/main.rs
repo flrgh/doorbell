@@ -163,11 +163,8 @@ async fn ring(req: HttpRequest, state: web::Data<State<'_>>) -> impl Responder {
                 match rule.action {
                     Action::Allow => http::StatusCode::OK,
                     Action::Deny => {
-                        match rule.deny_action {
-                            Some(DenyAction::Tarpit) => {
-                                tokio::time::sleep(std::time::Duration::from_secs(30));
-                            }
-                            _ => {}
+                        if let Some(DenyAction::Tarpit) = rule.deny_action {
+                            tokio::time::sleep(std::time::Duration::from_secs(30));
                         }
 
                         http::StatusCode::FORBIDDEN
