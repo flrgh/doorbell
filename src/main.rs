@@ -141,7 +141,7 @@ async fn ring(req: HttpRequest, state: web::Data<State<'_>>) -> impl Responder {
         .0
         .to_owned();
 
-    let ar = types::AccessRequest {
+    let req = types::ForwardedRequest {
         addr: forwarded_addr,
         user_agent,
         host,
@@ -154,10 +154,10 @@ async fn ring(req: HttpRequest, state: web::Data<State<'_>>) -> impl Responder {
         timestamp: chrono::Utc::now(),
     };
 
-    dbg!(&ar);
+    dbg!(&req);
 
     let status = {
-        match state.matcher.get_match(&ar) {
+        match state.matcher.get_match(&req) {
             Some(rule) => {
                 use crate::rules::{Action, DenyAction};
                 match rule.action {

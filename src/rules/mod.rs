@@ -393,7 +393,7 @@ impl Rule {
         //}
     }
 
-    pub fn matches(&self, req: &AccessRequest) -> bool {
+    pub fn matches(&self, req: &ForwardedRequest) -> bool {
         self.conditions().all(|cond| cond.matches(req))
     }
 

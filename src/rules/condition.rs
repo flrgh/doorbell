@@ -10,91 +10,11 @@ use strum_macros::EnumIs;
 use strum_macros::EnumString;
 
 use crate::geo::*;
-use crate::types::*;
 
 pub use crate::geo::CountryCode;
-pub use crate::types::Pattern;
+pub use crate::types::{ForwardedRequest, HttpMethod, Pattern};
 pub use cidr::IpCidr;
 pub use std::net::IpAddr;
-//pub use http::Method as HttpMethod;
-
-#[derive(
-    PartialEq,
-    Eq,
-    Clone,
-    Debug,
-    PartialOrd,
-    Ord,
-    EnumDisplay,
-    EnumString,
-    Type,
-    EnumIs,
-    Serialize,
-    Deserialize,
-)]
-#[strum(serialize_all = "UPPERCASE")]
-#[sqlx(rename_all = "UPPERCASE")]
-pub enum HttpMethod {
-    Get,
-    Put,
-    Post,
-    Delete,
-    Patch,
-    Options,
-    Head,
-    Trace,
-    Connect,
-}
-
-impl From<http::Method> for HttpMethod {
-    fn from(val: http::Method) -> Self {
-        match val {
-            http::Method::GET => HttpMethod::Get,
-            http::Method::PUT => HttpMethod::Put,
-            http::Method::POST => HttpMethod::Post,
-            http::Method::DELETE => HttpMethod::Delete,
-            http::Method::PATCH => HttpMethod::Patch,
-            http::Method::OPTIONS => HttpMethod::Options,
-            http::Method::HEAD => HttpMethod::Head,
-            http::Method::TRACE => HttpMethod::Trace,
-            http::Method::CONNECT => HttpMethod::Connect,
-            _ => unreachable!(),
-        }
-    }
-}
-
-impl From<HttpMethod> for http::Method {
-    fn from(value: HttpMethod) -> Self {
-        match value {
-            HttpMethod::Get => http::Method::GET,
-            HttpMethod::Put => http::Method::PUT,
-            HttpMethod::Post => http::Method::POST,
-            HttpMethod::Delete => http::Method::DELETE,
-            HttpMethod::Patch => http::Method::PATCH,
-            HttpMethod::Options => http::Method::OPTIONS,
-            HttpMethod::Head => http::Method::HEAD,
-            HttpMethod::Trace => http::Method::TRACE,
-            HttpMethod::Connect => http::Method::CONNECT,
-        }
-    }
-}
-
-impl HttpMethod {
-    pub fn is(&self, method: &http::Method) -> bool {
-        match *method {
-            http::Method::GET => self.is_get(),
-            http::Method::PUT => self.is_put(),
-            http::Method::POST => self.is_post(),
-            http::Method::DELETE => self.is_delete(),
-            http::Method::PATCH => self.is_patch(),
-            http::Method::OPTIONS => self.is_options(),
-            http::Method::HEAD => self.is_head(),
-            http::Method::TRACE => self.is_trace(),
-            http::Method::CONNECT => self.is_connect(),
-            _ => false,
-        }
-    }
-}
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Condition {
@@ -110,7 +30,7 @@ pub enum Condition {
 }
 
 impl Condition {
-    pub fn matches(&self, req: &AccessRequest) -> bool {
+    pub fn matches(&self, req: &ForwardedRequest) -> bool {
         match self {
             Condition::Addr(addr) => req.addr.eq(addr),
             Condition::Network(cidr) => cidr.contains(&req.addr),
