@@ -35,29 +35,29 @@ pub use std::net::IpAddr;
 #[strum(serialize_all = "UPPERCASE")]
 #[sqlx(rename_all = "UPPERCASE")]
 pub enum HttpMethod {
-    GET,
-    PUT,
-    POST,
-    DELETE,
-    PATCH,
-    OPTIONS,
-    HEAD,
-    TRACE,
-    CONNECT,
+    Get,
+    Put,
+    Post,
+    Delete,
+    Patch,
+    Options,
+    Head,
+    Trace,
+    Connect,
 }
 
 impl From<http::Method> for HttpMethod {
     fn from(val: http::Method) -> Self {
         match val {
-            http::Method::GET => HttpMethod::GET,
-            http::Method::PUT => HttpMethod::PUT,
-            http::Method::POST => HttpMethod::POST,
-            http::Method::DELETE => HttpMethod::DELETE,
-            http::Method::PATCH => HttpMethod::PATCH,
-            http::Method::OPTIONS => HttpMethod::OPTIONS,
-            http::Method::HEAD => HttpMethod::HEAD,
-            http::Method::TRACE => HttpMethod::TRACE,
-            http::Method::CONNECT => HttpMethod::CONNECT,
+            http::Method::GET => HttpMethod::Get,
+            http::Method::PUT => HttpMethod::Put,
+            http::Method::POST => HttpMethod::Post,
+            http::Method::DELETE => HttpMethod::Delete,
+            http::Method::PATCH => HttpMethod::Patch,
+            http::Method::OPTIONS => HttpMethod::Options,
+            http::Method::HEAD => HttpMethod::Head,
+            http::Method::TRACE => HttpMethod::Trace,
+            http::Method::CONNECT => HttpMethod::Connect,
             _ => unreachable!(),
         }
     }
@@ -66,15 +66,15 @@ impl From<http::Method> for HttpMethod {
 impl From<HttpMethod> for http::Method {
     fn from(value: HttpMethod) -> Self {
         match value {
-            HttpMethod::GET => http::Method::GET,
-            HttpMethod::PUT => http::Method::PUT,
-            HttpMethod::POST => http::Method::POST,
-            HttpMethod::DELETE => http::Method::DELETE,
-            HttpMethod::PATCH => http::Method::PATCH,
-            HttpMethod::OPTIONS => http::Method::OPTIONS,
-            HttpMethod::HEAD => http::Method::HEAD,
-            HttpMethod::TRACE => http::Method::TRACE,
-            HttpMethod::CONNECT => http::Method::CONNECT,
+            HttpMethod::Get => http::Method::GET,
+            HttpMethod::Put => http::Method::PUT,
+            HttpMethod::Post => http::Method::POST,
+            HttpMethod::Delete => http::Method::DELETE,
+            HttpMethod::Patch => http::Method::PATCH,
+            HttpMethod::Options => http::Method::OPTIONS,
+            HttpMethod::Head => http::Method::HEAD,
+            HttpMethod::Trace => http::Method::TRACE,
+            HttpMethod::Connect => http::Method::CONNECT,
         }
     }
 }
