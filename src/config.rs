@@ -18,11 +18,11 @@ pub struct Conf {
     pub trusted_proxies: Vec<IpCidr>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 #[serde(deny_unknown_fields)]
 pub struct ConfRule {
     pub deny_action: Option<DenyAction>,
-    pub terminate: bool,
+    pub terminate: Option<bool>,
     pub comment: Option<String>,
 
     pub addr: Option<IpAddr>,
@@ -56,8 +56,8 @@ impl ConfRule {
         Rule {
             id: uuid::Uuid::new_v4(),
             source: Source::Config,
+            terminate: terminate.unwrap_or_default(),
             action,
-            terminate,
             comment,
             addr,
             cidr,

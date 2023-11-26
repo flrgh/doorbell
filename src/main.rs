@@ -11,6 +11,7 @@ use database as db;
 
 use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use std::sync::Arc;
+use types::Repository;
 
 struct State<'a> {
     matcher: rules::Matcher<'a>,
@@ -38,8 +39,14 @@ async fn ring(req: HttpRequest, state: web::Data<State<'_>>) -> impl Responder {
 
     let headers = req.headers();
 
-    let Some(xff) = headers.get("x-forwarded-for") else {
-        return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+    let xff = {
+        let mut iter = headers.get_all("x-forwarded-for");
+        match (iter.next(), iter.next()) {
+            (None, _) | (Some(_), Some(_)) => {
+                return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+            }
+            (Some(value), None) => value,
+        }
     };
 
     let forwarded_addr = {
@@ -54,29 +61,124 @@ async fn ring(req: HttpRequest, state: web::Data<State<'_>>) -> impl Responder {
         forwarded
     };
 
-    let Some(xfp) = headers.get("x-forwarded-proto") else {
+    let scheme = {
+        let mut iter = headers.get_all("x-forwarded-proto");
+        match (iter.next(), iter.next()) {
+            (None, _) | (Some(_), Some(_)) => {
+                return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+            }
+            (Some(value), None) => match value.to_str() {
+                Ok(s) => s.to_owned(),
+                Err(_) => {
+                    return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+                }
+            },
+        }
+    };
+
+    let host = {
+        let mut iter = headers.get_all("x-forwarded-host");
+        match (iter.next(), iter.next()) {
+            (None, _) | (Some(_), Some(_)) => {
+                return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+            }
+            (Some(value), None) => match value.to_str() {
+                Ok(s) => s.to_owned(),
+                Err(_) => {
+                    return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+                }
+            },
+        }
+    };
+
+    let uri = {
+        let mut iter = headers.get_all("x-forwarded-uri");
+        match (iter.next(), iter.next()) {
+            (None, _) | (Some(_), Some(_)) => {
+                return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+            }
+            (Some(value), None) => match value.to_str() {
+                Ok(s) => s.to_owned(),
+                Err(_) => {
+                    return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+                }
+            },
+        }
+    };
+
+    let method = {
+        let mut iter = headers.get_all("x-forwarded-method");
+        match (iter.next(), iter.next()) {
+            (None, _) | (Some(_), Some(_)) => {
+                return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+            }
+            (Some(value), None) => match value.to_str() {
+                Ok(s) => s.to_owned(),
+                Err(_) => {
+                    return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+                }
+            },
+        }
+    };
+
+    let Ok(method) = method.parse() else {
         return HttpResponse::new(http::StatusCode::BAD_REQUEST);
     };
 
-    let Some(xfh) = headers.get("x-forwarded-host") else {
-        return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+    let user_agent = match headers.get("user-agent") {
+        Some(value) => match value.to_str() {
+            Ok(s) => s.to_owned(),
+            Err(_) => {
+                return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+            }
+        },
+        None => String::from(""),
     };
 
-    let Some(xfu) = headers.get("x-forwarded-uri") else {
-        return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+    let path = uri
+        .split_once('?')
+        .unwrap_or((uri.as_ref(), ""))
+        .0
+        .to_owned();
+
+    let ar = types::AccessRequest {
+        addr: forwarded_addr,
+        user_agent,
+        host,
+        method,
+        uri,
+        path,
+        country_code: None,
+        asn: None,
+        org: None,
+        timestamp: chrono::Utc::now(),
     };
 
-    let Some(xfm) = headers.get("x-forwarded-method") else {
-        return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+    dbg!(&ar);
+
+    let status = {
+        match state.matcher.get_match(&ar) {
+            Some(rule) => {
+                use crate::rules::{Action, DenyAction};
+                match rule.action {
+                    Action::Allow => http::StatusCode::OK,
+                    Action::Deny => {
+                        match rule.deny_action {
+                            Some(DenyAction::Tarpit) => {
+                                tokio::time::sleep(std::time::Duration::from_secs(30));
+                            }
+                            _ => {}
+                        }
+
+                        http::StatusCode::FORBIDDEN
+                    }
+                }
+            }
+            None => http::StatusCode::UNAUTHORIZED,
+        }
     };
 
-    let user_agent = headers
-        .get("user-agent")
-        .map(|h| h.as_bytes())
-        .unwrap_or(b"");
-
-    use types::AccessRequest;
-    HttpResponse::new(http::StatusCode::OK)
+    HttpResponse::new(status)
 }
 
 #[actix_web::main]
@@ -89,6 +191,8 @@ async fn main() -> std::io::Result<()> {
     let listen = conf.listen;
     let pool = Arc::new(pool);
     let repo = Arc::new(crate::rules::repo::Repository::new(pool.clone()));
+    repo.truncate().await.unwrap();
+
     let manager = rules::Manager::new(conf.clone(), repo.clone());
     manager.init().await.expect("failed to initialize things");
     let manager = Arc::new(manager);

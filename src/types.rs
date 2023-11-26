@@ -10,7 +10,7 @@ use std::fmt::Display;
 use std::net::IpAddr;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(untagged, try_from = "&str", into = "String")]
+#[serde(untagged, try_from = "String", into = "String")]
 pub enum Pattern {
     Plain(String),
     Regex(Regex),
@@ -87,6 +87,15 @@ impl TryFrom<&str> for Pattern {
         }
     }
 }
+
+impl TryFrom<String> for Pattern {
+    type Error = regex::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_from(value.as_str())
+    }
+}
+
 
 impl std::str::FromStr for Pattern {
     type Err = regex::Error;
