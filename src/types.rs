@@ -96,7 +96,6 @@ impl TryFrom<String> for Pattern {
     }
 }
 
-
 impl std::str::FromStr for Pattern {
     type Err = regex::Error;
 
