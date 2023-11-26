@@ -37,7 +37,7 @@ impl<'a> Matcher<'a> {
         self.rules.shrink_to_fit();
     }
 
-    pub fn get_match(&'a self, req: &AccessRequest) -> Option<&'a Rule> {
+    pub fn get_match(&'a self, req: &ForwardedRequest) -> Option<&'a Rule> {
         let mut matched: Option<&'a Rule> = None;
 
         let iter = self
