@@ -1,5 +1,5 @@
 use crate::rules::condition::*;
-use crate::rules::{Action, DenyAction, IpCidr, Rule, Source};
+use crate::rules::{Action, DenyAction, IpCidr, Rule, Source, RuleBuilder};
 use config::{Config, ConfigError, Environment, File};
 use serde_derive::Deserialize;
 use std::env;
@@ -53,23 +53,24 @@ impl ConfRule {
             org,
         } = self.clone();
 
-        Rule {
-            id: uuid::Uuid::new_v4(),
-            source: Source::Config,
-            terminate: terminate.unwrap_or_default(),
-            action,
-            comment,
-            addr,
-            cidr,
-            user_agent,
-            host,
-            path,
-            country_code,
-            method,
-            asn,
-            org,
-            ..Default::default()
-        }
+        RuleBuilder::default()
+            .id(uuid::Uuid::new_v4())
+            .action(action)
+            .deny_action(deny_action)
+            .source(Source::Config)
+            .comment(comment)
+            .terminate(terminate.unwrap_or(false))
+            .addr(addr)
+            .cidr(cidr)
+            .user_agent(user_agent)
+            .host(host)
+            .path(path)
+            .country_code(country_code)
+            .method(method)
+            .asn(asn)
+            .org(org)
+            .build()
+            .expect("invalid config rule")
     }
 }
 

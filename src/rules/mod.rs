@@ -1,7 +1,5 @@
 use std::net::IpAddr;
-//use std::collections::HashMap;
 use chrono::prelude::*;
-//use uuid::Uuid;
 use serde_derive::Deserialize;
 use sqlx::sqlite::SqliteRow;
 use sqlx::Row;
@@ -10,6 +8,7 @@ use std::cmp::Ordering;
 use strum_macros::Display as EnumDisplay;
 use strum_macros::EnumIs;
 use strum_macros::EnumString;
+use derive_builder::Builder;
 
 use self::condition::*;
 use crate::geo::*;
@@ -107,7 +106,21 @@ impl TryFrom<&str> for Uuid {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Type, Clone, Default)]
+/*
+   1. private, set/get all fields indiscriminantly
+   2. crate, set/get:
+     * conditions
+     * action
+     * deny_action
+     * terminate
+     * id????
+     * source
+     * expires
+   3. end-user API, similar to crate
+ */
+
+#[derive(Debug, Eq, PartialEq, Type, Clone, Default, Builder)]
+#[builder(build_fn(validate = "Self::validate"))]
 pub(crate) struct Rule {
     pub id: uuid::Uuid,
     pub action: Action,
@@ -126,51 +139,9 @@ pub(crate) struct Rule {
     pub host: Option<Pattern>,
     pub path: Option<Pattern>,
     pub country_code: Option<CountryCode>,
-
     pub method: Option<HttpMethod>,
     pub asn: Option<u32>,
     pub org: Option<Pattern>,
-}
-
-#[derive(Debug, Default, Clone)]
-pub(crate) struct RuleBuilder {
-    pub id: Option<uuid::Uuid>,
-    pub action: Option<Action>,
-    pub deny_action: Option<DenyAction>,
-    pub terminate: Option<bool>,
-    pub comment: Option<String>,
-    pub source: Option<Source>,
-    pub expires: Option<DateTime<Utc>>,
-    pub addr: Option<IpAddr>,
-    pub cidr: Option<IpCidr>,
-    pub user_agent: Option<Pattern>,
-    pub host: Option<Pattern>,
-    pub path: Option<Pattern>,
-    pub country_code: Option<CountryCode>,
-    pub method: Option<HttpMethod>,
-    pub asn: Option<u32>,
-    pub org: Option<Pattern>,
-}
-
-impl RuleBuilder {
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    pub fn with_id(mut self, id: uuid::Uuid) -> Self {
-        self.id = Some(id);
-        self
-    }
-
-    pub fn with_action(mut self, action: Action) -> Self {
-        self.action = Some(action);
-        self
-    }
-
-    pub fn with_deny_action(mut self, da: DenyAction) -> Self {
-        self.deny_action = Some(da);
-        self
-    }
 }
 
 impl Rule {
@@ -241,7 +212,36 @@ impl Rule {
         }
 
         let digest = ctx.compute();
-        format!("{:x}", digest)
+        let s = format!("{:x}", digest);
+        dbg!(&s);
+        s
+    }
+}
+
+impl RuleBuilder {
+    fn validate(&self) -> std::result::Result<(), String> {
+        if self.addr.is_none()
+            && self.asn.is_none()
+            && self.cidr.is_none()
+            && self.country_code.is_none()
+            && self.host.is_none()
+            && self.method.is_none()
+            && self.org.is_none()
+            && self.path.is_none()
+            && self.user_agent.is_none()
+        {
+            return Err("rule must have at least one condition".to_string());
+        }
+
+        if self.source.as_ref().is_some_and(|src| src.is_config()) && self.expires.is_some() {
+            return Err("config rules cannot expire".to_string());
+        }
+
+        Ok(())
+    }
+
+    fn ttl(&mut self, ttl: std::time::Duration) -> &mut Self {
+        self.expires(Some(chrono::Utc::now() + ttl))
     }
 }
 
