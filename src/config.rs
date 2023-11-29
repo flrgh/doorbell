@@ -1,5 +1,5 @@
 use crate::rules::condition::*;
-use crate::rules::{Action, DenyAction, IpCidr, Rule, Source, RuleBuilder};
+use crate::rules::{Action, DenyAction, IpCidr, Rule, RuleBuilder, Source};
 use config::{Config, ConfigError, Environment, File};
 use serde_derive::Deserialize;
 use std::env;
@@ -54,7 +54,6 @@ impl ConfRule {
         } = self.clone();
 
         RuleBuilder::default()
-            .id(uuid::Uuid::new_v4())
             .action(action)
             .deny_action(deny_action)
             .source(Source::Config)

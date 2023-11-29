@@ -17,6 +17,7 @@ cidr-utils = { version = "0.5.11", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 config = "0.13"
 derive_builder = "0.12.0"
+env_logger = "0.10.1"
 http = "0.2"
 log = "0.4"
 md5 = "0.7.0"

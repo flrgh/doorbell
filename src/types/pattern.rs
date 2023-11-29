@@ -101,3 +101,12 @@ impl FromStr for Pattern {
         Self::try_from(s)
     }
 }
+
+impl AsRef<[u8]> for Pattern {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            Pattern::Plain(p) => p.as_bytes(),
+            Pattern::Regex(r) => r.as_str().as_bytes(),
+        }
+    }
+}
