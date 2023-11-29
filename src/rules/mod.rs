@@ -480,37 +480,22 @@ impl ExactSizeIterator for RuleConditions {
 impl Rule {
     pub fn conditions(&self) -> RuleConditions {
         let conditions = [
-            self.addr
-                .and_then(|addr| Some(Condition::Addr(addr)))
-                .unwrap_or_default(),
-            self.cidr
-                .and_then(|cidr| Some(Condition::Network(cidr)))
-                .unwrap_or_default(),
+            self.addr.map(Condition::Addr).unwrap_or_default(),
+            self.cidr.map(Condition::Network).unwrap_or_default(),
             self.user_agent
                 .clone()
-                .and_then(|user_agent| Some(Condition::UserAgent(user_agent)))
+                .map(Condition::UserAgent)
                 .unwrap_or_default(),
-            self.host
-                .clone()
-                .and_then(|host| Some(Condition::Host(host)))
-                .unwrap_or_default(),
-            self.path
-                .clone()
-                .and_then(|path| Some(Condition::Path(path)))
-                .unwrap_or_default(),
-            self.asn
-                .and_then(|asn| Some(Condition::Asn(asn)))
-                .unwrap_or_default(),
-            self.org
-                .clone()
-                .and_then(|org| Some(Condition::Org(org)))
-                .unwrap_or_default(),
+            self.host.clone().map(Condition::Host).unwrap_or_default(),
+            self.path.clone().map(Condition::Path).unwrap_or_default(),
+            self.asn.map(Condition::Asn).unwrap_or_default(),
+            self.org.clone().map(Condition::Org).unwrap_or_default(),
             self.country_code
-                .and_then(|cc| Some(Condition::CountryCode(cc)))
+                .map(Condition::CountryCode)
                 .unwrap_or_default(),
             self.method
                 .clone()
-                .and_then(|method| Some(Condition::Method(method)))
+                .map(Condition::Method)
                 .unwrap_or_default(),
         ];
 
