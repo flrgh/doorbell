@@ -17,14 +17,14 @@ use anyhow::{anyhow, Context, Result};
 use sqlx::sqlite::SqliteColumn;
 use sqlx::Column;
 
+pub mod collection;
 pub mod condition;
 pub mod manager;
-pub mod matcher;
 pub mod repo;
 
 pub use cidr_utils::cidr::IpCidr;
+pub use collection::*;
 pub use manager::Manager;
-pub use matcher::Matcher;
 
 #[derive(
     PartialEq,
@@ -178,7 +178,6 @@ where
     }
 }
 
-
 impl ConditionHash for IpAddr {
     fn hash(&self, ctx: &mut md5::Context) {
         match self {
@@ -227,7 +226,17 @@ impl ConditionHash for u32 {
     }
 }
 
-fn hash_conditions(addr: impl ConditionHash, cidr: impl ConditionHash, org: impl ConditionHash, asn: impl ConditionHash, country_code: impl ConditionHash, host: impl ConditionHash, path: impl ConditionHash, method: impl ConditionHash, user_agent: impl ConditionHash) -> String {
+fn hash_conditions(
+    addr: impl ConditionHash,
+    cidr: impl ConditionHash,
+    org: impl ConditionHash,
+    asn: impl ConditionHash,
+    country_code: impl ConditionHash,
+    host: impl ConditionHash,
+    path: impl ConditionHash,
+    method: impl ConditionHash,
+    user_agent: impl ConditionHash,
+) -> String {
     let mut ctx = md5::Context::new();
 
     addr.hash(&mut ctx);
@@ -242,12 +251,21 @@ fn hash_conditions(addr: impl ConditionHash, cidr: impl ConditionHash, org: impl
 
     let digest = ctx.compute();
     format!("{:x}", digest)
-
 }
 
 impl Rule {
     pub fn calculate_hash(rule: &Rule) -> String {
-        hash_conditions(&rule.addr, &rule.cidr, &rule.org, &rule.asn, &rule.country_code, &rule.host, &rule.path, &rule.method, &rule.user_agent)
+        hash_conditions(
+            rule.addr,
+            rule.cidr,
+            &rule.org,
+            rule.asn,
+            rule.country_code,
+            &rule.host,
+            &rule.path,
+            &rule.method,
+            &rule.user_agent,
+        )
     }
 }
 
@@ -338,15 +356,17 @@ impl RuleBuilder {
             created_at: chrono::Utc::now(),
             updated_at: None,
 
-            hash: hash_conditions(&addr,
-                                  &cidr,
-                                  &org,
-                                  &asn,
-                                  &country_code,
-                                  &host,
-                                  &path,
-                                  &method,
-                                  &user_agent),
+            hash: hash_conditions(
+                addr,
+                cidr,
+                &org,
+                asn,
+                country_code,
+                &host,
+                &path,
+                &method,
+                &user_agent,
+            ),
 
             addr,
             cidr,
@@ -435,43 +455,70 @@ impl RuleUpdates {
     }
 }
 
-pub struct RuleConditions<'a> {
+pub struct RuleConditions {
     count: usize,
     offset: usize,
-    conditions: [Option<&'a Condition>; 9],
+    conditions: [Condition; 9],
 }
 
-impl<'a> Iterator for RuleConditions<'a> {
-    type Item = &'a Condition;
+impl Iterator for RuleConditions {
+    type Item = Condition;
 
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        let next = self.conditions.get(self.offset);
+        self.offset += 1;
+        next.cloned()
     }
 }
 
-impl<'a> ExactSizeIterator for RuleConditions<'a> {
+impl ExactSizeIterator for RuleConditions {
     fn len(&self) -> usize {
-        self.count
+        self.conditions.len()
     }
 }
 
 impl Rule {
     pub fn conditions(&self) -> RuleConditions {
-        todo!()
-        //let conditions = [
-        //    self.addr.and_then(|addr| Some(Condition::Addr(addr))),
-        //    self.cidr.and_then(|cidr| Some(Condition::Network(cidr))),
-        //    self.user_agent.and_then(|user_agent| Some(Condition::UserAgent(user_agent))),
-        //    self.host.and_then(|host| Some(Condition::Host(host))),
-        //    self.path.and_then(|path| Some(Condition::Path(path))),
-        //    self.path.and_then(|path| Some(Condition::Path(path))),
-        //];
+        let conditions = [
+            self.addr
+                .and_then(|addr| Some(Condition::Addr(addr)))
+                .unwrap_or_default(),
+            self.cidr
+                .and_then(|cidr| Some(Condition::Network(cidr)))
+                .unwrap_or_default(),
+            self.user_agent
+                .clone()
+                .and_then(|user_agent| Some(Condition::UserAgent(user_agent)))
+                .unwrap_or_default(),
+            self.host
+                .clone()
+                .and_then(|host| Some(Condition::Host(host)))
+                .unwrap_or_default(),
+            self.path
+                .clone()
+                .and_then(|path| Some(Condition::Path(path)))
+                .unwrap_or_default(),
+            self.asn
+                .and_then(|asn| Some(Condition::Asn(asn)))
+                .unwrap_or_default(),
+            self.org
+                .clone()
+                .and_then(|org| Some(Condition::Org(org)))
+                .unwrap_or_default(),
+            self.country_code
+                .and_then(|cc| Some(Condition::CountryCode(cc)))
+                .unwrap_or_default(),
+            self.method
+                .clone()
+                .and_then(|method| Some(Condition::Method(method)))
+                .unwrap_or_default(),
+        ];
 
-        //RuleConditions {
-        //    count: conditions.len(),
-        //    offset: 0,
-        //    conditions,
-        //}
+        RuleConditions {
+            count: conditions.len(),
+            offset: 0,
+            conditions,
+        }
     }
 
     pub fn matches(&self, req: &ForwardedRequest) -> bool {

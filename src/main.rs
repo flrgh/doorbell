@@ -13,10 +13,11 @@ use actix_web::{
     get, middleware::Logger, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
 use std::sync::Arc;
+use std::sync::RwLock;
 use types::Repository;
 
-struct State<'a> {
-    matcher: rules::Matcher<'a>,
+struct State {
+    rules: Arc<RwLock<rules::Collection>>,
     config: Arc<config::Conf>,
     manager: Arc<rules::Manager>,
     trusted_proxies: Arc<net::TrustedProxies>,
@@ -29,7 +30,7 @@ async fn index(req: HttpRequest) -> impl Responder {
 }
 
 #[get("/ring")]
-async fn ring(req: HttpRequest, state: web::Data<State<'_>>) -> impl Responder {
+async fn ring(req: HttpRequest, state: web::Data<State>) -> impl Responder {
     let Some(addr) = req.peer_addr() else {
         return HttpResponse::new(http::StatusCode::INTERNAL_SERVER_ERROR);
     };
@@ -70,7 +71,7 @@ async fn ring(req: HttpRequest, state: web::Data<State<'_>>) -> impl Responder {
         return HttpResponse::new(http::StatusCode::BAD_REQUEST);
     };
 
-    let Some(host) = require_single_header(X_FORWARDED_METHOD, headers) else {
+    let Some(host) = require_single_header(X_FORWARDED_HOST, headers) else {
         return HttpResponse::new(http::StatusCode::BAD_REQUEST);
     };
 
@@ -117,8 +118,10 @@ async fn ring(req: HttpRequest, state: web::Data<State<'_>>) -> impl Responder {
 
     dbg!(&req);
 
+    dbg!(&state.rules);
+
     let status = {
-        match state.matcher.get_match(&req) {
+        match state.rules.read().unwrap().get_match(&req) {
             Some(rule) => {
                 use crate::rules::{Action, DenyAction};
                 match rule.action {
@@ -153,7 +156,9 @@ async fn main() -> std::io::Result<()> {
     let repo = Arc::new(crate::rules::repo::Repository::new(pool.clone()));
     repo.truncate().await.unwrap();
 
-    let manager = rules::Manager::new(conf.clone(), repo.clone());
+    let collection = Arc::new(RwLock::new(crate::rules::Collection::default()));
+
+    let mut manager = rules::Manager::new(conf.clone(), repo.clone(), collection.clone());
     manager.init().await.expect("failed to initialize things");
     let manager = Arc::new(manager);
     let trusted_proxies = Arc::new(net::TrustedProxies::new(&conf.trusted_proxies));
@@ -162,7 +167,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(Logger::default())
             .app_data(web::Data::new(State {
-                matcher: Default::default(),
+                rules: collection.clone(),
                 config: conf.clone(),
                 manager: manager.clone(),
                 trusted_proxies: trusted_proxies.clone(),
