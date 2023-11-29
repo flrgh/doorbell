@@ -37,14 +37,22 @@ impl Manager {
 
     async fn update_matcher(&mut self) -> anyhow::Result<()> {
         let rules = self.repo.get_all().await?;
-        let version = self.collection.read().unwrap().version() + 1;
+
+        let version = self
+            .collection
+            .read()
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?
+            .version();
+
         let new_collection = Collection::new(rules, version);
 
-        match self.collection.write() {
-            Ok(mut collection) => *collection = new_collection,
-            Err(e) => {
-                return Err(anyhow::anyhow!(e.to_string()));
-            }
+        {
+            let mut collection = self
+                .collection
+                .write()
+                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+
+            *collection = new_collection;
         }
 
         Ok(())

@@ -18,6 +18,7 @@ use types::Repository;
 
 struct State {
     rules: Arc<RwLock<rules::Collection>>,
+    repo: Arc<rules::repo::Repository>,
     config: Arc<config::Conf>,
     manager: Arc<rules::Manager>,
     trusted_proxies: Arc<net::TrustedProxies>,
@@ -118,7 +119,7 @@ async fn ring(req: HttpRequest, state: web::Data<State>) -> impl Responder {
 
     dbg!(&req);
 
-    dbg!(&state.rules);
+    //dbg!(&state.rules);
 
     let status = {
         match state.rules.read().unwrap().get_match(&req) {
@@ -140,6 +141,23 @@ async fn ring(req: HttpRequest, state: web::Data<State>) -> impl Responder {
     };
 
     HttpResponse::new(status)
+}
+
+#[get("/rules")]
+async fn list_rules(_: HttpRequest, state: web::Data<State>) -> impl Responder {
+    let rules = match state.repo.get_all().await {
+        Ok(rules) => rules,
+        Err(e) => {
+            dbg!(e);
+            return HttpResponse::new(http::StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    let json = serde_json::json!({
+        "data": rules,
+    });
+
+    HttpResponse::Ok().json(json)
 }
 
 #[actix_web::main]
@@ -171,9 +189,11 @@ async fn main() -> std::io::Result<()> {
                 config: conf.clone(),
                 manager: manager.clone(),
                 trusted_proxies: trusted_proxies.clone(),
+                repo: repo.clone(),
             }))
             .service(index)
             .service(ring)
+            .service(list_rules)
     })
     .bind(listen)?
     .run()

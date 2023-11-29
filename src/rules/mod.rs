@@ -1,6 +1,6 @@
 use chrono::prelude::*;
 use derive_builder::Builder;
-use serde_derive::Deserialize;
+use serde_derive::{Deserialize, Serialize};
 use sqlx::sqlite::SqliteRow;
 use sqlx::Row;
 use sqlx::Type;
@@ -39,9 +39,11 @@ pub use manager::Manager;
     Default,
     EnumIs,
     Deserialize,
+    Serialize,
 )]
 #[strum(serialize_all = "lowercase")]
 #[sqlx(rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub(crate) enum Action {
     #[default]
     Deny,
@@ -49,10 +51,21 @@ pub(crate) enum Action {
 }
 
 #[derive(
-    PartialEq, Eq, Clone, Debug, Default, EnumDisplay, EnumString, Type, EnumIs, Deserialize,
+    PartialEq,
+    Eq,
+    Clone,
+    Debug,
+    Default,
+    EnumDisplay,
+    EnumString,
+    Type,
+    EnumIs,
+    Deserialize,
+    Serialize,
 )]
 #[strum(serialize_all = "lowercase")]
 #[sqlx(rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub(crate) enum DenyAction {
     #[default]
     Exit,
@@ -72,9 +85,11 @@ pub(crate) enum DenyAction {
     Default,
     EnumIs,
     Deserialize,
+    Serialize,
 )]
 #[strum(serialize_all = "lowercase")]
 #[sqlx(rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub(crate) enum Source {
     #[default]
     Api,
@@ -119,9 +134,10 @@ impl TryFrom<&str> for Uuid {
   3. end-user API, similar to crate
 */
 
-#[derive(Debug, Eq, PartialEq, Type, Clone, Default, Builder)]
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Eq, PartialEq, Type, Clone, Default, Builder, Serialize)]
 #[builder(build_fn(skip, validate = "Self::validate"))]
-pub(crate) struct Rule {
+pub struct Rule {
     #[builder(setter(skip))]
     pub id: uuid::Uuid,
     pub action: Action,
@@ -390,7 +406,7 @@ impl Update for Rule {
 }
 
 #[derive(Debug, Eq, PartialEq, Type)]
-pub(crate) struct RuleUpdates {
+pub struct RuleUpdates {
     pub action: Option<Action>,
     pub deny_action: Option<Option<DenyAction>>,
     pub updated_at: Option<Option<DateTime<Utc>>>,
