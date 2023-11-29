@@ -1,19 +1,28 @@
 use super::*;
+use chrono::{DateTime, Utc};
+use std::cmp;
 
 #[derive(Debug, Default)]
 pub struct Collection {
     rules: Vec<Rule>,
     version: u64,
     max_conditions: usize,
+    next_expiration: Option<DateTime<Utc>>,
 }
 
 impl Collection {
     pub fn new(rules: Vec<Rule>, version: u64) -> Self {
         let mut max_conditions = 0;
+        let mut next_expiration = None;
 
         for rule in &rules {
-            if rule.conditions().len() > max_conditions {
-                max_conditions = rule.conditions().len();
+            max_conditions = cmp::max(max_conditions, rule.conditions().len());
+
+            if let Some(expires) = rule.expires {
+                match next_expiration {
+                    None => next_expiration = Some(expires),
+                    Some(ne) => next_expiration = Some(cmp::min(ne, expires)),
+                }
             }
         }
 
@@ -21,6 +30,7 @@ impl Collection {
             rules,
             version,
             max_conditions,
+            next_expiration,
         }
     }
 
@@ -52,5 +62,9 @@ impl Collection {
 
     pub fn version(&self) -> u64 {
         self.version
+    }
+
+    pub fn next_expiration(&self) -> Option<chrono::DateTime<Utc>> {
+        self.next_expiration
     }
 }
