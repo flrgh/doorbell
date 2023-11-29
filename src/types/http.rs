@@ -14,6 +14,14 @@ use strum_macros::Display as EnumDisplay;
 use strum_macros::EnumIs;
 use strum_macros::EnumString;
 
+// XXX: should I use actix_web::http::header::HeaderName::from_static()?
+pub const X_FORWARDED_FOR: &str = "X-Forwarded-For";
+pub const X_FORWARDED_PROTO: &str = "X-Forwarded-Proto";
+pub const X_FORWARDED_HOST: &str = "X-Forwarded-Host";
+pub const X_FORWARDED_METHOD: &str = "X-Forwarded-Method";
+pub const X_FORWARDED_URI: &str = "X-Forwarded-Uri";
+pub const USER_AGENT: &str = "User-Agent";
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct ForwardedRequest {
     pub addr: IpAddr,
@@ -102,6 +110,22 @@ impl HttpMethod {
             ::http::Method::TRACE => self.is_trace(),
             ::http::Method::CONNECT => self.is_connect(),
             _ => false,
+        }
+    }
+}
+
+impl AsRef<[u8]> for HttpMethod {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            HttpMethod::Get => b"GET",
+            HttpMethod::Put => b"PUT",
+            HttpMethod::Post => b"POST",
+            HttpMethod::Delete => b"DELETE",
+            HttpMethod::Patch => b"PATCH",
+            HttpMethod::Options => b"OPTIONS",
+            HttpMethod::Head => b"HEAD",
+            HttpMethod::Trace => b"TRACE",
+            HttpMethod::Connect => b"CONNECT",
         }
     }
 }

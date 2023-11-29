@@ -1,14 +1,14 @@
-use std::net::IpAddr;
 use chrono::prelude::*;
+use derive_builder::Builder;
 use serde_derive::Deserialize;
 use sqlx::sqlite::SqliteRow;
 use sqlx::Row;
 use sqlx::Type;
 use std::cmp::Ordering;
+use std::net::IpAddr;
 use strum_macros::Display as EnumDisplay;
 use strum_macros::EnumIs;
 use strum_macros::EnumString;
-use derive_builder::Builder;
 
 use self::condition::*;
 use crate::geo::*;
@@ -107,26 +107,30 @@ impl TryFrom<&str> for Uuid {
 }
 
 /*
-   1. private, set/get all fields indiscriminantly
-   2. crate, set/get:
-     * conditions
-     * action
-     * deny_action
-     * terminate
-     * id????
-     * source
-     * expires
-   3. end-user API, similar to crate
- */
+  1. private, set/get all fields indiscriminantly
+  2. crate, set/get:
+    * conditions
+    * action
+    * deny_action
+    * terminate
+    * id????
+    * source
+    * expires
+  3. end-user API, similar to crate
+*/
 
 #[derive(Debug, Eq, PartialEq, Type, Clone, Default, Builder)]
-#[builder(build_fn(validate = "Self::validate"))]
+#[builder(build_fn(skip, validate = "Self::validate"))]
 pub(crate) struct Rule {
+    #[builder(setter(skip))]
     pub id: uuid::Uuid,
     pub action: Action,
     pub deny_action: Option<DenyAction>,
+    #[builder(setter(skip))]
     pub hash: String,
+    #[builder(setter(skip))]
     pub created_at: DateTime<Utc>,
+    #[builder(setter(skip))]
     pub updated_at: Option<DateTime<Utc>>,
     pub terminate: bool,
     pub comment: Option<String>,
@@ -144,77 +148,106 @@ pub(crate) struct Rule {
     pub org: Option<Pattern>,
 }
 
+trait ConditionHash {
+    fn hash(&self, ctx: &mut md5::Context);
+}
+
+impl<T> ConditionHash for Option<T>
+where
+    T: ConditionHash,
+{
+    fn hash(&self, ctx: &mut md5::Context) {
+        if let Some(t) = self {
+            t.hash(ctx);
+        } else {
+            ctx.consume([0]);
+        }
+    }
+}
+
+impl<T> ConditionHash for &Option<T>
+where
+    T: ConditionHash,
+{
+    fn hash(&self, ctx: &mut md5::Context) {
+        if let Some(t) = self {
+            t.hash(ctx);
+        } else {
+            ctx.consume([0]);
+        }
+    }
+}
+
+
+impl ConditionHash for IpAddr {
+    fn hash(&self, ctx: &mut md5::Context) {
+        match self {
+            IpAddr::V6(addr) => ctx.consume(addr.octets()),
+            IpAddr::V4(addr) => ctx.consume(addr.octets()),
+        }
+    }
+}
+
+impl ConditionHash for IpCidr {
+    fn hash(&self, ctx: &mut md5::Context) {
+        match self {
+            IpCidr::V4(cidr) => {
+                ctx.consume(cidr.get_prefix_as_u8_array());
+                ctx.consume(cidr.get_mask_as_u8_array());
+            }
+            IpCidr::V6(cidr) => {
+                ctx.consume(cidr.get_prefix_as_u8_array());
+                ctx.consume(cidr.get_mask_as_u8_array());
+            }
+        }
+    }
+}
+
+impl ConditionHash for Pattern {
+    fn hash(&self, ctx: &mut md5::Context) {
+        ctx.consume(self.as_ref());
+    }
+}
+
+impl ConditionHash for HttpMethod {
+    fn hash(&self, ctx: &mut md5::Context) {
+        ctx.consume(self.as_ref());
+    }
+}
+
+impl ConditionHash for CountryCode {
+    fn hash(&self, ctx: &mut md5::Context) {
+        ctx.consume::<&[u8]>(self.as_ref());
+    }
+}
+
+impl ConditionHash for u32 {
+    fn hash(&self, ctx: &mut md5::Context) {
+        ctx.consume(self.to_be_bytes());
+    }
+}
+
+fn hash_conditions(addr: impl ConditionHash, cidr: impl ConditionHash, org: impl ConditionHash, asn: impl ConditionHash, country_code: impl ConditionHash, host: impl ConditionHash, path: impl ConditionHash, method: impl ConditionHash, user_agent: impl ConditionHash) -> String {
+    let mut ctx = md5::Context::new();
+
+    addr.hash(&mut ctx);
+    cidr.hash(&mut ctx);
+    org.hash(&mut ctx);
+    asn.hash(&mut ctx);
+    country_code.hash(&mut ctx);
+    host.hash(&mut ctx);
+    path.hash(&mut ctx);
+    method.hash(&mut ctx);
+    user_agent.hash(&mut ctx);
+
+    let digest = ctx.compute();
+    format!("{:x}", digest)
+
+}
+
 impl Rule {
     pub fn calculate_hash(rule: &Rule) -> String {
-        let mut ctx = md5::Context::new();
-
-        if let Some(ref addr) = rule.addr {
-            let addr = addr.to_string().as_bytes().to_owned();
-            ctx.consume(addr);
-        } else {
-            ctx.consume([0]);
-        }
-
-        if let Some(ref cidr) = rule.cidr {
-            let cidr = cidr.to_string().as_bytes().to_owned();
-            ctx.consume(cidr);
-        } else {
-            ctx.consume([0]);
-        }
-
-        if let Some(ref user_agent) = rule.user_agent {
-            let user_agent: String = user_agent.into();
-            ctx.consume(user_agent)
-        } else {
-            ctx.consume([0]);
-        }
-
-        if let Some(ref host) = rule.host {
-            let host: String = host.into();
-            ctx.consume(host)
-        } else {
-            ctx.consume([0]);
-        }
-
-        if let Some(ref path) = rule.path {
-            let path: String = path.into();
-            ctx.consume(path)
-        } else {
-            ctx.consume([0]);
-        }
-
-        if let Some(ref org) = rule.org {
-            let org: String = org.into();
-            ctx.consume(org);
-        } else {
-            ctx.consume([0]);
-        }
-
-        if let Some(ref method) = rule.method {
-            let method = method.to_string();
-            ctx.consume(method);
-        } else {
-            ctx.consume([0]);
-        }
-
-        if let Some(ref country_code) = rule.country_code {
-            let country_code = country_code.to_string();
-            ctx.consume(country_code);
-        } else {
-            ctx.consume([0]);
-        }
-
-        if let Some(ref asn) = rule.asn {
-            let asn = asn.to_string();
-            ctx.consume(asn);
-        } else {
-            ctx.consume([0]);
-        }
-
-        let digest = ctx.compute();
-        let s = format!("{:x}", digest);
-        dbg!(&s);
-        s
+        hash_conditions(&rule.addr, &rule.cidr, &rule.org, &rule.asn, &rule.country_code, &rule.host, &rule.path, &rule.method, &rule.user_agent)
     }
 }
 
@@ -240,8 +273,91 @@ impl RuleBuilder {
         Ok(())
     }
 
-    fn ttl(&mut self, ttl: std::time::Duration) -> &mut Self {
+    pub fn ttl(&mut self, ttl: std::time::Duration) -> &mut Self {
         self.expires(Some(chrono::Utc::now() + ttl))
+    }
+
+    pub fn build(&self) -> Result<Rule, String> {
+        self.validate()?;
+        let RuleBuilder {
+            action,
+            deny_action,
+            terminate,
+            comment,
+            source,
+            expires,
+            addr,
+            cidr,
+            user_agent,
+            host,
+            path,
+            country_code,
+            method,
+            asn,
+            org,
+            id,
+            hash,
+            created_at,
+            updated_at,
+        } = self.clone();
+
+        fn get<T>(t: Option<T>, name: &str) -> Result<T, String> {
+            if let Some(t) = t {
+                Ok(t)
+            } else {
+                Err(format!("missing required field: {}", name))
+            }
+        }
+
+        fn get_inner<T>(t: Option<Option<T>>) -> Option<T> {
+            if let Some(Some(t)) = t {
+                Some(t)
+            } else {
+                None
+            }
+        }
+
+        let addr = get_inner(addr);
+        let cidr = get_inner(cidr);
+        let org = get_inner(org);
+        let asn = get_inner(asn);
+        let country_code = get_inner(country_code);
+        let host = get_inner(host);
+        let path = get_inner(path);
+        let method = get_inner(method);
+        let user_agent = get_inner(user_agent);
+
+        Ok(Rule {
+            id: uuid::Uuid::new_v4(),
+            source: get(source, "source")?,
+            action: get(action, "action")?,
+            deny_action: get_inner(deny_action),
+            terminate: terminate.unwrap_or(false),
+            comment: get_inner(comment),
+            expires: get_inner(expires),
+            created_at: chrono::Utc::now(),
+            updated_at: None,
+
+            hash: hash_conditions(&addr,
+                                  &cidr,
+                                  &org,
+                                  &asn,
+                                  &country_code,
+                                  &host,
+                                  &path,
+                                  &method,
+                                  &user_agent),
+
+            addr,
+            cidr,
+            user_agent,
+            host,
+            path,
+            country_code,
+            method,
+            asn,
+            org,
+        })
     }
 }
 
@@ -293,61 +409,26 @@ impl RuleUpdates {
             org,
         } = self;
 
-        if let Some(action) = action {
-            rule.action = action;
+        fn update<T>(field: &mut T, value: Option<T>) {
+            if let Some(t) = value {
+                *field = t;
+            }
         }
 
-        if let Some(deny_action) = deny_action {
-            rule.deny_action = deny_action;
-        }
-
-        if let Some(terminate) = terminate {
-            rule.terminate = terminate;
-        }
-
-        if let Some(comment) = comment {
-            rule.comment = comment;
-        }
-
-        if let Some(expires) = expires {
-            rule.expires = expires;
-        }
-
-        if let Some(addr) = addr {
-            rule.addr = addr;
-        }
-
-        if let Some(cidr) = cidr {
-            rule.cidr = cidr;
-        }
-
-        if let Some(user_agent) = user_agent {
-            rule.user_agent = user_agent;
-        }
-
-        if let Some(host) = host {
-            rule.host = host;
-        }
-
-        if let Some(path) = path {
-            rule.path = path;
-        }
-
-        if let Some(method) = method {
-            rule.method = method;
-        }
-
-        if let Some(asn) = asn {
-            rule.asn = asn;
-        }
-
-        if let Some(country_code) = country_code {
-            rule.country_code = country_code;
-        }
-
-        if let Some(org) = org {
-            rule.org = org;
-        }
+        update(&mut rule.action, action);
+        update(&mut rule.deny_action, deny_action);
+        update(&mut rule.terminate, terminate);
+        update(&mut rule.comment, comment);
+        update(&mut rule.expires, expires);
+        update(&mut rule.addr, addr);
+        update(&mut rule.cidr, cidr);
+        update(&mut rule.user_agent, user_agent);
+        update(&mut rule.host, host);
+        update(&mut rule.path, path);
+        update(&mut rule.method, method);
+        update(&mut rule.asn, asn);
+        update(&mut rule.org, org);
+        update(&mut rule.country_code, country_code);
 
         rule.updated_at = Some(chrono::Utc::now());
         rule.hash = Rule::calculate_hash(rule);

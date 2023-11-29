@@ -9,7 +9,9 @@ mod rules;
 mod types;
 use database as db;
 
-use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::{
+    get, middleware::Logger, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
+};
 use std::sync::Arc;
 use types::Repository;
 
@@ -39,93 +41,52 @@ async fn ring(req: HttpRequest, state: web::Data<State<'_>>) -> impl Responder {
 
     let headers = req.headers();
 
-    let xff = {
-        let mut iter = headers.get_all("x-forwarded-for");
-        match (iter.next(), iter.next()) {
-            (None, _) | (Some(_), Some(_)) => {
-                return HttpResponse::new(http::StatusCode::BAD_REQUEST);
-            }
-            (Some(value), None) => value,
-        }
+    use crate::types::{
+        USER_AGENT, X_FORWARDED_FOR, X_FORWARDED_HOST, X_FORWARDED_METHOD, X_FORWARDED_PROTO,
+        X_FORWARDED_URI,
     };
+    use actix_web::http::header::{HeaderMap, HeaderValue};
 
-    let forwarded_addr = {
-        let Ok(xff) = xff.to_str() else {
-            return HttpResponse::new(http::StatusCode::BAD_REQUEST);
-        };
-
-        let Some(forwarded) = state.trusted_proxies.get_forwarded_ip(xff) else {
-            return HttpResponse::new(http::StatusCode::BAD_REQUEST);
-        };
-
-        forwarded
-    };
-
-    let scheme = {
-        let mut iter = headers.get_all("x-forwarded-proto");
+    fn require_single_header(name: &str, headers: &HeaderMap) -> Option<String> {
+        let mut iter = headers.get_all(name);
         match (iter.next(), iter.next()) {
-            (None, _) | (Some(_), Some(_)) => {
-                return HttpResponse::new(http::StatusCode::BAD_REQUEST);
-            }
+            (None, _) | (Some(_), Some(_)) => None,
             (Some(value), None) => match value.to_str() {
-                Ok(s) => s.to_owned(),
-                Err(_) => {
-                    return HttpResponse::new(http::StatusCode::BAD_REQUEST);
-                }
+                Ok(s) => Some(s.to_owned()),
+                Err(_) => None,
             },
         }
+    }
+
+    let Some(xff) = require_single_header(X_FORWARDED_FOR, headers) else {
+        return HttpResponse::new(http::StatusCode::BAD_REQUEST);
     };
 
-    let host = {
-        let mut iter = headers.get_all("x-forwarded-host");
-        match (iter.next(), iter.next()) {
-            (None, _) | (Some(_), Some(_)) => {
-                return HttpResponse::new(http::StatusCode::BAD_REQUEST);
-            }
-            (Some(value), None) => match value.to_str() {
-                Ok(s) => s.to_owned(),
-                Err(_) => {
-                    return HttpResponse::new(http::StatusCode::BAD_REQUEST);
-                }
-            },
-        }
+    let Some(forwarded_addr) = state.trusted_proxies.get_forwarded_ip(&xff) else {
+        return HttpResponse::new(http::StatusCode::BAD_REQUEST);
     };
 
-    let uri = {
-        let mut iter = headers.get_all("x-forwarded-uri");
-        match (iter.next(), iter.next()) {
-            (None, _) | (Some(_), Some(_)) => {
-                return HttpResponse::new(http::StatusCode::BAD_REQUEST);
-            }
-            (Some(value), None) => match value.to_str() {
-                Ok(s) => s.to_owned(),
-                Err(_) => {
-                    return HttpResponse::new(http::StatusCode::BAD_REQUEST);
-                }
-            },
-        }
+    let Some(scheme) = require_single_header(X_FORWARDED_PROTO, headers) else {
+        return HttpResponse::new(http::StatusCode::BAD_REQUEST);
     };
 
-    let method = {
-        let mut iter = headers.get_all("x-forwarded-method");
-        match (iter.next(), iter.next()) {
-            (None, _) | (Some(_), Some(_)) => {
-                return HttpResponse::new(http::StatusCode::BAD_REQUEST);
-            }
-            (Some(value), None) => match value.to_str() {
-                Ok(s) => s.to_owned(),
-                Err(_) => {
-                    return HttpResponse::new(http::StatusCode::BAD_REQUEST);
-                }
-            },
-        }
+    let Some(host) = require_single_header(X_FORWARDED_METHOD, headers) else {
+        return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+    };
+
+    let Some(uri) = require_single_header(X_FORWARDED_URI, headers) else {
+        return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+    };
+
+    let Some(method) = require_single_header(X_FORWARDED_METHOD, headers) else {
+        return HttpResponse::new(http::StatusCode::BAD_REQUEST);
     };
 
     let Ok(method) = method.parse() else {
         return HttpResponse::new(http::StatusCode::BAD_REQUEST);
     };
 
-    let user_agent = match headers.get("user-agent") {
+    let user_agent = match headers.get(USER_AGENT) {
         Some(value) => match value.to_str() {
             Ok(s) => s.to_owned(),
             Err(_) => {
@@ -135,11 +96,11 @@ async fn ring(req: HttpRequest, state: web::Data<State<'_>>) -> impl Responder {
         None => String::from(""),
     };
 
-    let path = uri
-        .split_once('?')
-        .unwrap_or((uri.as_ref(), ""))
-        .0
-        .to_owned();
+    fn get_path(uri: &str) -> String {
+        uri.split_once('?').get_or_insert((uri, "")).0.to_owned()
+    }
+
+    let path = get_path(&uri);
 
     let req = types::ForwardedRequest {
         addr: forwarded_addr,
@@ -180,6 +141,8 @@ async fn ring(req: HttpRequest, state: web::Data<State<'_>>) -> impl Responder {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+
     let conf = config::Conf::new().unwrap();
     dbg!(&conf);
     let pool = db::connect(&conf.db).await;
@@ -197,6 +160,7 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
+            .wrap(Logger::default())
             .app_data(web::Data::new(State {
                 matcher: Default::default(),
                 config: conf.clone(),

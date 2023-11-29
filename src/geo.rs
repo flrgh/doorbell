@@ -1,10 +1,21 @@
 use serde::{Deserialize, Serialize};
 use sqlx::Type;
+use strum_macros::AsRefStr;
 use strum_macros::Display as EnumDisplay;
 use strum_macros::EnumString;
 
 #[derive(
-    Debug, PartialEq, Eq, Clone, Copy, EnumDisplay, EnumString, sqlx::Type, Serialize, Deserialize,
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    EnumDisplay,
+    EnumString,
+    sqlx::Type,
+    Serialize,
+    Deserialize,
+    AsRefStr,
 )]
 #[strum(serialize_all = "UPPERCASE")]
 #[sqlx(rename_all = "UPPERCASE")]
@@ -515,5 +526,12 @@ impl CountryCode {
             Self::ZM => "Zambia",
             Self::ZW => "Zimbabwe",
         }
+    }
+}
+
+impl AsRef<[u8]> for CountryCode {
+    fn as_ref(&self) -> &[u8] {
+        let s: &str = self.as_ref();
+        s.as_bytes()
     }
 }
