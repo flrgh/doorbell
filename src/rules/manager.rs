@@ -35,7 +35,7 @@ impl Manager {
         Ok(())
     }
 
-    async fn update_matcher(&mut self) -> anyhow::Result<()> {
+    pub async fn update_matcher(&mut self) -> anyhow::Result<()> {
         let rules = self.repo.get_all().await?;
 
         let version = self

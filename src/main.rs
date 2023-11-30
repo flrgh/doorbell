@@ -7,20 +7,23 @@ mod geo;
 mod net;
 mod rules;
 mod types;
+use actix_web::error;
 use database as db;
 
+use crate::rules::{Rule, RuleBuilder};
 use actix_web::{
-    get, middleware::Logger, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
+    get, middleware::Logger, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
 use std::sync::Arc;
 use std::sync::RwLock;
+use tokio::sync::Mutex;
 use types::Repository;
 
 struct State {
     rules: Arc<RwLock<rules::Collection>>,
     repo: Arc<rules::repo::Repository>,
     config: Arc<config::Conf>,
-    manager: Arc<rules::Manager>,
+    manager: Arc<Mutex<rules::Manager>>,
     trusted_proxies: Arc<net::TrustedProxies>,
 }
 
@@ -152,7 +155,7 @@ async fn ring(req: HttpRequest, state: web::Data<State>) -> impl Responder {
                     log::debug!("/ring => DENY");
                     if let Some(DenyAction::Tarpit) = rule.deny_action {
                         log::debug!("Tarpitting request");
-                        tokio::time::sleep(std::time::Duration::from_secs(30));
+                        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
                     }
 
                     http::StatusCode::FORBIDDEN
@@ -185,6 +188,43 @@ async fn list_rules(_: HttpRequest, state: web::Data<State>) -> impl Responder {
     HttpResponse::Ok().json(json)
 }
 
+#[post("/rules")]
+async fn create_rule(
+    web::Json(input): web::Json<RuleBuilder>,
+    state: web::Data<State>,
+) -> impl Responder {
+    let rule = match input.build() {
+        Ok(rule) => rule,
+        Err(e) => {
+            log::info!("{e}");
+
+            let json = serde_json::json!({
+                "error": e,
+            });
+
+            return HttpResponse::BadRequest().json(json);
+        }
+    };
+
+    match state.repo.insert(rule.clone()).await {
+        Ok(_) => {
+            log::debug!("Created a new rule: {:?}", &rule);
+            if let Err(e) = state.manager.lock().await.update_matcher().await {
+                log::error!("failed rebuilding matcher after rule creation: {}", e);
+            } else {
+                log::info!("rebuilt matcher");
+            }
+
+            let json = serde_json::json!(rule);
+            HttpResponse::Created().json(json)
+        }
+        Err(e) => {
+            dbg!(e);
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("debug"));
@@ -203,12 +243,39 @@ async fn main() -> std::io::Result<()> {
 
     let mut manager = rules::Manager::new(conf.clone(), repo.clone(), collection.clone());
     manager.init().await.expect("failed to initialize things");
-    let manager = Arc::new(manager);
+    let manager = Arc::new(Mutex::new(manager));
     let trusted_proxies = Arc::new(net::TrustedProxies::new(&conf.trusted_proxies));
 
+    {
+        let manager = manager.clone();
+        tokio::spawn(async move {
+            loop {
+                if let Err(e) = manager.lock().await.update_matcher().await {
+                    log::error!("error {}", e);
+                } else {
+                    log::info!("rebuilt matcher");
+                }
+
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            }
+        });
+    }
+
     HttpServer::new(move || {
+        let json_config = web::JsonConfig::default()
+            .limit(4096)
+            .error_handler(|err, _req| {
+                // create custom error response
+                let json = serde_json::json!({
+                    "error": err.to_string(),
+                });
+                error::InternalError::from_response(err, HttpResponse::BadRequest().json(json))
+                    .into()
+            });
+
         App::new()
             .wrap(Logger::default())
+            .app_data(json_config)
             .app_data(web::Data::new(State {
                 rules: collection.clone(),
                 config: conf.clone(),
@@ -219,6 +286,7 @@ async fn main() -> std::io::Result<()> {
             .service(index)
             .service(ring)
             .service(list_rules)
+            .service(create_rule)
     })
     .bind(listen)?
     .run()
