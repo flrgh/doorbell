@@ -33,11 +33,13 @@ async fn index(req: HttpRequest) -> impl Responder {
 #[get("/ring")]
 async fn ring(req: HttpRequest, state: web::Data<State>) -> impl Responder {
     let Some(addr) = req.peer_addr() else {
+        log::error!("failed to get peer IP address");
         return HttpResponse::new(http::StatusCode::INTERNAL_SERVER_ERROR);
     };
 
     let addr = addr.ip();
     if !state.trusted_proxies.is_trusted(&addr) {
+        log::info!("got a request from an untrusted proxy IP: {}", addr);
         return HttpResponse::new(http::StatusCode::FORBIDDEN);
     }
 
@@ -52,47 +54,58 @@ async fn ring(req: HttpRequest, state: web::Data<State>) -> impl Responder {
     fn require_single_header(name: &str, headers: &HeaderMap) -> Option<String> {
         let mut iter = headers.get_all(name);
         match (iter.next(), iter.next()) {
-            (None, _) | (Some(_), Some(_)) => None,
+            (None, _) => {
+                log::debug!("peer did not send a {} header", name);
+                None
+            }
+            (Some(_), Some(_)) => {
+                log::debug!("peer sent more than one {} header", name);
+                None
+            }
             (Some(value), None) => match value.to_str() {
                 Ok(s) => Some(s.to_owned()),
-                Err(_) => None,
+                Err(e) => {
+                    log::debug!("peer sent invalid {} header: {}", name, e);
+                    None
+                }
             },
         }
     }
 
     let Some(xff) = require_single_header(X_FORWARDED_FOR, headers) else {
-        return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+        return HttpResponse::BadRequest().finish();
     };
 
     let Some(forwarded_addr) = state.trusted_proxies.get_forwarded_ip(&xff) else {
-        return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+        return HttpResponse::BadRequest().finish();
     };
 
     let Some(scheme) = require_single_header(X_FORWARDED_PROTO, headers) else {
-        return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+        return HttpResponse::BadRequest().finish();
     };
 
     let Some(host) = require_single_header(X_FORWARDED_HOST, headers) else {
-        return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+        return HttpResponse::BadRequest().finish();
     };
 
     let Some(uri) = require_single_header(X_FORWARDED_URI, headers) else {
-        return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+        return HttpResponse::BadRequest().finish();
     };
 
     let Some(method) = require_single_header(X_FORWARDED_METHOD, headers) else {
-        return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+        return HttpResponse::BadRequest().finish();
     };
 
     let Ok(method) = method.parse() else {
-        return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+        return HttpResponse::BadRequest().finish();
     };
 
     let user_agent = match headers.get(USER_AGENT) {
         Some(value) => match value.to_str() {
             Ok(s) => s.to_owned(),
-            Err(_) => {
-                return HttpResponse::new(http::StatusCode::BAD_REQUEST);
+            Err(e) => {
+                log::debug!("peer sent invalid {} header", USER_AGENT);
+                return HttpResponse::BadRequest().finish();
             }
         },
         None => String::from(""),
@@ -117,26 +130,38 @@ async fn ring(req: HttpRequest, state: web::Data<State>) -> impl Responder {
         timestamp: chrono::Utc::now(),
     };
 
-    dbg!(&req);
-
-    //dbg!(&state.rules);
-
     let status = {
-        match state.rules.read().unwrap().get_match(&req) {
-            Some(rule) => {
-                use crate::rules::{Action, DenyAction};
-                match rule.action {
-                    Action::Allow => http::StatusCode::OK,
-                    Action::Deny => {
-                        if let Some(DenyAction::Tarpit) = rule.deny_action {
-                            tokio::time::sleep(std::time::Duration::from_secs(30));
-                        }
+        let matched = match state.rules.read() {
+            Ok(rules) => rules.get_match(&req).cloned(),
+            Err(e) => {
+                log::error!("{}", e);
+                return HttpResponse::InternalServerError().finish();
+            }
+        };
 
-                        http::StatusCode::FORBIDDEN
+        if let Some(rule) = matched {
+            use crate::rules::{Action, DenyAction};
+            log::trace!("request {:?} matched rule {:?}", req, rule);
+
+            match rule.action {
+                Action::Allow => {
+                    log::debug!("/ring => ALLOW");
+                    http::StatusCode::OK
+                }
+                Action::Deny => {
+                    log::debug!("/ring => DENY");
+                    if let Some(DenyAction::Tarpit) = rule.deny_action {
+                        log::debug!("Tarpitting request");
+                        tokio::time::sleep(std::time::Duration::from_secs(30));
                     }
+
+                    http::StatusCode::FORBIDDEN
                 }
             }
-            None => http::StatusCode::UNAUTHORIZED,
+        } else {
+            log::trace!("request {:?} did not match any rule", req);
+            log::debug!("/ring => UNKNOWN");
+            http::StatusCode::UNAUTHORIZED
         }
     };
 
@@ -162,7 +187,7 @@ async fn list_rules(_: HttpRequest, state: web::Data<State>) -> impl Responder {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("debug"));
 
     let conf = config::Conf::new().unwrap();
     dbg!(&conf);
