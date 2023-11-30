@@ -3,6 +3,7 @@ use crate::types;
 use crate::types::Repository as RepoTrait;
 use anyhow;
 use async_trait::async_trait;
+use chrono::NaiveDateTime;
 use sqlx::Type;
 use sqlx::{prelude::*, Acquire, Connection, SqliteConnection, SqlitePool};
 use std::sync::Arc;
@@ -26,12 +27,12 @@ struct RuleRow {
     action: String,
     deny_action: Option<String>,
     hash: String,
-    created_at: chrono::NaiveDateTime,
-    updated_at: Option<chrono::NaiveDateTime>,
+    created_at: NaiveDateTime,
+    updated_at: Option<NaiveDateTime>,
     terminate: Option<bool>,
     comment: Option<String>,
     source: String,
-    expires: Option<chrono::NaiveDateTime>,
+    expires: Option<NaiveDateTime>,
 
     addr: Option<String>,
     cidr: Option<String>,
@@ -48,18 +49,20 @@ impl TryInto<Rule> for RuleRow {
     type Error = anyhow::Error;
 
     fn try_into(self) -> Result<Rule, Self::Error> {
-        Ok(Rule {
+        fn parse<T>(v: Option<String>) -> Result<Option<T>, <T as std::str::FromStr>::Err>
+        where
+            T: std::str::FromStr,
+        {
+            match v {
+                None => Ok(None),
+                Some(s) => Ok(Some(s.parse()?)),
+            }
+        }
+
+        let rule = Rule {
             id: self.id.parse()?,
             action: self.action.parse()?,
-            deny_action: match self.deny_action {
-                None => None,
-                Some(da) => match da.parse() {
-                    Ok(da) => Some(da),
-                    Err(e) => {
-                        return Err(anyhow::anyhow!(e));
-                    }
-                },
-            },
+            deny_action: parse(self.deny_action)?,
             hash: self.hash,
             created_at: self.created_at.and_utc(),
             updated_at: self.updated_at.map(|t| t.and_utc()),
@@ -67,43 +70,23 @@ impl TryInto<Rule> for RuleRow {
             comment: self.comment,
             source: self.source.parse()?,
             expires: self.expires.map(|expires| expires.and_utc()),
-            addr: match self.addr {
-                Some(addr) => Some(addr.parse()?),
-                None => None,
-            },
-            cidr: match self.cidr {
-                Some(cidr) => Some(cidr.parse()?),
-                None => None,
-            },
-            user_agent: match self.user_agent {
-                Some(user_agent) => Some(user_agent.parse()?),
-                None => None,
-            },
-            host: match self.host {
-                Some(host) => Some(host.parse()?),
-                None => None,
-            },
-            path: match self.path {
-                Some(path) => Some(path.parse()?),
-                None => None,
-            },
-            country_code: match self.country_code {
-                Some(country_code) => Some(country_code.parse()?),
-                None => None,
-            },
-            method: match self.method {
-                Some(method) => Some(method.parse()?),
-                None => None,
-            },
-            asn: match self.asn {
-                Some(asn) => Some(asn.parse()?),
-                None => None,
-            },
-            org: match self.org {
-                Some(org) => Some(org.parse()?),
-                None => None,
-            },
-        })
+            addr: parse(self.addr)?,
+            cidr: parse(self.cidr)?,
+            user_agent: parse(self.user_agent)?,
+            host: parse(self.host)?,
+            path: parse(self.path)?,
+            country_code: parse(self.country_code)?,
+            method: parse(self.method)?,
+            asn: parse(self.asn)?,
+            org: parse(self.org)?,
+        };
+
+        anyhow::ensure!(
+            rule.hash == Rule::calculate_hash(&rule),
+            "rule's database hash doesn't match the calculated one"
+        );
+
+        Ok(rule)
     }
 }
 

@@ -26,8 +26,17 @@ impl TrustedProxies {
         for elem in xff.rsplit(',') {
             let elem = elem.trim();
 
-            let Ok(addr) = elem.parse::<IpAddr>() else {
-                return None;
+            let addr = match elem.parse::<IpAddr>() {
+                Ok(addr) => addr,
+                Err(e) => {
+                    log::info!(
+                        "failed to parse X-Forwarded-For '{}' segment '{}': {}",
+                        xff,
+                        elem,
+                        e
+                    );
+                    return None;
+                }
             };
 
             if let Some(last_addr) = last {
