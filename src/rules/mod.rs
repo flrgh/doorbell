@@ -17,138 +17,47 @@ use anyhow::{anyhow, Context, Result};
 use sqlx::sqlite::SqliteColumn;
 use sqlx::Column;
 
+pub mod action;
 pub mod collection;
 pub mod condition;
 pub mod manager;
 pub mod repo;
+pub mod source;
 
+pub use action::*;
 pub use cidr_utils::cidr::IpCidr;
 pub use collection::*;
 pub use manager::Manager;
-
-#[derive(
-    PartialEq,
-    Eq,
-    Clone,
-    Debug,
-    PartialOrd,
-    Ord,
-    EnumDisplay,
-    EnumString,
-    Type,
-    Default,
-    EnumIs,
-    Deserialize,
-    Serialize,
-)]
-#[strum(serialize_all = "lowercase")]
-#[sqlx(rename_all = "lowercase")]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum Action {
-    #[default]
-    Deny,
-    Allow,
-}
-
-#[derive(
-    PartialEq,
-    Eq,
-    Clone,
-    Debug,
-    Default,
-    EnumDisplay,
-    EnumString,
-    Type,
-    EnumIs,
-    Deserialize,
-    Serialize,
-)]
-#[strum(serialize_all = "lowercase")]
-#[sqlx(rename_all = "lowercase")]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum DenyAction {
-    #[default]
-    Exit,
-    Tarpit,
-}
-
-#[derive(
-    PartialEq,
-    Eq,
-    Clone,
-    Debug,
-    PartialOrd,
-    Ord,
-    EnumDisplay,
-    EnumString,
-    Type,
-    Default,
-    EnumIs,
-    Deserialize,
-    Serialize,
-)]
-#[strum(serialize_all = "lowercase")]
-#[sqlx(rename_all = "lowercase")]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum Source {
-    #[default]
-    Api,
-    User,
-    Config,
-    Ota,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) struct Uuid {
-    inner: uuid::Uuid,
-}
-
-impl std::ops::Deref for Uuid {
-    type Target = uuid::Uuid;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl TryFrom<&str> for Uuid {
-    type Error = uuid::Error;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Ok(Self {
-            inner: uuid::Uuid::try_parse(value)?,
-        })
-    }
-}
-
-/*
-  1. private, set/get all fields indiscriminantly
-  2. crate, set/get:
-    * conditions
-    * action
-    * deny_action
-    * terminate
-    * id????
-    * source
-    * expires
-  3. end-user API, similar to crate
-*/
+pub use source::*;
 
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Eq, PartialEq, Type, Clone, Default, Builder, Serialize)]
-#[builder(build_fn(skip, validate = "Self::validate"))]
+#[builder(
+    build_fn(skip, validate = "Self::validate"),
+    derive(serde::Deserialize, Debug)
+)]
+#[builder_struct_attr(serde(deny_unknown_fields))]
 pub struct Rule {
     #[builder(setter(skip))]
+    #[builder_field_attr(serde(skip))]
     pub id: uuid::Uuid,
+
     pub action: Action,
     pub deny_action: Option<DenyAction>,
-    #[builder(setter(skip))]
-    pub hash: String,
-    #[builder(setter(skip))]
-    pub created_at: DateTime<Utc>,
-    #[builder(setter(skip))]
-    pub updated_at: Option<DateTime<Utc>>,
     pub terminate: bool,
+
+    #[builder(setter(skip))]
+    #[builder_field_attr(serde(skip))]
+    pub hash: String,
+
+    #[builder(setter(skip))]
+    #[builder_field_attr(serde(skip))]
+    pub created_at: DateTime<Utc>,
+
+    #[builder(setter(skip))]
+    #[builder_field_attr(serde(skip))]
+    pub updated_at: Option<DateTime<Utc>>,
+
     pub comment: Option<String>,
     pub source: Source,
     pub expires: Option<DateTime<Utc>>,
