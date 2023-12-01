@@ -20,6 +20,7 @@ derive_builder = "0.12.0"
 env_logger = "0.10.1"
 http = "0.2"
 log = "0.4"
+maxminddb = "0.23.0"
 md5 = "0.7.0"
 regex = "1"
 serde = { version = "1", features = ["derive", "serde_derive"] }

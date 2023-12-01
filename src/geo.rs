@@ -1,3 +1,5 @@
+use maxminddb::{MaxMindDBError, geoip2};
+
 #[derive(
     Debug,
     PartialEq,
@@ -527,5 +529,39 @@ impl AsRef<[u8]> for CountryCode {
     fn as_ref(&self) -> &[u8] {
         let s: &str = self.as_ref();
         s.as_bytes()
+    }
+}
+
+pub struct GeoIp {
+    path: std::path::PathBuf,
+    reader: maxminddb::Reader<Vec<u8>>,
+}
+
+impl GeoIp {
+    pub fn new(path: &std::path::Path) -> Result<Self, MaxMindDBError> {
+        let reader = maxminddb::Reader::open_readfile(path)?;
+        let path = path.to_path_buf();
+        Ok(Self { path, reader })
+    }
+
+    pub fn reopen(&mut self) -> Result<(), MaxMindDBError> {
+        self.reader = maxminddb::Reader::open_readfile(&self.path)?;
+        Ok(())
+    }
+
+    pub fn lookup_country_code(&self, addr: std::net::IpAddr) -> Result<Option<CountryCode>, MaxMindDBError> {
+        let data: geoip2::Country = self.reader.lookup(addr)?;
+        let Some(country) = data.country else {
+            return Ok(None);
+        };
+
+        let Some(code) = country.iso_code else {
+            return Ok(None);
+        };
+
+        match CountryCode::try_from(code) {
+            Ok(cc) => Ok(Some(cc)),
+            Err(_) => Ok(None),
+        }
     }
 }
