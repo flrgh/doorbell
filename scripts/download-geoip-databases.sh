@@ -12,6 +12,22 @@ readonly BASE_URL=https://download.maxmind.com/app/geoip_download
 readonly NO_DOWNLOAD=${NO_DOWNLOAD:-0}
 readonly NO_UNPACK=${NO_UNPACK:-0}
 
+if [[ -z ${MAXMIND_LICENSE_KEY:-} ]]; then
+    echo "MAXMIND_LICENSE_KEY env var is not set."
+    echo "Please enter your license key now:"
+    read \
+        -p "> " \
+        -r \
+        -s \
+        -t 30 \
+        MAXMIND_LICENSE_KEY
+
+    if [[ -z ${MAXMIND_LICENSE_KEY:-} ]]; then
+        echo "Fatal: still missing the license key"
+        exit 1
+    fi
+fi
+
 mkdir -p "$DOWNLOAD"
 
 if (( NO_DOWNLOAD == 0 )); then
