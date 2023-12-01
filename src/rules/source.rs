@@ -16,7 +16,7 @@
 #[strum(serialize_all = "lowercase")]
 #[sqlx(rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum Source {
+pub enum Source {
     #[default]
     Api,
     User,

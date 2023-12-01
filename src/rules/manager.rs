@@ -1,6 +1,6 @@
 use crate::config::Conf;
 use crate::rules::repo::Repository;
-use crate::rules::{Collection, Rule, Source};
+use crate::rules::{Collection, Source};
 use crate::types::Repository as RepoTrait;
 use std::sync::{Arc, RwLock};
 

@@ -1,21 +1,15 @@
 use chrono::prelude::*;
 use derive_builder::Builder;
-use serde_derive::{Deserialize, Serialize};
-use sqlx::sqlite::SqliteRow;
+use serde_derive::Serialize;
 use sqlx::Row;
 use sqlx::Type;
 use std::cmp::Ordering;
 use std::net::IpAddr;
-use strum_macros::Display as EnumDisplay;
-use strum_macros::EnumIs;
-use strum_macros::EnumString;
 
 use self::condition::*;
 use crate::geo::*;
-use crate::types::*;
-use anyhow::{anyhow, Context, Result};
-use sqlx::sqlite::SqliteColumn;
-use sqlx::Column;
+use crate::types::Pattern;
+use anyhow::{anyhow, Result};
 
 pub mod action;
 pub mod collection;
@@ -27,7 +21,8 @@ pub mod source;
 pub use action::*;
 pub use cidr_utils::cidr::IpCidr;
 pub use collection::*;
-pub use manager::Manager;
+pub use manager::*;
+pub use repo::*;
 pub use source::*;
 
 #[serde_with::skip_serializing_none]
@@ -306,7 +301,7 @@ impl RuleBuilder {
     }
 }
 
-impl Update for Rule {
+impl crate::types::Update for Rule {
     type Updates = RuleUpdates;
 
     fn update(&mut self, updates: Self::Updates) {
@@ -484,7 +479,7 @@ impl Ord for Rule {
     }
 }
 
-impl PrimaryKey for Rule {
+impl crate::types::PrimaryKey for Rule {
     type Key = uuid::Uuid;
 
     fn primary_key(&self) -> Self::Key {
@@ -496,7 +491,7 @@ impl PrimaryKey for Rule {
     }
 }
 
-impl Validate for Rule {
+impl crate::types::Validate for Rule {
     type Err = anyhow::Error;
 
     fn validate(&self) -> std::result::Result<(), Self::Err> {
@@ -521,7 +516,7 @@ impl Validate for Rule {
     }
 }
 
-impl Entity for Rule {
+impl crate::types::Entity for Rule {
     fn table_name() -> &'static str {
         "rules"
     }

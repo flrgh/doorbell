@@ -4,12 +4,8 @@ use crate::types::Repository as RepoTrait;
 use anyhow;
 use async_trait::async_trait;
 use chrono::NaiveDateTime;
-use sqlx::Type;
-use sqlx::{prelude::*, Acquire, Connection, SqliteConnection, SqlitePool};
+use sqlx::SqlitePool;
 use std::sync::Arc;
-use tokio;
-
-use super::DenyAction;
 
 pub struct Repository {
     pool: Arc<SqlitePool>,

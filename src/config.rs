@@ -2,7 +2,6 @@ use crate::rules::condition::*;
 use crate::rules::{Action, DenyAction, IpCidr, Rule, RuleBuilder, Source};
 use config::{Config, ConfigError, Environment, File};
 use serde_derive::Deserialize;
-use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 

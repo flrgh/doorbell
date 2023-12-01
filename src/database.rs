@@ -1,36 +1,29 @@
-use actix_web::{error, web, Error};
-use anyhow::Result;
-use std::sync::Arc;
-
-use crate::rules::repo::Repository as RulesRepository;
-use crate::rules::Rule;
-use crate::types::Repository;
-use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
-use sqlx::{prelude::*, Acquire, Connection, SqliteConnection, SqlitePool};
-use std::{thread::sleep, time::Duration};
+use sqlx::{prelude::*, SqliteConnection, SqlitePool};
 
 const INIT_METADATA: &str = include_str!("migrations/_metadata.sql");
 const MIGRATIONS: &[&str] = &[include_str!("migrations/0000_init.sql")];
 
-async fn get_meta<T>(conn: &mut SqliteConnection, key: &str) -> Option<T>
+async fn get_meta<T>(conn: &mut SqliteConnection, key: &str) -> anyhow::Result<Option<T>>
 where
     T: std::str::FromStr,
+    <T as std::str::FromStr>::Err: Into<anyhow::Error>,
 {
     let res = conn
         .fetch_one(sqlx::query("SELECT value FROM meta WHERE key = ?").bind(key))
-        .await
-        .unwrap();
+        .await?;
 
     let elem: Option<&str> = res.get("value");
     if let Some(value) = elem {
-        T::from_str(value).ok()
+        match T::from_str(value) {
+            Ok(s) => Ok(Some(s)),
+            Err(e) => Err(anyhow::anyhow!(e.into())),
+        }
     } else {
-        None
+        Ok(None)
     }
 }
 
-async fn set_meta<T>(conn: &mut SqliteConnection, key: &str, value: T)
+async fn set_meta<T>(conn: &mut SqliteConnection, key: &str, value: T) -> Result<(), sqlx::Error>
 where
     T: std::string::ToString + Send + Sync,
 {
@@ -43,40 +36,36 @@ where
         .bind(value.to_string()),
     )
     .await
-    .unwrap();
+    .map(|_| ())
 }
 
-async fn init(db: &std::path::Path) -> SqlitePool {
+async fn init(db: &std::path::Path) -> Result<SqlitePool, anyhow::Error> {
     let mut conn = sqlx::sqlite::SqliteConnectOptions::new()
         .filename(db)
         .create_if_missing(true)
         .connect()
-        .await
-        .unwrap();
+        .await?;
 
     dbg!(&conn);
-    //conn.begin().await.unwrap();
 
-    conn.execute(INIT_METADATA).await.unwrap();
+    conn.execute(INIT_METADATA).await?;
 
-    let version: usize = get_meta(&mut conn, "db_version").await.unwrap_or(0);
+    let version: usize = get_meta(&mut conn, "db_version").await?.unwrap_or(0);
     assert!(version <= MIGRATIONS.len());
 
     for (i, m) in MIGRATIONS.iter().skip(version).enumerate() {
         eprintln!("Running migration {i}");
         sqlx::query(m).execute(&mut conn).await.unwrap();
-        set_meta(&mut conn, "db_version", i + 1);
+        set_meta(&mut conn, "db_version", i + 1).await?;
     }
 
     sqlx::sqlite::SqlitePoolOptions::new()
         .connect(db.to_str().unwrap())
         .await
-        .unwrap()
+        .map_err(|e| anyhow::anyhow!(e))
 }
 
-pub(crate) async fn connect(db: &std::path::Path) -> SqlitePool {
-    let pool = init(db).await;
-
-    dbg!(&pool);
-    pool
+pub async fn connect(db: &std::path::Path) -> Result<SqlitePool, anyhow::Error> {
+    let pool = init(db).await?;
+    Ok(pool)
 }
