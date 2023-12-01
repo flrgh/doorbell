@@ -8,17 +8,12 @@ mod routes;
 mod rules;
 mod types;
 
-use actix_web::{error, get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{error, middleware::Logger, web, App, HttpResponse, HttpServer};
 use std::io::{Error as IoError, ErrorKind};
 use std::sync::Arc;
 use std::sync::RwLock;
 use tokio::sync::Mutex;
 use types::Repository as RepoTrait;
-
-#[get("/")]
-async fn index() -> impl Responder {
-    HttpResponse::MethodNotAllowed().body("Go away!")
-}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -103,7 +98,7 @@ async fn main() -> std::io::Result<()> {
                 trusted_proxies: trusted_proxies.clone(),
                 repo: repo.clone(),
             }))
-            .service(index)
+            .service(routes::root::handler)
             .service(routes::ring::handler)
             .service(routes::rules::list)
             .service(routes::rules::create)
