@@ -1,21 +1,15 @@
-use serde::{Deserialize, Serialize};
-use sqlx::Type;
-use strum_macros::AsRefStr;
-use strum_macros::Display as EnumDisplay;
-use strum_macros::EnumString;
-
 #[derive(
     Debug,
     PartialEq,
     Eq,
     Clone,
     Copy,
-    EnumDisplay,
-    EnumString,
+    serde_derive::Deserialize,
+    serde_derive::Serialize,
     sqlx::Type,
-    Serialize,
-    Deserialize,
-    AsRefStr,
+    strum_macros::AsRefStr,
+    strum_macros::Display,
+    strum_macros::EnumString,
 )]
 #[strum(serialize_all = "UPPERCASE")]
 #[sqlx(rename_all = "UPPERCASE")]

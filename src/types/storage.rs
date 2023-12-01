@@ -1,9 +1,4 @@
 use async_trait::async_trait;
-use serde_derive::{Deserialize, Serialize};
-use sqlx::Type;
-use std::cmp::Ordering;
-use std::fmt::Display;
-use std::net::IpAddr;
 
 pub trait PrimaryKey {
     type Key;

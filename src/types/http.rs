@@ -1,18 +1,7 @@
 use crate::geo::CountryCode;
-use chrono::prelude::*;
-use chrono::{DateTime, Utc};
-use regex::Regex;
-use serde::{Deserialize, Serialize};
-use sqlx::sqlite::SqliteRow;
-use sqlx::FromRow;
-use sqlx::Row;
-use sqlx::Type;
-use std::cmp::Ordering;
-use std::fmt::Display;
+use chrono::DateTime;
+use chrono::Utc;
 use std::net::IpAddr;
-use strum_macros::Display as EnumDisplay;
-use strum_macros::EnumIs;
-use strum_macros::EnumString;
 
 // XXX: should I use actix_web::http::header::HeaderName::from_static()?
 pub const X_FORWARDED_FOR: &str = "X-Forwarded-For";
@@ -34,21 +23,22 @@ pub struct ForwardedRequest {
     pub asn: Option<u32>,
     pub org: Option<String>,
     pub timestamp: DateTime<Utc>,
+    pub scheme: String,
 }
 
 #[derive(
     Clone,
-    PartialOrd,
-    Ord,
-    EnumDisplay,
-    EnumString,
-    Type,
-    EnumIs,
-    Serialize,
-    Deserialize,
     Debug,
     Eq,
+    Ord,
     PartialEq,
+    PartialOrd,
+    strum_macros::Display,
+    strum_macros::EnumString,
+    strum_macros::EnumIs,
+    sqlx::Type,
+    serde_derive::Deserialize,
+    serde_derive::Serialize,
 )]
 #[strum(serialize_all = "UPPERCASE")]
 #[sqlx(rename_all = "UPPERCASE")]

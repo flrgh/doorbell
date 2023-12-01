@@ -1,24 +1,21 @@
-use chrono::{DateTime, Utc};
 use regex::Regex;
-use serde_derive::{Deserialize, Serialize};
-use sqlx::Type;
 use std::cmp::Ordering;
-use std::fmt::Display;
-use std::net::IpAddr;
 use std::str::FromStr;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, serde_derive::Deserialize, serde_derive::Serialize)]
 #[serde(untagged, try_from = "String", into = "String")]
 pub enum Pattern {
     Plain(String),
     Regex(Regex),
 }
 
-fn serialize_regex<S>(regex: &Regex, s: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    todo!()
+impl Pattern {
+    pub fn matches(&self, s: &str) -> bool {
+        match self {
+            Pattern::Plain(p) => s == p,
+            Pattern::Regex(r) => r.is_match(s),
+        }
+    }
 }
 
 impl Eq for Pattern {}
@@ -62,15 +59,6 @@ impl PartialOrd for Pattern {
             }
         } else {
             None
-        }
-    }
-}
-
-impl Pattern {
-    pub fn matches(&self, s: &str) -> bool {
-        match self {
-            Pattern::Plain(p) => s == p,
-            Pattern::Regex(r) => r.is_match(s),
         }
     }
 }
