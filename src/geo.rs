@@ -1,4 +1,7 @@
-use maxminddb::{MaxMindDBError, geoip2};
+use maxminddb::{geoip2::country::Country, geoip2::Asn, geoip2::City, MaxMindDBError};
+use std::fmt::Debug;
+use std::net::IpAddr;
+use std::path::{Path, PathBuf};
 
 #[derive(
     Debug,
@@ -532,13 +535,19 @@ impl AsRef<[u8]> for CountryCode {
     }
 }
 
-pub struct GeoIp {
-    path: std::path::PathBuf,
+struct GeoIpDb {
+    path: PathBuf,
     reader: maxminddb::Reader<Vec<u8>>,
 }
 
-impl GeoIp {
-    pub fn new(path: &std::path::Path) -> Result<Self, MaxMindDBError> {
+impl std::fmt::Debug for GeoIpDb {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "GeoIP2/GeoLite2 database at: {}", self.path.display())
+    }
+}
+
+impl GeoIpDb {
+    pub fn new(path: &Path) -> Result<Self, MaxMindDBError> {
         let reader = maxminddb::Reader::open_readfile(path)?;
         let path = path.to_path_buf();
         Ok(Self { path, reader })
@@ -549,9 +558,88 @@ impl GeoIp {
         Ok(())
     }
 
-    pub fn lookup_country_code(&self, addr: std::net::IpAddr) -> Result<Option<CountryCode>, MaxMindDBError> {
-        let data: geoip2::Country = self.reader.lookup(addr)?;
-        let Some(country) = data.country else {
+    pub fn lookup<'de, T>(&'de self, addr: IpAddr) -> Result<Option<T>, MaxMindDBError>
+    where
+        T: serde::Deserialize<'de>,
+    {
+        match self.reader.lookup::<T>(addr) {
+            Ok(t) => Ok(Some(t)),
+            Err(MaxMindDBError::AddressNotFoundError(_)) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+pub struct GeoIp {
+    asn: Option<GeoIpDb>,
+    country: Option<GeoIpDb>,
+    city: Option<GeoIpDb>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
+pub struct NetInfo {
+    pub asn: Option<u32>,
+    pub org: Option<String>,
+}
+
+// TODO: LRU cache for geoip lookups
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+enum CacheKey {
+    Country(IpAddr),
+    City(IpAddr),
+    Asn(IpAddr),
+}
+
+trait PrivateIpAddr {
+    fn is_private(&self) -> bool;
+}
+
+impl PrivateIpAddr for IpAddr {
+    fn is_private(&self) -> bool {
+        match self {
+            IpAddr::V4(addr) => addr.is_private(),
+            IpAddr::V6(_) => false,
+        }
+    }
+}
+
+impl GeoIp {
+    pub fn new(asn: &Path, city: &Path, country: &Path) -> Result<Self, MaxMindDBError> {
+        Ok(Self {
+            asn: Some(GeoIpDb::new(asn)?),
+            country: Some(GeoIpDb::new(country)?),
+            city: Some(GeoIpDb::new(city)?),
+        })
+    }
+
+    pub fn try_from_config(config: &crate::config::Conf) -> Result<Self, MaxMindDBError> {
+        let asn = match &config.geoip_asn_db {
+            Some(path) => Some(GeoIpDb::new(path.as_path())?),
+            None => None,
+        };
+        let country = match &config.geoip_country_db {
+            Some(path) => Some(GeoIpDb::new(path.as_path())?),
+            None => None,
+        };
+        let city = match &config.geoip_city_db {
+            Some(path) => Some(GeoIpDb::new(path.as_path())?),
+            None => None,
+        };
+        Ok(Self { asn, country, city })
+    }
+
+    pub fn country_code(&self, addr: &IpAddr) -> Result<Option<CountryCode>, MaxMindDBError> {
+        if addr.is_loopback() || addr.is_private() {
+            return Ok(None);
+        }
+
+        let Some(db) = &self.country else {
+            return Ok(None);
+        };
+
+        let mut data: Option<Country> = db.lookup(addr.to_owned())?;
+        dbg!(&data);
+        let Some(country) = data.take() else {
             return Ok(None);
         };
 
@@ -563,5 +651,26 @@ impl GeoIp {
             Ok(cc) => Ok(Some(cc)),
             Err(_) => Ok(None),
         }
+    }
+
+    pub fn net_info(&self, addr: &IpAddr) -> Result<Option<NetInfo>, MaxMindDBError> {
+        if addr.is_loopback() || addr.is_private() {
+            return Ok(None);
+        }
+
+        let Some(ref db) = self.asn else {
+            return Ok(None);
+        };
+
+        let data: Option<Asn> = db.lookup(addr.to_owned())?;
+        dbg!(&data);
+        let Some(data) = data else {
+            return Ok(None);
+        };
+
+        Ok(Some(NetInfo {
+            asn: data.autonomous_system_number,
+            org: data.autonomous_system_organization.map(String::from),
+        }))
     }
 }

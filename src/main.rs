@@ -32,6 +32,14 @@ async fn main() -> std::io::Result<()> {
 
     let listen = conf.listen;
 
+    let geoip = match geo::GeoIp::try_from_config(&conf) {
+        Ok(geoip) => Arc::new(geoip),
+        Err(e) => {
+            log::error!("{}", e);
+            return Err(IoError::new(ErrorKind::Other, e));
+        }
+    };
+
     let pool = match database::connect(&conf.db).await {
         Ok(pool) => Arc::new(pool),
         Err(e) => {
@@ -97,6 +105,7 @@ async fn main() -> std::io::Result<()> {
                 manager: manager.clone(),
                 trusted_proxies: trusted_proxies.clone(),
                 repo: repo.clone(),
+                geoip: geoip.clone(),
             }))
             .service(routes::root::handler)
             .service(routes::ring::handler)

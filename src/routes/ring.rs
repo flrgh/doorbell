@@ -9,19 +9,6 @@ use crate::types::{
 
 #[get("/ring")]
 pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responder {
-    let Some(addr) = req.peer_addr() else {
-        log::error!("failed to get peer IP address");
-        return HttpResponse::new(http::StatusCode::INTERNAL_SERVER_ERROR);
-    };
-
-    let addr = addr.ip();
-    if !state.trusted_proxies.is_trusted(&addr) {
-        log::info!("got a request from an untrusted proxy IP: {}", addr);
-        return HttpResponse::new(http::StatusCode::FORBIDDEN);
-    }
-
-    let headers = req.headers();
-
     fn require_single_header(name: &str, headers: &HeaderMap) -> Option<String> {
         let mut iter = headers.get_all(name);
         match (iter.next(), iter.next()) {
@@ -43,12 +30,29 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
         }
     }
 
-    let Some(xff) = require_single_header(X_FORWARDED_FOR, headers) else {
-        return HttpResponse::BadRequest().finish();
-    };
+    let headers = req.headers();
 
-    let Some(forwarded_addr) = state.trusted_proxies.get_forwarded_ip(&xff) else {
-        return HttpResponse::BadRequest().finish();
+    let addr = {
+        let Some(addr) = req.peer_addr() else {
+            log::error!("failed to get peer IP address");
+            return HttpResponse::new(http::StatusCode::INTERNAL_SERVER_ERROR);
+        };
+
+        let addr = addr.ip();
+        if !state.trusted_proxies.is_trusted(&addr) {
+            log::info!("got a request from an untrusted proxy IP: {}", addr);
+            return HttpResponse::new(http::StatusCode::FORBIDDEN);
+        }
+
+        let Some(xff) = require_single_header(X_FORWARDED_FOR, headers) else {
+            return HttpResponse::BadRequest().finish();
+        };
+
+        let Some(forwarded_addr) = state.trusted_proxies.get_forwarded_ip(&xff) else {
+            return HttpResponse::BadRequest().finish();
+        };
+
+        forwarded_addr
     };
 
     let Some(scheme) = require_single_header(X_FORWARDED_PROTO, headers) else {
@@ -88,19 +92,40 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
 
     let path = get_path(&uri);
 
+    let country_code = match state.geoip.country_code(&addr) {
+        Ok(result) => result,
+        Err(e) => {
+            log::error!("failed to lookup country code: {}", e);
+            return HttpResponse::new(http::StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    let (asn, org) = {
+        match state.geoip.net_info(&addr) {
+            Ok(Some(info)) => (info.asn, info.org),
+            Ok(None) => (None, None),
+            Err(e) => {
+                log::error!("failed to lookup ASN data: {}", e);
+                return HttpResponse::new(http::StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
+    };
+
     let req = ForwardedRequest {
-        addr: forwarded_addr,
+        addr,
         user_agent,
         host,
         method,
         uri,
         path,
-        country_code: None,
-        asn: None,
-        org: None,
+        country_code,
+        asn,
+        org,
         scheme,
         timestamp: chrono::Utc::now(),
     };
+
+    dbg!(&req);
 
     let status = {
         let matched = match state.rules.read() {
