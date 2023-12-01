@@ -62,7 +62,7 @@ pub struct Rule {
     pub host: Option<Pattern>,
     pub path: Option<Pattern>,
     pub country_code: Option<CountryCode>,
-    pub method: Option<HttpMethod>,
+    pub method: Option<Method>,
     pub asn: Option<u32>,
     pub org: Option<Pattern>,
 }
@@ -127,7 +127,7 @@ impl ConditionHash for Pattern {
     }
 }
 
-impl ConditionHash for HttpMethod {
+impl ConditionHash for Method {
     fn hash(&self, ctx: &mut md5::Context) {
         ctx.consume(self.as_ref());
     }
@@ -323,7 +323,7 @@ pub struct RuleUpdates {
     pub host: Option<Option<Pattern>>,
     pub path: Option<Option<Pattern>>,
     pub country_code: Option<Option<CountryCode>>,
-    pub method: Option<Option<HttpMethod>>,
+    pub method: Option<Option<Method>>,
     pub asn: Option<Option<u32>>,
     pub org: Option<Option<Pattern>>,
 }
