@@ -35,7 +35,7 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    let listen = conf.listen.clone();
+    let listen = conf.listen;
 
     let pool = match database::connect(&conf.db).await {
         Ok(pool) => Arc::new(pool),

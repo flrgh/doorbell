@@ -232,10 +232,10 @@ impl RuleBuilder {
             method,
             asn,
             org,
-            id,
-            hash,
-            created_at,
-            updated_at,
+            id: _,
+            hash: _,
+            created_at: _,
+            updated_at: _,
         } = self.clone();
 
         fn get<T>(t: Option<T>, name: &str) -> Result<T, String> {
@@ -333,7 +333,7 @@ impl RuleUpdates {
         let RuleUpdates {
             action,
             deny_action,
-            updated_at,
+            updated_at: _,
             terminate,
             comment,
             expires,
