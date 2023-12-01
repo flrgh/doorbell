@@ -192,7 +192,7 @@ impl Repository {
         .bind(item.org)
         .execute(self.pool.as_ref())
         .await
-        .map(|r| ())
+        .map(|_| ())
         .map_err(|e| anyhow::anyhow!(e))
     }
 }
@@ -268,7 +268,7 @@ impl RepoTrait<Rule> for Repository {
         sqlx::query("DELETE FROM rules")
             .execute(self.pool.as_ref())
             .await
-            .map(|r| ())
+            .map(|_| ())
             .map_err(|e| anyhow::anyhow!(e))
     }
 }
@@ -285,7 +285,7 @@ impl Repository {
             .bind(value)
             .execute(self.pool.as_ref())
             .await
-            .map(|r| ())
+            .map(|_| ())
             .map_err(|e| anyhow::anyhow!(e))
     }
 }
@@ -293,6 +293,7 @@ impl Repository {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::Pattern;
     use crate::types::Repository as RepoTrait;
 
     struct Ctx {
@@ -303,7 +304,7 @@ mod tests {
     impl Ctx {
         async fn init() -> Self {
             let path = std::path::Path::new("./test/doorbell-test.db");
-            let pool = Arc::new(crate::database::connect(path).await);
+            let pool = Arc::new(crate::database::connect(path).await.unwrap());
             let repo = Repository::new(pool.clone());
 
             repo.truncate().await.unwrap();
@@ -318,20 +319,22 @@ mod tests {
         let repo = &ctx.repo;
 
         {
-            let rule = Rule {
-                hash: String::from("my hash"),
+            let mut rule = Rule {
+                user_agent: Some(Pattern::try_from("test").unwrap()),
                 ..Rule::default()
             };
+            rule.hash = Rule::calculate_hash(&rule);
             repo.insert(rule).await.unwrap();
         }
 
         assert_eq!(1, repo.get_all().await.unwrap().len());
 
-        let rule = Rule {
+        let mut rule = Rule {
             id: uuid::Uuid::new_v4(),
-            hash: String::from("my other hash"),
+            user_agent: Some(Pattern::try_from("test other").unwrap()),
             ..Rule::default()
         };
+        rule.hash = Rule::calculate_hash(&rule);
 
         repo.insert(rule.clone()).await.unwrap();
 

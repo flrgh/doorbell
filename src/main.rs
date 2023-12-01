@@ -1,3 +1,4 @@
+mod app;
 mod cli;
 mod config;
 mod database;
@@ -14,14 +15,6 @@ use std::sync::RwLock;
 use tokio::sync::Mutex;
 use types::Repository as RepoTrait;
 
-pub(crate) struct State {
-    rules: Arc<RwLock<rules::Collection>>,
-    repo: Arc<rules::Repository>,
-    config: Arc<config::Conf>,
-    manager: Arc<Mutex<rules::Manager>>,
-    trusted_proxies: Arc<net::TrustedProxies>,
-}
-
 #[get("/")]
 async fn index() -> impl Responder {
     HttpResponse::MethodNotAllowed().body("Go away!")
@@ -34,42 +27,44 @@ async fn main() -> std::io::Result<()> {
     let conf = match config::Conf::new() {
         Ok(conf) => {
             dbg!(&conf);
-            conf
+            Arc::new(conf)
         }
         Err(e) => {
             log::error!("{}", e);
-            return Err(IoError::new(ErrorKind::InvalidInput, e));
+            return Err(IoError::new(ErrorKind::Other, e));
         }
     };
+
+    let listen = conf.listen.clone();
 
     let pool = match database::connect(&conf.db).await {
-        Ok(pool) => pool,
+        Ok(pool) => Arc::new(pool),
         Err(e) => {
             log::error!("{}", e);
-            return Err(IoError::new(ErrorKind::InvalidInput, e));
+            return Err(IoError::new(ErrorKind::Other, e));
         }
     };
 
-    let conf = Arc::new(conf);
-    let listen = conf.listen;
-    let pool = Arc::new(pool);
     let repo = Arc::new(rules::Repository::new(pool.clone()));
 
     if let Err(e) = repo.truncate().await {
         log::error!("{}", e);
-        return Err(IoError::new(ErrorKind::InvalidInput, e));
+        return Err(IoError::new(ErrorKind::Other, e));
     }
 
+    let trusted_proxies = Arc::new(net::TrustedProxies::new(&conf.trusted_proxies));
     let collection = Arc::new(RwLock::new(rules::Collection::default()));
 
-    let mut manager = rules::Manager::new(conf.clone(), repo.clone(), collection.clone());
-    if let Err(e) = manager.init().await {
-        log::error!("{}", e);
-        return Err(IoError::new(ErrorKind::InvalidInput, e));
-    }
+    let manager = {
+        let mut manager = rules::Manager::new(conf.clone(), repo.clone(), collection.clone());
 
-    let manager = Arc::new(Mutex::new(manager));
-    let trusted_proxies = Arc::new(net::TrustedProxies::new(&conf.trusted_proxies));
+        if let Err(e) = manager.init().await {
+            log::error!("{}", e);
+            return Err(IoError::new(ErrorKind::Other, e));
+        }
+
+        Arc::new(Mutex::new(manager))
+    };
 
     {
         let manager = manager.clone();
@@ -101,7 +96,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(Logger::default())
             .app_data(json_config)
-            .app_data(web::Data::new(State {
+            .app_data(web::Data::new(app::State {
                 rules: collection.clone(),
                 config: conf.clone(),
                 manager: manager.clone(),
@@ -114,7 +109,7 @@ async fn main() -> std::io::Result<()> {
             .service(routes::rules::create)
     })
     .bind(listen)
-    .map_err(|e| IoError::new(ErrorKind::InvalidInput, e))?
+    .map_err(|e| IoError::new(ErrorKind::Other, e))?
     .run()
     .await
 }

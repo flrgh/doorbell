@@ -1,8 +1,8 @@
 use actix_web::{get, post, web, HttpRequest, HttpResponse, Responder};
 
-use super::super::State;
+use crate::app::State;
 use crate::rules::RuleBuilder;
-use crate::types::Repository as RepoTrait;
+use crate::types::Repository;
 
 #[get("/rules")]
 pub async fn list(_: HttpRequest, state: web::Data<State>) -> impl Responder {

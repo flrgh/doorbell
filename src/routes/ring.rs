@@ -1,6 +1,6 @@
 use actix_web::{get, http::header::HeaderMap, web, HttpRequest, HttpResponse, Responder};
 
-use super::super::State;
+use crate::app::State;
 
 use crate::types::{
     ForwardedRequest, USER_AGENT, X_FORWARDED_FOR, X_FORWARDED_HOST, X_FORWARDED_METHOD,

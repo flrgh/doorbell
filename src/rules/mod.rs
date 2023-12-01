@@ -1,7 +1,6 @@
 use chrono::prelude::*;
 use derive_builder::Builder;
 use serde_derive::Serialize;
-use sqlx::Row;
 use sqlx::Type;
 use std::cmp::Ordering;
 use std::net::IpAddr;
