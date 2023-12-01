@@ -30,7 +30,7 @@ pub struct ConfRule {
     pub host: Option<Pattern>,
     pub path: Option<Pattern>,
     pub country_code: Option<CountryCode>,
-    pub method: Option<HttpMethod>,
+    pub method: Option<Method>,
     pub asn: Option<u32>,
     pub org: Option<Pattern>,
 }

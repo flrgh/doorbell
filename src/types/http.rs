@@ -23,7 +23,7 @@ pub struct ForwardedRequest {
     pub asn: Option<u32>,
     pub org: Option<String>,
     pub timestamp: DateTime<Utc>,
-    pub scheme: String,
+    pub scheme: Scheme,
 }
 
 #[derive(
@@ -42,7 +42,7 @@ pub struct ForwardedRequest {
 )]
 #[strum(serialize_all = "UPPERCASE")]
 #[sqlx(rename_all = "UPPERCASE")]
-pub enum HttpMethod {
+pub enum Method {
     Get,
     Put,
     Post,
@@ -54,40 +54,40 @@ pub enum HttpMethod {
     Connect,
 }
 
-impl From<::http::Method> for HttpMethod {
+impl From<::http::Method> for Method {
     fn from(val: ::http::Method) -> Self {
         match val {
-            ::http::Method::GET => HttpMethod::Get,
-            ::http::Method::PUT => HttpMethod::Put,
-            ::http::Method::POST => HttpMethod::Post,
-            ::http::Method::DELETE => HttpMethod::Delete,
-            ::http::Method::PATCH => HttpMethod::Patch,
-            ::http::Method::OPTIONS => HttpMethod::Options,
-            ::http::Method::HEAD => HttpMethod::Head,
-            ::http::Method::TRACE => HttpMethod::Trace,
-            ::http::Method::CONNECT => HttpMethod::Connect,
+            ::http::Method::GET => Method::Get,
+            ::http::Method::PUT => Method::Put,
+            ::http::Method::POST => Method::Post,
+            ::http::Method::DELETE => Method::Delete,
+            ::http::Method::PATCH => Method::Patch,
+            ::http::Method::OPTIONS => Method::Options,
+            ::http::Method::HEAD => Method::Head,
+            ::http::Method::TRACE => Method::Trace,
+            ::http::Method::CONNECT => Method::Connect,
             _ => unreachable!(),
         }
     }
 }
 
-impl From<HttpMethod> for ::http::Method {
-    fn from(value: HttpMethod) -> Self {
+impl From<Method> for ::http::Method {
+    fn from(value: Method) -> Self {
         match value {
-            HttpMethod::Get => ::http::Method::GET,
-            HttpMethod::Put => ::http::Method::PUT,
-            HttpMethod::Post => ::http::Method::POST,
-            HttpMethod::Delete => ::http::Method::DELETE,
-            HttpMethod::Patch => ::http::Method::PATCH,
-            HttpMethod::Options => ::http::Method::OPTIONS,
-            HttpMethod::Head => ::http::Method::HEAD,
-            HttpMethod::Trace => ::http::Method::TRACE,
-            HttpMethod::Connect => ::http::Method::CONNECT,
+            Method::Get => ::http::Method::GET,
+            Method::Put => ::http::Method::PUT,
+            Method::Post => ::http::Method::POST,
+            Method::Delete => ::http::Method::DELETE,
+            Method::Patch => ::http::Method::PATCH,
+            Method::Options => ::http::Method::OPTIONS,
+            Method::Head => ::http::Method::HEAD,
+            Method::Trace => ::http::Method::TRACE,
+            Method::Connect => ::http::Method::CONNECT,
         }
     }
 }
 
-impl HttpMethod {
+impl Method {
     pub fn is(&self, method: &::http::Method) -> bool {
         match *method {
             ::http::Method::GET => self.is_get(),
@@ -104,18 +104,39 @@ impl HttpMethod {
     }
 }
 
-impl AsRef<[u8]> for HttpMethod {
+impl AsRef<[u8]> for Method {
     fn as_ref(&self) -> &[u8] {
         match self {
-            HttpMethod::Get => b"GET",
-            HttpMethod::Put => b"PUT",
-            HttpMethod::Post => b"POST",
-            HttpMethod::Delete => b"DELETE",
-            HttpMethod::Patch => b"PATCH",
-            HttpMethod::Options => b"OPTIONS",
-            HttpMethod::Head => b"HEAD",
-            HttpMethod::Trace => b"TRACE",
-            HttpMethod::Connect => b"CONNECT",
+            Method::Get => b"GET",
+            Method::Put => b"PUT",
+            Method::Post => b"POST",
+            Method::Delete => b"DELETE",
+            Method::Patch => b"PATCH",
+            Method::Options => b"OPTIONS",
+            Method::Head => b"HEAD",
+            Method::Trace => b"TRACE",
+            Method::Connect => b"CONNECT",
         }
     }
+}
+
+#[derive(
+    Clone,
+    Debug,
+    Eq,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    strum_macros::Display,
+    strum_macros::EnumString,
+    strum_macros::EnumIs,
+    sqlx::Type,
+    serde_derive::Deserialize,
+    serde_derive::Serialize,
+)]
+#[strum(serialize_all = "lowercase")]
+#[sqlx(rename_all = "lowercase")]
+pub enum Scheme {
+    Http,
+    Https,
 }

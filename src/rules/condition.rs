@@ -1,5 +1,5 @@
 pub use crate::geo::CountryCode;
-pub use crate::types::{ForwardedRequest, HttpMethod, Pattern};
+pub use crate::types::{ForwardedRequest, Method, Pattern};
 pub use cidr_utils::cidr::IpCidr;
 pub use std::net::IpAddr;
 
@@ -11,7 +11,7 @@ pub enum Condition {
     Host(Pattern),
     Path(Pattern),
     CountryCode(CountryCode),
-    Method(HttpMethod),
+    Method(Method),
     Asn(u32),
     Org(Pattern),
     #[default]
@@ -26,7 +26,7 @@ impl Condition {
             Condition::UserAgent(pattern) => pattern.matches(&req.user_agent),
             Condition::Host(pattern) => pattern.matches(&req.host),
             Condition::Path(pattern) => pattern.matches(&req.path),
-            Condition::CountryCode(code) => req.country_code == Some(*code),
+            Condition::CountryCode(code) => code.matches(&req.country_code),
             Condition::Method(method) => method.is(&req.method),
             Condition::Asn(asn) => req.asn == Some(*asn),
             Condition::Org(pattern) => req.org.as_ref().is_some_and(|org| pattern.matches(org)),

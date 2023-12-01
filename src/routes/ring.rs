@@ -55,8 +55,16 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
         forwarded_addr
     };
 
-    let Some(scheme) = require_single_header(X_FORWARDED_PROTO, headers) else {
-        return HttpResponse::BadRequest().finish();
+    let scheme = {
+        let Some(xfp) = require_single_header(X_FORWARDED_PROTO, headers) else {
+            return HttpResponse::BadRequest().finish();
+        };
+
+        let Ok(scheme) = xfp.parse() else {
+            return HttpResponse::BadRequest().finish();
+        };
+
+        scheme
     };
 
     let Some(host) = require_single_header(X_FORWARDED_HOST, headers) else {

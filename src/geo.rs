@@ -526,6 +526,13 @@ impl CountryCode {
             Self::ZW => "Zimbabwe",
         }
     }
+
+    pub fn matches(&self, other: &Option<CountryCode>) -> bool {
+        match other {
+            None => false,
+            Some(other) => self == other,
+        }
+    }
 }
 
 impl AsRef<[u8]> for CountryCode {
