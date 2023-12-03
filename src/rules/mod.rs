@@ -27,12 +27,13 @@ pub use source::*;
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Eq, PartialEq, Type, Clone, Default, Builder, Serialize)]
 #[builder(
-    build_fn(skip, validate = "Self::validate"),
+    setter(into),
+    build_fn(private, name = "build_super", validate = "Self::validate"),
     derive(serde::Deserialize, Debug)
 )]
 #[builder_struct_attr(serde(deny_unknown_fields))]
 pub struct Rule {
-    #[builder(setter(skip))]
+    #[builder(setter(skip = true))]
     #[builder_field_attr(serde(skip))]
     pub id: uuid::Uuid,
 
@@ -40,15 +41,15 @@ pub struct Rule {
     pub deny_action: Option<DenyAction>,
     pub terminate: bool,
 
-    #[builder(setter(skip))]
+    #[builder(setter(skip = true))]
     #[builder_field_attr(serde(skip))]
     pub hash: String,
 
-    #[builder(setter(skip))]
+    #[builder(setter(skip = true))]
     #[builder_field_attr(serde(skip))]
     pub created_at: DateTime<Utc>,
 
-    #[builder(setter(skip))]
+    #[builder(setter(skip = true))]
     #[builder_field_attr(serde(skip))]
     pub updated_at: Option<DateTime<Utc>>,
 
