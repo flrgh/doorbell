@@ -1,4 +1,10 @@
 use regex::Regex;
+use sqlx::database::{HasArguments, HasValueRef};
+use sqlx::encode::IsNull;
+use sqlx::error::BoxDynError;
+use sqlx::sqlite::SqliteArgumentValue;
+use sqlx::{Database, Decode, Encode, Sqlite, Type};
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::str::FromStr;
 
@@ -96,5 +102,42 @@ impl AsRef<[u8]> for Pattern {
             Pattern::Plain(p) => p.as_bytes(),
             Pattern::Regex(r) => r.as_str().as_bytes(),
         }
+    }
+}
+
+impl<DB> Type<DB> for Pattern
+where
+    String: Type<DB>,
+    DB: Database,
+{
+    fn type_info() -> DB::TypeInfo {
+        String::type_info()
+    }
+
+    fn compatible(ty: &DB::TypeInfo) -> bool {
+        String::compatible(ty)
+    }
+}
+
+impl<'q> Encode<'q, Sqlite> for &'q Pattern
+where
+    &'q str: Encode<'q, Sqlite>,
+    &'q Pattern: std::fmt::Display,
+{
+    fn encode_by_ref(&self, args: &mut <Sqlite as HasArguments<'q>>::ArgumentBuffer) -> IsNull {
+        args.push(SqliteArgumentValue::Text(Cow::Owned(self.to_string())));
+
+        IsNull::No
+    }
+}
+
+impl<'r, DB: Database> Decode<'r, DB> for Pattern
+where
+    &'r str: Decode<'r, DB>,
+{
+    fn decode(value: <DB as HasValueRef<'r>>::ValueRef) -> Result<Self, BoxDynError> {
+        let value = <&str as Decode<DB>>::decode(value)?;
+
+        Self::try_from(value).map_err(|e| e.into())
     }
 }

@@ -7,10 +7,13 @@ pub struct TrustedProxies {
 }
 
 impl TrustedProxies {
-    pub fn new(cidrs: &Vec<IpCidr>) -> Self {
+    pub fn new<T>(cidrs: &Vec<T>) -> Self
+    where
+        T: AsRef<IpCidr>,
+    {
         let mut combined = IpCidrCombiner::new();
         for cidr in cidrs {
-            combined.push(*cidr);
+            combined.push(*cidr.as_ref());
         }
 
         Self { cidr: combined }

@@ -875,6 +875,8 @@ dependencies = [
  "serde_json",
  "serde_with",
  "sqlx",
+ "sqlx-core",
+ "sqlx-sqlite",
  "strum",
  "strum_macros",
  "tokio",
