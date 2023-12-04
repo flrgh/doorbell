@@ -203,28 +203,22 @@ impl RepoTrait<Rule> for Repository {
 
     async fn get(&self, id: <Rule as types::PrimaryKey>::Key) -> Result<Option<Rule>, Self::Err> {
         let id = id.to_string();
-        let row = sqlx::query_as::<_, RuleRow>("SELECT * FROM rules WHERE id = ?")
+        let rule = sqlx::query_as::<_, Rule>("SELECT * FROM rules WHERE id = ?")
             .bind(id)
             .fetch_one(self.pool.as_ref())
             .await;
 
-        match row {
-            Ok(row) => Ok(Some(row.try_into()?)),
+        match rule {
+            Ok(row) => Ok(Some(row)),
             Err(sqlx::Error::RowNotFound) => Ok(None),
             Err(e) => Err(anyhow::anyhow!(e)),
         }
     }
 
     async fn get_all(&self) -> Result<Vec<Rule>, Self::Err> {
-        let rows = sqlx::query_as::<_, RuleRow>("SELECT * FROM rules")
+        Ok(sqlx::query_as::<_, Rule>("SELECT * FROM rules")
             .fetch_all(self.pool.as_ref())
-            .await?;
-
-        let mut rules = Vec::with_capacity(rows.len());
-        for row in rows {
-            rules.push(row.try_into()?);
-        }
-        Ok(rules)
+            .await?)
     }
 
     async fn insert(&self, item: Rule) -> Result<(), Self::Err> {

@@ -1,5 +1,5 @@
 use crate::rules::condition::*;
-use crate::rules::{Action, DenyAction, IpCidr, Rule, RuleBuilder, Source};
+use crate::rules::{Action, DenyAction, IpAddr, IpCidr, Rule, RuleBuilder, Source};
 use config::{Config, ConfigError, Environment, File};
 use serde_derive::Deserialize;
 use std::net::SocketAddr;

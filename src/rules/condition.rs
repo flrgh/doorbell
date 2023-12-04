@@ -1,7 +1,5 @@
 pub use crate::geo::CountryCode;
-pub use crate::types::{ForwardedRequest, Method, Pattern};
-pub use cidr_utils::cidr::IpCidr;
-pub use std::net::IpAddr;
+pub use crate::types::{ForwardedRequest, IpAddr, IpCidr, Method, Pattern};
 
 #[derive(Debug, Eq, PartialEq, Default, Clone)]
 pub enum Condition {
@@ -21,7 +19,7 @@ pub enum Condition {
 impl Condition {
     pub fn matches(&self, req: &ForwardedRequest) -> bool {
         match self {
-            Condition::Addr(addr) => req.addr.eq(addr),
+            Condition::Addr(addr) => addr.eq(&req.addr),
             Condition::Network(cidr) => cidr.contains(req.addr),
             Condition::UserAgent(pattern) => pattern.matches(&req.user_agent),
             Condition::Host(pattern) => pattern.matches(&req.host),

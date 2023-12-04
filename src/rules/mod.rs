@@ -1,13 +1,13 @@
 use chrono::prelude::*;
 use derive_builder::Builder;
 use serde_derive::Serialize;
-use sqlx::Type;
+use sqlx::{FromRow, Type};
 use std::cmp::Ordering;
-use std::net::IpAddr;
+//use std::net::IpAddr;
 
 use self::condition::*;
 use crate::geo::*;
-use crate::types::Pattern;
+pub(crate) use crate::types::{IpAddr, IpCidr, Pattern};
 use anyhow::{anyhow, Result};
 
 pub mod action;
@@ -18,14 +18,13 @@ pub mod repo;
 pub mod source;
 
 pub use action::*;
-pub use cidr_utils::cidr::IpCidr;
 pub use collection::*;
 pub use manager::*;
 pub use repo::*;
 pub use source::*;
 
 #[serde_with::skip_serializing_none]
-#[derive(Debug, Eq, PartialEq, Type, Clone, Default, Builder, Serialize)]
+#[derive(Debug, Eq, PartialEq, Type, Clone, Default, Builder, Serialize, FromRow)]
 #[builder(
     setter(into),
     build_fn(private, name = "build_super", validate = "Self::validate"),
@@ -39,6 +38,8 @@ pub struct Rule {
 
     pub action: Action,
     pub deny_action: Option<DenyAction>,
+
+    #[sqlx(default)]
     pub terminate: bool,
 
     #[builder(setter(skip = true))]
@@ -100,21 +101,25 @@ where
 
 impl ConditionHash for IpAddr {
     fn hash(&self, ctx: &mut md5::Context) {
-        match self {
-            IpAddr::V6(addr) => ctx.consume(addr.octets()),
-            IpAddr::V4(addr) => ctx.consume(addr.octets()),
+        match self.0 {
+            std::net::IpAddr::V4(addr) => {
+                ctx.consume(addr.octets());
+            }
+            std::net::IpAddr::V6(addr) => {
+                ctx.consume(addr.octets());
+            }
         }
     }
 }
 
 impl ConditionHash for IpCidr {
     fn hash(&self, ctx: &mut md5::Context) {
-        match self {
-            IpCidr::V4(cidr) => {
+        match self.0 {
+            cidr_utils::cidr::IpCidr::V4(cidr) => {
                 ctx.consume(cidr.get_prefix_as_u8_array());
                 ctx.consume(cidr.get_mask_as_u8_array());
             }
-            IpCidr::V6(cidr) => {
+            cidr_utils::cidr::IpCidr::V6(cidr) => {
                 ctx.consume(cidr.get_prefix_as_u8_array());
                 ctx.consume(cidr.get_mask_as_u8_array());
             }
@@ -431,19 +436,12 @@ impl Rule {
     }
 
     pub fn is_expired(&self) -> bool {
-        if self.expires.is_some() {
-            self.is_expired_at(&Utc::now())
-        } else {
-            false
-        }
+        self.expires
+            .is_some_and(|_| self.is_expired_at(&Utc::now()))
     }
 
-    pub fn is_expired_at(&self, now: &DateTime<Utc>) -> bool {
-        if let Some(exp) = self.expires {
-            *now >= exp
-        } else {
-            false
-        }
+    pub fn is_expired_at(&self, time: &DateTime<Utc>) -> bool {
+        self.expires.is_some_and(|expires| *time >= expires)
     }
 }
 
@@ -521,3 +519,72 @@ impl crate::types::Entity for Rule {
         "rules"
     }
 }
+
+//impl<'a, R: ::sqlx::Row> ::sqlx::FromRow<'a, R> for Rule
+//where
+//    &'a ::std::primitive::str: ::sqlx::ColumnIndex<R>,
+//
+//    String: ::sqlx::decode::Decode<'a, R::Database>,
+//    String: ::sqlx::types::Type<R::Database>,
+//
+//    uuid::Uuid: ::sqlx::decode::Decode<'a, R::Database>,
+//    uuid::Uuid: ::sqlx::types::Type<R::Database>,
+//
+//    DateTime<Utc>: ::sqlx::decode::Decode<'a, R::Database>,
+//    DateTime<Utc>: ::sqlx::types::Type<R::Database>,
+//
+//    Action: ::sqlx::decode::Decode<'a, R::Database>,
+//    Action: ::sqlx::types::Type<R::Database>,
+//
+//    DenyAction: ::sqlx::decode::Decode<'a, R::Database>,
+//    DenyAction: ::sqlx::types::Type<R::Database>,
+//
+//    Source: ::sqlx::decode::Decode<'a, R::Database>,
+//    Source: ::sqlx::types::Type<R::Database>,
+//
+//    Pattern: ::sqlx::decode::Decode<'a, R::Database>,
+//    Pattern: ::sqlx::types::Type<R::Database>,
+//
+//    CountryCode: ::sqlx::decode::Decode<'a, R::Database>,
+//    CountryCode: ::sqlx::types::Type<R::Database>,
+//
+//    IpAddr: ::sqlx::decode::Decode<'a, R::Database>,
+//    IpAddr: ::sqlx::types::Type<R::Database>,
+//
+//    IpCidr: ::sqlx::decode::Decode<'a, R::Database>,
+//    IpCidr: ::sqlx::types::Type<R::Database>,
+//
+//    bool: ::sqlx::decode::Decode<'a, R::Database>,
+//    bool: ::sqlx::types::Type<R::Database>,
+//
+//    u32: ::sqlx::decode::Decode<'a, R::Database>,
+//    u32: ::sqlx::types::Type<R::Database>,
+//
+//    Method: ::sqlx::decode::Decode<'a, R::Database>,
+//    Method: ::sqlx::types::Type<R::Database>,
+//
+//{
+//    fn from_row(row: &'a R) -> ::sqlx::Result<Self> {
+//        Ok(Rule {
+//            id: row.try_get("id")?,
+//            action: row.try_get("action")?,
+//            deny_action: row.try_get("deny_action")?,
+//            hash: row.try_get("hash")?,
+//            created_at: row.try_get("created_at")?,
+//            updated_at: row.try_get("updated_at")?,
+//            terminate: row.try_get("terminate")?,
+//            comment: row.try_get("comment")?,
+//            source: row.try_get("source")?,
+//            expires: row.try_get("expires")?,
+//            addr: row.try_get("addr")?,
+//            cidr: row.try_get("cidr")?,
+//            user_agent: row.try_get("user_agent")?,
+//            host: row.try_get("host")?,
+//            path: row.try_get("path")?,
+//            country_code: row.try_get("country_code")?,
+//            method: row.try_get("method")?,
+//            asn: row.try_get("asn")?,
+//            org: row.try_get("org")?,
+//        })
+//    }
+//}
