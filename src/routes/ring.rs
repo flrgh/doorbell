@@ -9,7 +9,9 @@ use crate::types::{
 
 #[get("/ring")]
 pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responder {
-    fn require_single_header(name: &str, headers: &HeaderMap) -> Option<String> {
+    let headers = req.headers();
+
+    let require_single_header = |name: &str| {
         let mut iter = headers.get_all(name);
         match (iter.next(), iter.next()) {
             (None, _) => {
@@ -28,9 +30,7 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
                 }
             },
         }
-    }
-
-    let headers = req.headers();
+    };
 
     let addr = {
         let Some(addr) = req.peer_addr() else {
@@ -44,7 +44,7 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
             return HttpResponse::new(http::StatusCode::FORBIDDEN);
         }
 
-        let Some(xff) = require_single_header(X_FORWARDED_FOR, headers) else {
+        let Some(xff) = require_single_header(X_FORWARDED_FOR) else {
             return HttpResponse::BadRequest().finish();
         };
 
@@ -56,7 +56,7 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
     };
 
     let scheme = {
-        let Some(xfp) = require_single_header(X_FORWARDED_PROTO, headers) else {
+        let Some(xfp) = require_single_header(X_FORWARDED_PROTO) else {
             return HttpResponse::BadRequest().finish();
         };
 
@@ -67,15 +67,15 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
         scheme
     };
 
-    let Some(host) = require_single_header(X_FORWARDED_HOST, headers) else {
+    let Some(host) = require_single_header(X_FORWARDED_HOST) else {
         return HttpResponse::BadRequest().finish();
     };
 
-    let Some(uri) = require_single_header(X_FORWARDED_URI, headers) else {
+    let Some(uri) = require_single_header(X_FORWARDED_URI) else {
         return HttpResponse::BadRequest().finish();
     };
 
-    let Some(method) = require_single_header(X_FORWARDED_METHOD, headers) else {
+    let Some(method) = require_single_header(X_FORWARDED_METHOD) else {
         return HttpResponse::BadRequest().finish();
     };
 

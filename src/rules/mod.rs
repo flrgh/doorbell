@@ -37,7 +37,6 @@ pub struct Rule {
     pub id: Uuid,
 
     pub action: Action,
-    pub deny_action: Option<DenyAction>,
 
     #[sqlx(default)]
     pub terminate: bool,
@@ -224,7 +223,6 @@ impl RuleBuilder {
         self.validate()?;
         let RuleBuilder {
             action,
-            deny_action,
             terminate,
             comment,
             source,
@@ -274,7 +272,6 @@ impl RuleBuilder {
             id: Uuid::new(),
             source: get(source, "source")?,
             action: get(action, "action")?,
-            deny_action: get_inner(deny_action),
             terminate: terminate.unwrap_or(false),
             comment: get_inner(comment),
             expires: get_inner(expires),
@@ -317,7 +314,6 @@ impl crate::types::Update for Rule {
 #[derive(Debug, Eq, PartialEq, Type)]
 pub struct RuleUpdates {
     pub action: Option<Action>,
-    pub deny_action: Option<Option<DenyAction>>,
     pub updated_at: Option<Option<DateTime<Utc>>>,
     pub terminate: Option<bool>,
     pub comment: Option<Option<String>>,
@@ -338,7 +334,6 @@ impl RuleUpdates {
     fn update(self, rule: &mut Rule) {
         let RuleUpdates {
             action,
-            deny_action,
             updated_at: _,
             terminate,
             comment,
@@ -361,7 +356,6 @@ impl RuleUpdates {
         }
 
         update(&mut rule.action, action);
-        update(&mut rule.deny_action, deny_action);
         update(&mut rule.terminate, terminate);
         update(&mut rule.comment, comment);
         update(&mut rule.expires, expires);
@@ -568,7 +562,6 @@ impl crate::types::Entity for Rule {
 //        Ok(Rule {
 //            id: row.try_get("id")?,
 //            action: row.try_get("action")?,
-//            deny_action: row.try_get("deny_action")?,
 //            hash: row.try_get("hash")?,
 //            created_at: row.try_get("created_at")?,
 //            updated_at: row.try_get("updated_at")?,
