@@ -5,6 +5,7 @@ use anyhow;
 use async_trait::async_trait;
 use chrono::NaiveDateTime;
 use sqlx::SqlitePool;
+use sqlx_sqlite::Sqlite;
 use std::sync::Arc;
 
 pub struct Repository {
@@ -116,8 +117,29 @@ impl From<Rule> for RuleRow {
 
 impl Repository {
     async fn do_insert(&self, item: Rule, upsert: bool) -> anyhow::Result<()> {
-        let item: RuleRow = item.into();
-        sqlx::query(if upsert {
+        let Rule {
+            id,
+            action,
+            deny_action,
+            terminate,
+            hash,
+            created_at,
+            updated_at,
+            comment,
+            source,
+            expires,
+            addr,
+            cidr,
+            user_agent,
+            host,
+            path,
+            country_code,
+            method,
+            asn,
+            org,
+        } = item;
+
+        sqlx::query_as::<Sqlite, Rule>(if upsert {
             "
                 INSERT or REPLACE INTO rules (
                     id,
@@ -172,25 +194,25 @@ impl Repository {
                 )
                 "
         })
-        .bind(item.id)
-        .bind(item.hash)
-        .bind(item.action)
-        .bind(item.deny_action)
-        .bind(item.created_at)
-        .bind(item.terminate)
-        .bind(item.comment)
-        .bind(item.source)
-        .bind(item.expires)
-        .bind(item.addr)
-        .bind(item.cidr)
-        .bind(item.user_agent)
-        .bind(item.host)
-        .bind(item.path)
-        .bind(item.country_code)
-        .bind(item.method)
-        .bind(item.asn)
-        .bind(item.org)
-        .execute(self.pool.as_ref())
+        .bind(id.to_string())
+        .bind(hash)
+        .bind(action)
+        .bind(deny_action)
+        .bind(created_at)
+        .bind(terminate)
+        .bind(comment)
+        .bind(source)
+        .bind(expires)
+        .bind(addr.as_ref())
+        .bind(cidr.as_ref())
+        .bind(user_agent.map(String::from))
+        .bind(host.map(String::from))
+        .bind(path.map(String::from))
+        .bind(country_code)
+        .bind(method)
+        .bind(asn)
+        .bind(org.map(String::from))
+        .fetch_all(self.pool.as_ref())
         .await
         .map(|_| ())
         .map_err(|e| anyhow::anyhow!(e))
@@ -314,6 +336,7 @@ mod tests {
 
         {
             let mut rule = Rule {
+                id: Uuid::new(),
                 user_agent: Some(Pattern::try_from("test").unwrap()),
                 ..Rule::default()
             };
@@ -324,7 +347,7 @@ mod tests {
         assert_eq!(1, repo.get_all().await.unwrap().len());
 
         let mut rule = Rule {
-            id: uuid::Uuid::new_v4(),
+            id: Uuid::new(),
             user_agent: Some(Pattern::try_from("test other").unwrap()),
             ..Rule::default()
         };
