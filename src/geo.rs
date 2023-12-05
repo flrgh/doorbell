@@ -2,6 +2,7 @@ use maxminddb::{geoip2::country::Country, geoip2::Asn, geoip2::City, MaxMindDBEr
 use std::fmt::Debug;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+use tokio::runtime::Runtime;
 
 #[derive(
     Debug,
@@ -681,3 +682,27 @@ impl GeoIp {
         }))
     }
 }
+
+//pub struct AsyncGeoIp {
+//    geoip: GeoIp,
+//    runtime: Runtime,
+//}
+//
+//impl AsyncGeoIp {
+//    pub fn new(geoip: GeoIp) -> Self {
+//        let runtime = tokio::runtime::Builder::new_current_thread()
+//            .enable_all()
+//            .build()
+//            .expect("oops");
+//
+//        Self { geoip, runtime }
+//    }
+//
+//    pub async fn net_info(&self, addr: &IpAddr) -> Result<Option<NetInfo>, MaxMindDBError> {
+//        self.geoip.net_info(addr)
+//    }
+//
+//    pub async fn country_code(&self, addr: &IpAddr) -> Result<Option<CountryCode>, MaxMindDBError> {
+//        self.geoip.country_code(addr)
+//    }
+//}
