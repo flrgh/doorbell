@@ -1,4 +1,6 @@
-use actix_web::{error, middleware::Logger, middleware::DefaultHeaders, web, App, HttpResponse, HttpServer};
+use actix_web::{
+    error, middleware::DefaultHeaders, middleware::Logger, web, App, HttpResponse, HttpServer,
+};
 use std::io::{Error as IoError, ErrorKind};
 use std::sync::Arc;
 use std::sync::RwLock;
