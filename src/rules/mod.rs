@@ -7,7 +7,7 @@ use std::cmp::Ordering;
 
 use self::condition::*;
 use crate::geo::*;
-pub(crate) use crate::types::{IpAddr, IpCidr, Pattern};
+pub(crate) use crate::types::{IpAddr, IpCidr, Pattern, Uuid};
 use anyhow::{anyhow, Result};
 
 pub mod action;
@@ -34,7 +34,7 @@ pub use source::*;
 pub struct Rule {
     #[builder(setter(skip = true))]
     #[builder_field_attr(serde(skip))]
-    pub id: uuid::Uuid,
+    pub id: Uuid,
 
     pub action: Action,
     pub deny_action: Option<DenyAction>,
@@ -271,7 +271,7 @@ impl RuleBuilder {
         let user_agent = get_inner(user_agent);
 
         Ok(Rule {
-            id: uuid::Uuid::new_v4(),
+            id: Uuid::new(),
             source: get(source, "source")?,
             action: get(action, "action")?,
             deny_action: get_inner(deny_action),
@@ -478,7 +478,7 @@ impl Ord for Rule {
 }
 
 impl crate::types::PrimaryKey for Rule {
-    type Key = uuid::Uuid;
+    type Key = Uuid;
 
     fn primary_key(&self) -> Self::Key {
         self.id
