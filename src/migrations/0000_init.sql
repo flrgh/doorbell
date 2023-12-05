@@ -2,9 +2,8 @@ CREATE TABLE IF NOT EXISTS rules (
 	id 		TEXT 		PRIMARY KEY,
 	hash 		TEXT 		NOT NULL UNIQUE,
 
-	-- actions
+	-- behavior
 	action 		TEXT 		NOT NULL,
-	deny_action 	TEXT,
 	terminate 	BOOLEAN 	NOT NULL,
 	expires         DATETIME,
 

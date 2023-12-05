@@ -1,5 +1,5 @@
 use crate::rules::condition::*;
-use crate::rules::{Action, DenyAction, IpAddr, IpCidr, Rule, RuleBuilder, Source};
+use crate::rules::{Action, IpAddr, IpCidr, Rule, RuleBuilder, Source};
 use config::{Config, ConfigError, Environment, File};
 use serde_derive::Deserialize;
 use std::net::SocketAddr;
@@ -20,7 +20,6 @@ pub struct Conf {
 #[derive(Debug, Deserialize, Clone, Default)]
 #[serde(deny_unknown_fields)]
 pub struct ConfRule {
-    pub deny_action: Option<DenyAction>,
     pub terminate: Option<bool>,
     pub comment: Option<String>,
 
@@ -38,7 +37,6 @@ pub struct ConfRule {
 impl ConfRule {
     fn as_rule(&self, action: Action) -> Rule {
         let ConfRule {
-            deny_action,
             terminate,
             comment,
             addr,
@@ -54,7 +52,6 @@ impl ConfRule {
 
         RuleBuilder::default()
             .action(action)
-            .deny_action(deny_action)
             .source(Source::Config)
             .comment(comment)
             .terminate(terminate.unwrap_or(false))
