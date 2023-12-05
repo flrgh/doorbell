@@ -1,4 +1,4 @@
-use actix_web::{error, middleware::Logger, web, App, HttpResponse, HttpServer};
+use actix_web::{error, middleware::Logger, middleware::DefaultHeaders, web, App, HttpResponse, HttpServer};
 use std::io::{Error as IoError, ErrorKind};
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -103,6 +103,7 @@ pub(super) async fn run() -> std::io::Result<()> {
 
         App::new()
             .wrap(Logger::default())
+            .wrap(DefaultHeaders::new().add(("Server", "Doorbell")))
             .app_data(json_config)
             .app_data(web::Data::new(State {
                 rules: collection.clone(),
