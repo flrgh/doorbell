@@ -530,9 +530,6 @@ impl crate::types::Entity for Rule {
 //    Action: ::sqlx::decode::Decode<'a, R::Database>,
 //    Action: ::sqlx::types::Type<R::Database>,
 //
-//    DenyAction: ::sqlx::decode::Decode<'a, R::Database>,
-//    DenyAction: ::sqlx::types::Type<R::Database>,
-//
 //    Source: ::sqlx::decode::Decode<'a, R::Database>,
 //    Source: ::sqlx::types::Type<R::Database>,
 //

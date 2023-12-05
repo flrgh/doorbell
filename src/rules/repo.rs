@@ -22,7 +22,6 @@ impl Repository {
 struct RuleRow {
     id: String,
     action: String,
-    deny_action: Option<String>,
     hash: String,
     created_at: NaiveDateTime,
     updated_at: Option<NaiveDateTime>,
@@ -59,7 +58,6 @@ impl TryInto<Rule> for RuleRow {
         let rule = Rule {
             id: self.id.parse()?,
             action: self.action.parse()?,
-            deny_action: parse(self.deny_action)?,
             hash: self.hash,
             created_at: self.created_at.and_utc(),
             updated_at: self.updated_at.map(|t| t.and_utc()),
@@ -92,7 +90,6 @@ impl From<Rule> for RuleRow {
         Self {
             id: val.id.into(),
             action: val.action.to_string(),
-            deny_action: val.deny_action.map(|da| da.to_string()),
             hash: val.hash,
             created_at: val.created_at.naive_utc(),
             updated_at: val.updated_at.map(|ua| ua.naive_utc()),
@@ -120,7 +117,6 @@ impl Repository {
         let Rule {
             id,
             action,
-            deny_action,
             terminate,
             hash,
             created_at,
@@ -145,7 +141,6 @@ impl Repository {
                     id,
                     hash,
                     action,
-                    deny_action,
                     created_at,
                     terminate,
                     comment,
@@ -163,7 +158,7 @@ impl Repository {
                 ) VALUES (
                     ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?
                 )
                 "
         } else {
@@ -172,7 +167,6 @@ impl Repository {
                     id,
                     hash,
                     action,
-                    deny_action,
                     created_at,
                     terminate,
                     comment,
@@ -190,14 +184,13 @@ impl Repository {
                 ) VALUES (
                     ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?
                 )
                 "
         })
         .bind(id.to_string())
         .bind(hash)
         .bind(action)
-        .bind(deny_action)
         .bind(created_at)
         .bind(terminate)
         .bind(comment)

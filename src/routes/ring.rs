@@ -145,7 +145,7 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
         };
 
         if let Some(rule) = matched {
-            use crate::rules::{Action, DenyAction};
+            use crate::rules::Action;
             log::trace!("request {:?} matched rule {:?}", req, rule);
 
             match rule.action {
@@ -155,11 +155,6 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
                 }
                 Action::Deny => {
                     log::debug!("/ring => DENY");
-                    if let Some(DenyAction::Tarpit) = rule.deny_action {
-                        log::debug!("Tarpitting request");
-                        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-                    }
-
                     http::StatusCode::FORBIDDEN
                 }
             }
