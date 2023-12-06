@@ -1,7 +1,9 @@
 use crate::geo::CountryCode;
 use chrono::DateTime;
 use chrono::Utc;
-use std::net::IpAddr;
+use derive_builder::Builder;
+
+use super::net::IpAddr;
 
 // XXX: should I use actix_web::http::header::HeaderName::from_static()?
 pub const X_FORWARDED_FOR: &str = "X-Forwarded-For";
@@ -11,12 +13,13 @@ pub const X_FORWARDED_METHOD: &str = "X-Forwarded-Method";
 pub const X_FORWARDED_URI: &str = "X-Forwarded-Uri";
 pub const USER_AGENT: &str = "User-Agent";
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Builder, serde_derive::Serialize)]
+#[builder(setter(into), build_fn(private, name = "build_super"))]
 pub struct ForwardedRequest {
     pub addr: IpAddr,
     pub user_agent: String,
     pub host: String,
-    pub method: http::Method,
+    pub method: Method,
     pub uri: String,
     pub path: String,
     pub country_code: Option<CountryCode>,
@@ -24,6 +27,22 @@ pub struct ForwardedRequest {
     pub org: Option<String>,
     pub timestamp: DateTime<Utc>,
     pub scheme: Scheme,
+}
+
+impl ForwardedRequest {
+    pub fn builder() -> ForwardedRequestBuilder {
+        ForwardedRequestBuilder::default()
+    }
+}
+
+impl ForwardedRequestBuilder {
+    pub fn build(&mut self) -> Result<ForwardedRequest, ForwardedRequestBuilderError> {
+        if self.timestamp.is_none() {
+            self.timestamp(chrono::Utc::now());
+        }
+
+        self.build_super()
+    }
 }
 
 #[derive(

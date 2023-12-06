@@ -25,7 +25,7 @@ impl Condition {
             Condition::Host(pattern) => pattern.matches(&req.host),
             Condition::Path(pattern) => pattern.matches(&req.path),
             Condition::CountryCode(code) => code.matches(&req.country_code),
-            Condition::Method(method) => method.is(&req.method),
+            Condition::Method(method) => method == &req.method,
             Condition::Asn(asn) => req.asn == Some(*asn),
             Condition::Org(pattern) => req.org.as_ref().is_some_and(|org| pattern.matches(org)),
             Condition::Any => true,
@@ -73,7 +73,7 @@ where
 }
 
 impl FieldMatch for IpAddr {
-    type Field = std::net::IpAddr;
+    type Field = Self;
 
     fn field_matches(&self, value: &Self::Field) -> bool {
         self.eq(value)
@@ -91,10 +91,10 @@ mod test {
     #[test]
     pub fn test() {
         let fr = ForwardedRequest {
-            addr: std::net::IpAddr::from([127, 0, 0, 1]),
+            addr: std::net::IpAddr::from([127, 0, 0, 1]).into(),
             user_agent: String::from("user-agent"),
             host: String::from("host"),
-            method: http::Method::GET,
+            method: crate::types::Method::Get,
             uri: String::from("/uri?a=1&b=2"),
             path: String::from("/path"),
             country_code: Some(CountryCode::US),
