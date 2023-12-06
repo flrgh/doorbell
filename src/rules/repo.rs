@@ -248,14 +248,15 @@ impl RepoTrait<Rule> for Repository {
         &self,
         id: <Rule as types::PrimaryKey>::Key,
         updates: <Rule as types::Update>::Updates,
-    ) -> Result<(), Self::Err> {
+    ) -> Result<Option<Rule>, Self::Err> {
         let Some(mut rule) = self.get(id).await? else {
-            return Err(anyhow::anyhow!("rule {id} not found"));
+            return Ok(None);
         };
 
-        updates.update(&mut rule);
+        updates.update(&mut rule)?;
 
-        self.do_insert(rule, true).await
+        self.do_insert(rule.clone(), true).await?;
+        Ok(Some(rule))
     }
 
     async fn delete(

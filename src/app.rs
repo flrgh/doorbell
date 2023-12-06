@@ -119,6 +119,9 @@ pub(super) async fn run() -> std::io::Result<()> {
             .service(routes::ring::handler)
             .service(routes::rules::list)
             .service(routes::rules::create)
+            .service(routes::rules::get)
+            .service(routes::rules::delete)
+            .service(routes::rules::patch)
     })
     .bind(listen)
     .map_err(|e| IoError::new(ErrorKind::Other, e))?

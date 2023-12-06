@@ -32,3 +32,142 @@ impl Condition {
         }
     }
 }
+
+trait Match {
+    fn matches(&self, req: &ForwardedRequest) -> bool;
+}
+
+impl<T> Match for Option<T>
+where
+    T: Match,
+{
+    fn matches(&self, req: &ForwardedRequest) -> bool {
+        if let Some(ref m) = self {
+            m.matches(req)
+        } else {
+            true
+        }
+    }
+}
+
+trait FieldMatch {
+    type Field;
+
+    fn field_matches(&self, value: &Self::Field) -> bool;
+
+    fn get_field(req: &ForwardedRequest) -> &Self::Field;
+}
+
+trait GetField {
+    type Field;
+}
+
+impl<T, F> Match for T
+where
+    T: FieldMatch<Field = F>,
+{
+    fn matches(&self, req: &ForwardedRequest) -> bool {
+        let value = <T as FieldMatch>::get_field(req);
+        self.field_matches(value)
+    }
+}
+
+impl FieldMatch for IpAddr {
+    type Field = std::net::IpAddr;
+
+    fn field_matches(&self, value: &Self::Field) -> bool {
+        self.eq(value)
+    }
+
+    fn get_field(req: &ForwardedRequest) -> &Self::Field {
+        &req.addr
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    pub fn test() {
+        let fr = ForwardedRequest {
+            addr: std::net::IpAddr::from([127, 0, 0, 1]),
+            user_agent: String::from("user-agent"),
+            host: String::from("host"),
+            method: http::Method::GET,
+            uri: String::from("/uri?a=1&b=2"),
+            path: String::from("/path"),
+            country_code: Some(CountryCode::US),
+            asn: Some(0),
+            org: Some(String::from("my-org")),
+            timestamp: chrono::Utc::now(),
+            scheme: crate::types::Scheme::Https,
+        };
+
+        let addr = IpAddr(std::net::IpAddr::from([127, 0, 0, 1]));
+
+        assert!(addr.matches(&fr));
+    }
+}
+
+pub struct Host;
+pub struct UserAgent;
+pub struct Path;
+pub struct Org;
+
+impl Match for IpCidr {
+    fn matches(&self, req: &ForwardedRequest) -> bool {
+        self.contains(req.addr)
+    }
+}
+
+pub struct PatternMatch<T> {
+    pattern: Pattern,
+    pd: std::marker::PhantomData<T>,
+}
+
+impl Match for PatternMatch<Host> {
+    fn matches(&self, req: &ForwardedRequest) -> bool {
+        self.pattern.matches(&req.host)
+    }
+}
+
+impl Match for PatternMatch<UserAgent> {
+    fn matches(&self, req: &ForwardedRequest) -> bool {
+        self.pattern.matches(&req.user_agent)
+    }
+}
+
+impl Match for PatternMatch<Path> {
+    fn matches(&self, req: &ForwardedRequest) -> bool {
+        self.pattern.matches(&req.path)
+    }
+}
+
+impl Match for PatternMatch<Org> {
+    fn matches(&self, req: &ForwardedRequest) -> bool {
+        if let Some(ref org) = req.org {
+            self.pattern.matches(org)
+        } else {
+            false
+        }
+    }
+}
+
+pub struct Asn(u32);
+
+impl FieldMatch for Asn {
+    type Field = Option<u32>;
+
+    fn field_matches(&self, value: &Self::Field) -> bool {
+        if let Some(ref asn) = value {
+            &self.0 == asn
+        } else {
+            false
+        }
+    }
+
+    fn get_field(req: &ForwardedRequest) -> &Self::Field {
+        &req.asn
+    }
+}
