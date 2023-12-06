@@ -1,18 +1,30 @@
-use actix_web::{get, http::header::HeaderMap, web, HttpRequest, HttpResponse, Responder};
+use actix_web::{get, web, HttpRequest, http::header::HeaderMap, HttpResponse, Responder};
 
 use crate::app::State;
 
 use crate::types::{
-    ForwardedRequest, USER_AGENT, X_FORWARDED_FOR, X_FORWARDED_HOST, X_FORWARDED_METHOD,
-    X_FORWARDED_PROTO, X_FORWARDED_URI,
+    ForwardedRequest, Method, Scheme, USER_AGENT, X_FORWARDED_FOR, X_FORWARDED_HOST,
+    X_FORWARDED_METHOD, X_FORWARDED_PROTO, X_FORWARDED_URI,
 };
 
-#[get("/ring")]
-pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responder {
-    let headers = req.headers();
+#[inline]
+fn bad_request() -> HttpResponse {
+    HttpResponse::BadRequest().finish()
+}
 
-    let require_single_header = |name: &str| {
-        let mut iter = headers.get_all(name);
+#[inline]
+fn internal_error() -> HttpResponse {
+    HttpResponse::InternalServerError().finish()
+}
+
+trait GetHeader {
+    fn get_single<'a>(&'a self, name: &str) -> Option<&'a str>;
+}
+
+impl GetHeader for HeaderMap {
+    fn get_single<'a>(&'a self, name: &str) -> Option<&'a str> {
+        let mut iter = self.get_all(name);
+
         match (iter.next(), iter.next()) {
             (None, _) => {
                 log::debug!("peer did not send a {} header", name);
@@ -23,19 +35,25 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
                 None
             }
             (Some(value), None) => match value.to_str() {
-                Ok(s) => Some(s.to_owned()),
+                Ok(s) => Some(s),
                 Err(e) => {
                     log::debug!("peer sent invalid {} header: {}", name, e);
                     None
                 }
             },
         }
-    };
+    }
+}
+
+
+#[get("/ring")]
+pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responder {
+    let headers = req.headers();
 
     let addr = {
         let Some(addr) = req.peer_addr() else {
             log::error!("failed to get peer IP address");
-            return HttpResponse::new(http::StatusCode::INTERNAL_SERVER_ERROR);
+            return internal_error();
         };
 
         let addr = addr.ip();
@@ -44,67 +62,61 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
             return HttpResponse::new(http::StatusCode::FORBIDDEN);
         }
 
-        let Some(xff) = require_single_header(X_FORWARDED_FOR) else {
-            return HttpResponse::BadRequest().finish();
+        let Some(xff) = headers.get_single(X_FORWARDED_FOR) else {
+            return bad_request();
         };
 
         let Some(forwarded_addr) = state.trusted_proxies.get_forwarded_ip(&xff) else {
-            return HttpResponse::BadRequest().finish();
+            return bad_request();
         };
 
         forwarded_addr
     };
 
     let scheme = {
-        let Some(xfp) = require_single_header(X_FORWARDED_PROTO) else {
-            return HttpResponse::BadRequest().finish();
+        let Some(xfp) = headers.get_single(X_FORWARDED_PROTO) else {
+            return bad_request();
         };
 
-        let Ok(scheme) = xfp.parse() else {
-            return HttpResponse::BadRequest().finish();
+        let Ok(scheme) = xfp.parse::<Scheme>() else {
+            return bad_request();
         };
 
         scheme
     };
 
-    let Some(host) = require_single_header(X_FORWARDED_HOST) else {
-        return HttpResponse::BadRequest().finish();
+    let Some(host) = headers.get_single(X_FORWARDED_HOST) else {
+        return bad_request();
     };
 
-    let Some(uri) = require_single_header(X_FORWARDED_URI) else {
-        return HttpResponse::BadRequest().finish();
+    let Some(uri) = headers.get_single(X_FORWARDED_URI) else {
+        return bad_request();
     };
 
-    let Some(method) = require_single_header(X_FORWARDED_METHOD) else {
-        return HttpResponse::BadRequest().finish();
+    let method = {
+        let Some(method) = headers.get_single(X_FORWARDED_METHOD) else {
+            return bad_request();
+        };
+
+        let Ok(method) = method.parse::<Method>() else {
+            return bad_request();
+        };
+
+        method
     };
 
-    let Ok(method) = method.parse() else {
-        return HttpResponse::BadRequest().finish();
-    };
+    let user_agent = headers.get_single(USER_AGENT).unwrap_or("");
 
-    let user_agent = match headers.get(USER_AGENT) {
-        Some(value) => match value.to_str() {
-            Ok(s) => s.to_owned(),
-            Err(e) => {
-                log::debug!("peer sent invalid {} header: {}", USER_AGENT, e);
-                return HttpResponse::BadRequest().finish();
-            }
-        },
-        None => String::from(""),
-    };
-
-    fn get_path(uri: &str) -> String {
-        uri.split_once('?').get_or_insert((uri, "")).0.to_owned()
-    }
-
-    let path = get_path(&uri);
+    let path = uri
+        .split_once('?')
+        .map(|(path, _rest)| path)
+        .unwrap_or(uri);
 
     let country_code = match state.geoip.country_code(&addr) {
         Ok(result) => result,
         Err(e) => {
             log::error!("failed to lookup country code: {}", e);
-            return HttpResponse::new(http::StatusCode::INTERNAL_SERVER_ERROR);
+            return internal_error();
         }
     };
 
@@ -114,23 +126,32 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
             Ok(None) => (None, None),
             Err(e) => {
                 log::error!("failed to lookup ASN data: {}", e);
-                return HttpResponse::new(http::StatusCode::INTERNAL_SERVER_ERROR);
+                return internal_error();
             }
         }
     };
 
-    let req = ForwardedRequest {
-        addr,
-        user_agent,
-        host,
-        method,
-        uri,
-        path,
-        country_code,
-        asn,
-        org,
-        scheme,
-        timestamp: chrono::Utc::now(),
+    let req = {
+        let built = ForwardedRequest::builder()
+            .addr(addr)
+            .asn(asn)
+            .org(org)
+            .scheme(scheme)
+            .host(host)
+            .path(path)
+            .uri(uri)
+            .method(method)
+            .country_code(country_code)
+            .user_agent(user_agent)
+            .build();
+
+        match built {
+            Ok(req) => req,
+            Err(err) => {
+                log::error!("failed building forwarded request: {}", err);
+                return internal_error();
+            }
+        }
     };
 
     dbg!(&req);
@@ -140,7 +161,7 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
             Ok(rules) => rules.get_match(&req).cloned(),
             Err(e) => {
                 log::error!("{}", e);
-                return HttpResponse::InternalServerError().finish();
+                return internal_error();
             }
         };
 
