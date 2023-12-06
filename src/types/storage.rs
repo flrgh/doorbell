@@ -9,8 +9,9 @@ pub trait PrimaryKey {
 
 pub trait Update {
     type Updates;
+    type Err;
 
-    fn update(&mut self, updates: Self::Updates);
+    fn update(&mut self, updates: Self::Updates) -> Result<bool, Self::Err>;
 }
 
 #[async_trait]
@@ -25,7 +26,7 @@ pub trait Repository<T: Entity> {
 
     async fn upsert(&self, item: T) -> Result<(), Self::Err>;
 
-    async fn update(&self, id: T::Key, updates: T::Updates) -> Result<(), Self::Err>;
+    async fn update(&self, id: T::Key, updates: T::Updates) -> Result<Option<T>, Self::Err>;
 
     async fn delete(&self, id: T::Key) -> Result<Option<T>, Self::Err>;
 

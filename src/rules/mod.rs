@@ -1,13 +1,14 @@
 use chrono::prelude::*;
 use derive_builder::Builder;
-use serde_derive::Serialize;
+use serde::Deserializer;
+use serde_derive::{Deserialize, Serialize};
 use sqlx::{FromRow, Type};
-use std::cmp::Ordering;
+use std::{cmp::Ordering, time::Duration};
 //use std::net::IpAddr;
 
 use self::condition::*;
 use crate::geo::*;
-pub(crate) use crate::types::{IpAddr, IpCidr, Pattern, Uuid};
+pub(crate) use crate::types::{IpAddr, IpCidr, Pattern, Uuid, Validate};
 use anyhow::{anyhow, Result};
 
 pub mod action;
@@ -66,6 +67,73 @@ pub struct Rule {
     pub method: Option<Method>,
     pub asn: Option<u32>,
     pub org: Option<Pattern>,
+}
+
+#[derive(Debug, Eq, PartialEq, Type, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RuleCreate {
+    pub comment: Option<String>,
+
+    pub action: Action,
+    pub terminate: Option<bool>,
+    pub expires: Option<DateTime<Utc>>,
+    pub ttl: Option<Duration>,
+
+    pub addr: Option<IpAddr>,
+    pub cidr: Option<IpCidr>,
+    pub user_agent: Option<Pattern>,
+    pub host: Option<Pattern>,
+    pub path: Option<Pattern>,
+    pub country_code: Option<CountryCode>,
+    pub method: Option<Method>,
+    pub asn: Option<u32>,
+    pub org: Option<Pattern>,
+}
+
+impl From<RuleCreate> for RuleBuilder {
+    fn from(value: RuleCreate) -> Self {
+        let RuleCreate {
+            comment,
+            action,
+            terminate,
+            expires,
+            ttl,
+            addr,
+            cidr,
+            user_agent,
+            host,
+            path,
+            country_code,
+            method,
+            asn,
+            org,
+        } = value;
+
+        let expires = match (expires, ttl) {
+            (Some(expires), Some(_)) => {
+                log::warn!("Trying to create a rule with both `expires` and `ttl` inputs");
+                Some(expires)
+            }
+            (None, Some(ttl)) => Some(chrono::Utc::now() + ttl),
+            _ => expires,
+        };
+
+        Self::default()
+            .comment(comment)
+            .action(action)
+            .terminate(terminate.unwrap_or(false))
+            .expires(expires)
+            .addr(addr)
+            .cidr(cidr)
+            .user_agent(user_agent)
+            .host(host)
+            .path(path)
+            .country_code(country_code)
+            .method(method)
+            .asn(asn)
+            .org(org)
+            .to_owned()
+    }
 }
 
 trait ConditionHash {
@@ -191,6 +259,10 @@ impl Rule {
             &rule.user_agent,
         )
     }
+
+    pub fn is_read_only(&self) -> bool {
+        self.source.is_config() || self.source.is_ota()
+    }
 }
 
 impl RuleBuilder {
@@ -215,7 +287,7 @@ impl RuleBuilder {
         Ok(())
     }
 
-    pub fn ttl(&mut self, ttl: std::time::Duration) -> &mut Self {
+    pub fn ttl(&mut self, ttl: Duration) -> &mut Self {
         self.expires(Some(chrono::Utc::now() + ttl))
     }
 
@@ -240,7 +312,7 @@ impl RuleBuilder {
             hash: _,
             created_at: _,
             updated_at: _,
-        } = self.clone();
+        } = self.to_owned();
 
         fn get<T>(t: Option<T>, name: &str) -> Result<T, String> {
             if let Some(t) = t {
@@ -305,39 +377,136 @@ impl RuleBuilder {
 
 impl crate::types::Update for Rule {
     type Updates = RuleUpdates;
+    type Err = anyhow::Error;
 
-    fn update(&mut self, updates: Self::Updates) {
-        updates.update(self);
+    fn update(&mut self, updates: Self::Updates) -> Result<bool, Self::Err> {
+        updates.update(self)
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Type)]
-pub struct RuleUpdates {
-    pub action: Option<Action>,
-    pub updated_at: Option<Option<DateTime<Utc>>>,
-    pub terminate: Option<bool>,
-    pub comment: Option<Option<String>>,
-    pub expires: Option<Option<DateTime<Utc>>>,
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
+pub enum FieldAction<T> {
+    Delete,
+    Update(T),
+}
 
-    pub addr: Option<Option<IpAddr>>,
-    pub cidr: Option<Option<IpCidr>>,
-    pub user_agent: Option<Option<Pattern>>,
-    pub host: Option<Option<Pattern>>,
-    pub path: Option<Option<Pattern>>,
-    pub country_code: Option<Option<CountryCode>>,
-    pub method: Option<Option<Method>>,
-    pub asn: Option<Option<u32>>,
-    pub org: Option<Option<Pattern>>,
+pub type FieldUpdate<T> = Option<FieldAction<T>>;
+
+// #[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
+// pub enum FieldUpdate<T> {
+//     NoChange,
+//     Change(FieldAction<T>),
+// }
+
+#[derive(Debug, Eq, PartialEq, Default)]
+pub(crate) enum Patch<T> {
+    #[default]
+    Unchanged,
+    Remove,
+    Value(T),
+}
+
+impl<T> From<Option<T>> for Patch<T> {
+    fn from(opt: Option<T>) -> Patch<T> {
+        match opt {
+            Some(v) => Patch::Value(v),
+            None => Patch::Remove,
+        }
+    }
+}
+
+impl<'de, T> serde::Deserialize<'de> for Patch<T>
+where
+    T: serde::Deserialize<'de>,
+    T: std::fmt::Debug,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Option::deserialize(deserializer).map(Into::into)
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Type, Deserialize, Default)]
+pub struct RuleUpdates {
+    #[serde(default)]
+    pub action: Option<Action>,
+    #[serde(default)]
+    pub terminate: Option<bool>,
+    #[serde(default)]
+    pub comment: Patch<String>,
+    #[serde(default)]
+    pub expires: Patch<DateTime<Utc>>,
+    #[serde(default)]
+    pub ttl: Option<Duration>,
+
+    #[serde(default)]
+    pub addr: Patch<IpAddr>,
+    #[serde(default)]
+    pub cidr: Patch<IpCidr>,
+    #[serde(default)]
+    pub user_agent: Patch<Pattern>,
+    #[serde(default)]
+    pub host: Patch<Pattern>,
+    #[serde(default)]
+    pub path: Patch<Pattern>,
+    #[serde(default)]
+    pub country_code: Patch<CountryCode>,
+    #[serde(default)]
+    pub method: Patch<Method>,
+    #[serde(default)]
+    pub asn: Patch<u32>,
+    #[serde(default)]
+    pub org: Patch<Pattern>,
+}
+
+trait UpdateChanged<T> {
+    fn update(&mut self, t: T) -> bool;
+}
+
+impl<T: PartialEq> UpdateChanged<T> for Option<T> {
+    fn update(&mut self, t: T) -> bool {
+        let old = self.take();
+        let changed = old.is_none() || old.is_some_and(|old| old != t);
+        let _ = self.insert(t);
+        changed
+    }
+}
+
+impl<T> Patch<T> {
+    pub fn update(self, field: &mut Option<T>) -> bool
+    where
+        T: PartialEq,
+    {
+        match self {
+            Self::Unchanged => false,
+            Self::Value(new) => UpdateChanged::update(field, new),
+            Self::Remove => field.take().is_some(),
+        }
+    }
 }
 
 impl RuleUpdates {
-    fn update(self, rule: &mut Rule) {
+    pub fn update(self, rule: &mut Rule) -> Result<bool, anyhow::Error>
+    where
+        Rule: Validate,
+    {
+        dbg!(&self);
+
+        if rule.is_read_only() {
+            return Err(anyhow::anyhow!(
+                "Cannot update a rule of source = {}",
+                rule.source
+            ));
+        }
+
         let RuleUpdates {
             action,
-            updated_at: _,
             terminate,
             comment,
             expires,
+            ttl,
             addr,
             cidr,
             user_agent,
@@ -349,28 +518,49 @@ impl RuleUpdates {
             org,
         } = self;
 
-        fn update<T>(field: &mut T, value: Option<T>) {
-            if let Some(t) = value {
-                *field = t;
+        let expires = match (expires, ttl) {
+            (Patch::Remove | Patch::Unchanged, Some(ttl)) => Patch::Value(chrono::Utc::now() + ttl),
+            (Patch::Value(expires), Some(_)) => {
+                log::warn!("Trying to update a rule with both `expires` and `ttl` inputs");
+                Patch::Value(expires)
+            }
+            (patch, None) => patch,
+        };
+
+        fn update<T: Eq>(field: &mut T, new: Option<T>) -> bool {
+            if let Some(value) = new {
+                let changed = *field != value;
+                *field = value;
+                changed
+            } else {
+                false
             }
         }
 
-        update(&mut rule.action, action);
-        update(&mut rule.terminate, terminate);
-        update(&mut rule.comment, comment);
-        update(&mut rule.expires, expires);
-        update(&mut rule.addr, addr);
-        update(&mut rule.cidr, cidr);
-        update(&mut rule.user_agent, user_agent);
-        update(&mut rule.host, host);
-        update(&mut rule.path, path);
-        update(&mut rule.method, method);
-        update(&mut rule.asn, asn);
-        update(&mut rule.org, org);
-        update(&mut rule.country_code, country_code);
+        let mut changed = false;
+        changed |= update(&mut rule.action, action);
+        changed |= update(&mut rule.terminate, terminate);
 
-        rule.updated_at = Some(chrono::Utc::now());
-        rule.hash = Rule::calculate_hash(rule);
+        changed |= expires.update(&mut rule.expires);
+        changed |= comment.update(&mut rule.comment);
+        changed |= addr.update(&mut rule.addr);
+        changed |= cidr.update(&mut rule.cidr);
+        changed |= user_agent.update(&mut rule.user_agent);
+        changed |= host.update(&mut rule.host);
+        changed |= path.update(&mut rule.path);
+        changed |= method.update(&mut rule.method);
+        changed |= asn.update(&mut rule.asn);
+        changed |= org.update(&mut rule.org);
+        changed |= country_code.update(&mut rule.country_code);
+
+        if changed {
+            rule.updated_at = Some(chrono::Utc::now());
+            rule.hash = Rule::calculate_hash(rule);
+        }
+
+        rule.validate()?;
+
+        Ok(changed)
     }
 }
 
@@ -436,6 +626,65 @@ impl Rule {
 
     pub fn is_expired_at(&self, time: &DateTime<Utc>) -> bool {
         self.expires.is_some_and(|expires| *time >= expires)
+    }
+
+    pub fn equivalent(&self, other: &Rule) -> bool {
+        self.action == other.action
+            && self.terminate == other.terminate
+            && self.comment == other.comment
+            && self.expires == other.expires
+            && self.addr == other.addr
+            && self.cidr == other.cidr
+            && self.host == other.host
+            && self.user_agent == other.user_agent
+            && self.path == other.path
+            && self.method == other.method
+            && self.org == other.org
+            && self.country_code == other.country_code
+            && self.asn == other.asn
+    }
+
+    pub fn diff(old: &Self, new: &Self) -> Option<RuleUpdates> {
+        if old.equivalent(new) {
+            return None;
+        }
+
+        let mut updates = RuleUpdates::default();
+
+        fn patch<T: Eq + Clone>(old: &T, new: &T) -> Option<T> {
+            if old == new {
+                None
+            } else {
+                Some(new.clone())
+            }
+        }
+
+        fn patch_opt<T: Eq + Clone>(old: &Option<T>, new: &Option<T>) -> Patch<T> {
+            match (old, new) {
+                (Some(_), None) => Patch::Remove,
+                (None, None) => Patch::Unchanged,
+                (Some(old), Some(new)) if old == new => Patch::Unchanged,
+                (_, Some(new)) => Patch::Value(new.to_owned()),
+            }
+        }
+
+        updates.action = patch(&old.action, &new.action);
+        updates.terminate = patch(&old.terminate, &new.terminate);
+
+        updates.comment = patch_opt(&old.comment, &new.comment);
+        updates.expires = patch_opt(&old.expires, &new.expires);
+
+        updates.addr = patch_opt(&old.addr, &new.addr);
+        updates.cidr = patch_opt(&old.cidr, &new.cidr);
+        updates.user_agent = patch_opt(&old.user_agent, &new.user_agent);
+        updates.host = patch_opt(&old.host, &new.host);
+        updates.method = patch_opt(&old.method, &new.method);
+        updates.path = patch_opt(&old.path, &new.path);
+        updates.asn = patch_opt(&old.asn, &new.asn);
+        updates.org = patch_opt(&old.org, &new.org);
+        updates.country_code = patch_opt(&old.country_code, &new.country_code);
+
+        Some(updates)
     }
 }
 
