@@ -2,8 +2,6 @@ use tokio::sync::RwLock;
 
 use actix_web::{get, http::header::HeaderMap, web, HttpRequest, HttpResponse, Responder};
 
-use crate::app::State;
-
 use crate::geo::GeoIp;
 use crate::net::TrustedProxies;
 use crate::rules::Collection;
