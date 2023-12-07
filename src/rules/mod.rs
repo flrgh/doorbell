@@ -77,7 +77,7 @@ pub struct RuleCreate {
     pub action: Action,
     pub terminate: Option<bool>,
     pub expires: Option<DateTime<Utc>>,
-    pub ttl: Option<Duration>,
+    pub ttl: Option<u64>,
 
     pub addr: Option<IpAddr>,
     pub cidr: Option<IpCidr>,
@@ -114,7 +114,10 @@ impl From<RuleCreate> for RuleBuilder {
                 log::warn!("Trying to create a rule with both `expires` and `ttl` inputs");
                 Some(expires)
             }
-            (None, Some(ttl)) => Some(chrono::Utc::now() + ttl),
+            (None, Some(ttl)) => {
+                let ttl = Duration::from_secs(ttl);
+                Some(chrono::Utc::now() + ttl)
+            }
             _ => expires,
         };
 
@@ -439,7 +442,7 @@ pub struct RuleUpdates {
     #[serde(default)]
     pub expires: Patch<DateTime<Utc>>,
     #[serde(default)]
-    pub ttl: Option<Duration>,
+    pub ttl: Option<u64>,
 
     #[serde(default)]
     pub addr: Patch<IpAddr>,
@@ -519,7 +522,10 @@ impl RuleUpdates {
         } = self;
 
         let expires = match (expires, ttl) {
-            (Patch::Remove | Patch::Unchanged, Some(ttl)) => Patch::Value(chrono::Utc::now() + ttl),
+            (Patch::Remove | Patch::Unchanged, Some(ttl)) => {
+                let ttl = Duration::from_secs(ttl);
+                Patch::Value(chrono::Utc::now() + ttl)
+            }
             (Patch::Value(expires), Some(_)) => {
                 log::warn!("Trying to update a rule with both `expires` and `ttl` inputs");
                 Patch::Value(expires)

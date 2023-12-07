@@ -1,7 +1,12 @@
-use actix_web::{get, web, HttpRequest, http::header::HeaderMap, HttpResponse, Responder};
+use tokio::sync::RwLock;
+
+use actix_web::{get, http::header::HeaderMap, web, HttpRequest, HttpResponse, Responder};
 
 use crate::app::State;
 
+use crate::geo::GeoIp;
+use crate::net::TrustedProxies;
+use crate::rules::Collection;
 use crate::types::{
     ForwardedRequest, Method, Scheme, USER_AGENT, X_FORWARDED_FOR, X_FORWARDED_HOST,
     X_FORWARDED_METHOD, X_FORWARDED_PROTO, X_FORWARDED_URI,
@@ -45,9 +50,13 @@ impl GetHeader for HeaderMap {
     }
 }
 
-
 #[get("/ring")]
-pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responder {
+pub async fn handler(
+    req: HttpRequest,
+    tp: web::Data<TrustedProxies>,
+    geoip: web::Data<GeoIp>,
+    rules: web::Data<RwLock<Collection>>,
+) -> impl Responder {
     let headers = req.headers();
 
     let addr = {
@@ -57,7 +66,7 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
         };
 
         let addr = addr.ip();
-        if !state.trusted_proxies.is_trusted(&addr) {
+        if !tp.is_trusted(&addr) {
             log::info!("got a request from an untrusted proxy IP: {}", addr);
             return HttpResponse::new(http::StatusCode::FORBIDDEN);
         }
@@ -66,7 +75,7 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
             return bad_request();
         };
 
-        let Some(forwarded_addr) = state.trusted_proxies.get_forwarded_ip(&xff) else {
+        let Some(forwarded_addr) = tp.get_forwarded_ip(&xff) else {
             return bad_request();
         };
 
@@ -107,12 +116,9 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
 
     let user_agent = headers.get_single(USER_AGENT).unwrap_or("");
 
-    let path = uri
-        .split_once('?')
-        .map(|(path, _rest)| path)
-        .unwrap_or(uri);
+    let path = uri.split_once('?').map(|(path, _rest)| path).unwrap_or(uri);
 
-    let country_code = match state.geoip.country_code(&addr) {
+    let country_code = match geoip.country_code(&addr) {
         Ok(result) => result,
         Err(e) => {
             log::error!("failed to lookup country code: {}", e);
@@ -121,7 +127,7 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
     };
 
     let (asn, org) = {
-        match state.geoip.net_info(&addr) {
+        match geoip.net_info(&addr) {
             Ok(Some(info)) => (info.asn, info.org),
             Ok(None) => (None, None),
             Err(e) => {
@@ -157,13 +163,7 @@ pub async fn handler(req: HttpRequest, state: web::Data<State>) -> impl Responde
     dbg!(&req);
 
     let status = {
-        let matched = match state.rules.read() {
-            Ok(rules) => rules.get_match(&req).cloned(),
-            Err(e) => {
-                log::error!("{}", e);
-                return internal_error();
-            }
-        };
+        let matched = rules.read().await.get_match(&req).cloned();
 
         if let Some(rule) = matched {
             use crate::rules::Action;
