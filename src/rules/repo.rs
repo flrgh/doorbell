@@ -1,18 +1,18 @@
 use crate::rules::*;
 use crate::types;
 use crate::types::Repository as RepoTrait;
+use actix_web::web::Data;
 use anyhow;
 use async_trait::async_trait;
 use sqlx::SqlitePool;
 use sqlx_sqlite::Sqlite;
-use std::sync::Arc;
 
 pub struct Repository {
-    pool: Arc<SqlitePool>,
+    pool: Data<SqlitePool>,
 }
 
 impl Repository {
-    pub fn new(pool: Arc<SqlitePool>) -> Self {
+    pub fn new(pool: Data<SqlitePool>) -> Self {
         Self { pool }
     }
 }

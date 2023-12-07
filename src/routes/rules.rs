@@ -1,12 +1,19 @@
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse, Responder};
 
-use crate::app::State;
-use crate::rules::{RuleBuilder, RuleCreate, RuleUpdates, Source};
+use crate::rules::{Manager, RuleBuilder, RuleCreate, RuleUpdates, Source};
 use crate::types::Repository;
 
+async fn update_matcher(event: &str, manager: web::Data<Manager>) {
+    if let Err(e) = manager.update_matcher().await {
+        log::error!("failed rebuilding matcher after rule {}: {}", event, e);
+    } else {
+        log::info!("rebuilt matcher after rule {}", event);
+    }
+}
+
 #[get("/rules")]
-pub async fn list(_: HttpRequest, state: web::Data<State>) -> impl Responder {
-    let rules = match state.repo.get_all().await {
+pub async fn list(_: HttpRequest, repo: web::Data<crate::rules::Repository>) -> impl Responder {
+    let rules = match repo.get_all().await {
         Ok(rules) => rules,
         Err(e) => {
             dbg!(e);
@@ -24,7 +31,8 @@ pub async fn list(_: HttpRequest, state: web::Data<State>) -> impl Responder {
 #[post("/rules")]
 pub async fn create(
     web::Json(input): web::Json<RuleCreate>,
-    state: web::Data<State>,
+    repo: web::Data<crate::rules::Repository>,
+    manager: web::Data<Manager>,
 ) -> impl Responder {
     let built = RuleBuilder::from(input).source(Source::Api).build();
 
@@ -41,15 +49,10 @@ pub async fn create(
         }
     };
 
-    match state.repo.insert(rule.clone()).await {
+    match repo.insert(rule.clone()).await {
         Ok(_) => {
             log::debug!("Created a new rule: {:?}", &rule);
-            if let Err(e) = state.manager.lock().await.update_matcher().await {
-                log::error!("failed rebuilding matcher after rule creation: {}", e);
-            } else {
-                log::info!("rebuilt matcher");
-            }
-
+            update_matcher("creation", manager).await;
             HttpResponse::Created().json(rule)
         }
         Err(e) => {
@@ -60,9 +63,12 @@ pub async fn create(
 }
 
 #[get("/rules/{id}")]
-pub async fn get(id: web::Path<uuid::Uuid>, state: web::Data<State>) -> impl Responder {
+pub async fn get(
+    id: web::Path<uuid::Uuid>,
+    repo: web::Data<crate::rules::Repository>,
+) -> impl Responder {
     let id = id.into_inner();
-    match state.repo.get(id.into()).await {
+    match repo.get(id.into()).await {
         Ok(Some(rule)) => HttpResponse::Ok().json(rule),
         Ok(None) => HttpResponse::NotFound().finish(),
         Err(err) => {
@@ -73,9 +79,13 @@ pub async fn get(id: web::Path<uuid::Uuid>, state: web::Data<State>) -> impl Res
 }
 
 #[delete("/rules/{id}")]
-pub async fn delete(id: web::Path<uuid::Uuid>, state: web::Data<State>) -> impl Responder {
+pub async fn delete(
+    id: web::Path<uuid::Uuid>,
+    repo: web::Data<crate::rules::Repository>,
+    manager: web::Data<Manager>,
+) -> impl Responder {
     let id = id.into_inner();
-    let rule = match state.repo.get(id.into()).await {
+    let rule = match repo.get(id.into()).await {
         Ok(Some(rule)) => rule,
         Ok(None) => {
             return HttpResponse::NotFound().finish();
@@ -94,8 +104,11 @@ pub async fn delete(id: web::Path<uuid::Uuid>, state: web::Data<State>) -> impl 
         return HttpResponse::BadRequest().json(json);
     }
 
-    match state.repo.delete(id.into()).await {
-        Ok(Some(_)) => HttpResponse::NoContent().finish(),
+    match repo.delete(id.into()).await {
+        Ok(Some(_)) => {
+            update_matcher("deletion", manager).await;
+            HttpResponse::NoContent().finish()
+        }
         Ok(None) => HttpResponse::NotFound().finish(),
         Err(err) => {
             log::error!("{}", err);
@@ -108,10 +121,11 @@ pub async fn delete(id: web::Path<uuid::Uuid>, state: web::Data<State>) -> impl 
 pub async fn patch(
     id: web::Path<uuid::Uuid>,
     web::Json(updates): web::Json<RuleUpdates>,
-    state: web::Data<State>,
+    repo: web::Data<crate::rules::Repository>,
+    manager: web::Data<Manager>,
 ) -> impl Responder {
     let id = id.into_inner();
-    let mut rule = match state.repo.get(id.into()).await {
+    let mut rule = match repo.get(id.into()).await {
         Ok(Some(rule)) => rule,
         Ok(None) => {
             return HttpResponse::NotFound().finish();
@@ -131,8 +145,11 @@ pub async fn patch(
     }
 
     match updates.update(&mut rule) {
-        Ok(true) => match state.repo.upsert(rule.clone()).await {
-            Ok(_) => HttpResponse::Ok().json(rule),
+        Ok(true) => match repo.upsert(rule.clone()).await {
+            Ok(_) => {
+                update_matcher("update", manager).await;
+                HttpResponse::Ok().json(rule)
+            }
             Err(err) => {
                 log::error!("{}", err);
                 HttpResponse::InternalServerError().finish()

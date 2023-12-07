@@ -2,19 +2,20 @@ use crate::config::Conf;
 use crate::rules::repo::Repository;
 use crate::rules::{Collection, Source};
 use crate::types::Repository as RepoTrait;
-use std::sync::{Arc, RwLock};
+use actix_web::web;
+use tokio::sync::RwLock;
 
 pub struct Manager {
-    repo: Arc<Repository>,
-    config: Arc<Conf>,
-    collection: Arc<RwLock<Collection>>,
+    repo: web::Data<Repository>,
+    config: web::Data<Conf>,
+    collection: web::Data<RwLock<Collection>>,
 }
 
 impl Manager {
     pub fn new(
-        config: Arc<Conf>,
-        repo: Arc<Repository>,
-        collection: Arc<RwLock<Collection>>,
+        config: web::Data<Conf>,
+        repo: web::Data<Repository>,
+        collection: web::Data<RwLock<Collection>>,
     ) -> Self {
         Self {
             repo,
@@ -35,25 +36,21 @@ impl Manager {
         Ok(())
     }
 
-    pub async fn update_matcher(&mut self) -> anyhow::Result<()> {
+    pub async fn update_matcher(&self) -> anyhow::Result<()> {
         let rules = self.repo.get_all().await?;
 
-        let version = self
-            .collection
-            .read()
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?
-            .version();
+        let version = { self.collection.read().await.version() };
+        log::debug!("Got version: {}", version);
 
-        let new_collection = Collection::new(rules, version);
+        let new_collection = Collection::new(rules, version + 1);
+        log::debug!("Built new collection: {:?}", new_collection);
 
         {
-            let mut collection = self
-                .collection
-                .write()
-                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-
+            let mut collection = self.collection.write().await;
             *collection = new_collection;
         }
+
+        log::debug!("Updated collection");
 
         Ok(())
     }
