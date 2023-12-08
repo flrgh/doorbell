@@ -5,10 +5,11 @@ use serde_derive::{Deserialize, Serialize};
 use serde_repr::*;
 use std::env;
 use tokio::sync::Mutex;
+use tokio::time::*;
 
 const URI: &str = "https://api.pushover.net/1/messages.json";
 const USER_AGENT: &str = "Doorbell Forward Auth Server";
-const RATE: std::time::Duration = std::time::Duration::from_millis(500);
+const RATE: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Serialize, Clone)]
 struct Request {
@@ -38,7 +39,7 @@ pub struct Pushover {
     token: String,
     user_key: String,
     priority: Priority,
-    last_sent: Mutex<std::time::Instant>,
+    last_sent: Mutex<Instant>,
 }
 
 impl Pushover {
@@ -50,7 +51,7 @@ impl Pushover {
                 Ok(v) => v.parse().unwrap_or_default(),
                 Err(_) => Default::default(),
             },
-            last_sent: Mutex::new(std::time::Instant::now() - RATE),
+            last_sent: Mutex::new(Instant::now() - RATE),
         })
     }
 
@@ -62,10 +63,10 @@ impl Pushover {
                 "sleeping for {}ms until next Pushover request",
                 delay.as_millis()
             );
-            tokio::time::sleep(delay).await;
+            sleep(delay).await;
         }
 
-        *last_sent = std::time::Instant::now();
+        *last_sent = Instant::now();
     }
 }
 
