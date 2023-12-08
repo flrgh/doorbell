@@ -1,3 +1,4 @@
+mod access;
 mod app;
 mod cli;
 mod config;
