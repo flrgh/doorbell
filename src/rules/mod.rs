@@ -387,20 +387,6 @@ impl crate::types::Update for Rule {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
-pub enum FieldAction<T> {
-    Delete,
-    Update(T),
-}
-
-pub type FieldUpdate<T> = Option<FieldAction<T>>;
-
-// #[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
-// pub enum FieldUpdate<T> {
-//     NoChange,
-//     Change(FieldAction<T>),
-// }
-
 #[derive(Debug, Eq, PartialEq, Default)]
 pub(crate) enum Patch<T> {
     #[default]

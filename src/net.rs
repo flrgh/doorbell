@@ -1,3 +1,4 @@
+use crate::config::Conf;
 use cidr_utils::cidr::IpCidr;
 use cidr_utils::utils::IpCidrCombiner;
 use std::net::IpAddr;
@@ -17,6 +18,10 @@ impl TrustedProxies {
         }
 
         Self { cidr: combined }
+    }
+
+    pub fn from_config(config: &Conf) -> Self {
+        Self::new(&config.trusted_proxies)
     }
 
     pub fn is_trusted(&self, addr: &IpAddr) -> bool {

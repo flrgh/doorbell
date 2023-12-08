@@ -4,9 +4,12 @@ use sqlx::{
     database::HasValueRef, encode::IsNull, error::BoxDynError, sqlite::SqliteArgumentValue,
     Database, Decode, Encode, Sqlite, Type,
 };
-use std::{borrow::Cow, fmt::Display, net, result::Result, str::FromStr};
+use std::{
+    borrow::Cow, fmt::Display, net, ops::Deref, ops::DerefMut, result::Result, str::FromStr,
+};
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Serialize, Deserialize)]
+#[repr(transparent)]
 pub struct IpAddr(pub net::IpAddr);
 
 impl<DB> Type<DB> for IpAddr
@@ -26,6 +29,32 @@ where
 impl IpAddr {
     pub fn into_inner(self) -> net::IpAddr {
         self.0
+    }
+}
+
+impl AsRef<net::IpAddr> for IpAddr {
+    fn as_ref(&self) -> &net::IpAddr {
+        &self.0
+    }
+}
+
+impl AsMut<net::IpAddr> for IpAddr {
+    fn as_mut(&mut self) -> &mut net::IpAddr {
+        &mut self.0
+    }
+}
+
+impl Deref for IpAddr {
+    type Target = net::IpAddr;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for IpAddr {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
@@ -87,6 +116,7 @@ where
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Serialize, Deserialize)]
+#[repr(transparent)]
 pub struct IpCidr(pub cidr::IpCidr);
 
 impl<'r, DB: Database> Decode<'r, DB> for IpCidr
@@ -129,11 +159,15 @@ impl From<cidr::IpCidr> for IpCidr {
 }
 
 impl IpCidr {
-    pub fn contains<T>(&self, addr: T) -> bool
+    pub fn into_inner(self) -> cidr::IpCidr {
+        self.0
+    }
+
+    pub fn contains<T>(&self, addr: &T) -> bool
     where
-        T: Into<net::IpAddr>,
+        T: AsRef<std::net::IpAddr>,
     {
-        self.0.contains(addr.into())
+        self.0.contains(*addr.as_ref())
     }
 }
 
@@ -165,5 +199,25 @@ where
 
     fn compatible(ty: &DB::TypeInfo) -> bool {
         String::compatible(ty)
+    }
+}
+
+impl Deref for IpCidr {
+    type Target = cidr::IpCidr;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for IpCidr {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl AsMut<cidr::IpCidr> for IpCidr {
+    fn as_mut(&mut self) -> &mut cidr::IpCidr {
+        &mut self.0
     }
 }
