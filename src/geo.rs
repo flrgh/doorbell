@@ -2,7 +2,6 @@ use maxminddb::{geoip2::country::Country, geoip2::Asn, geoip2::City, MaxMindDBEr
 use std::fmt::Debug;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
-use tokio::runtime::Runtime;
 
 #[derive(
     Debug,

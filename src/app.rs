@@ -51,7 +51,7 @@ pub(super) async fn run() -> std::io::Result<()> {
         return Err(IoError::new(ErrorKind::Other, e));
     }
 
-    let trusted_proxies = web::Data::new(net::TrustedProxies::new(&conf.trusted_proxies));
+    let trusted_proxies = web::Data::new(net::TrustedProxies::from_config(&conf));
     let collection = web::Data::new(RwLock::new(rules::Collection::default()));
 
     let manager = {

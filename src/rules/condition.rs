@@ -20,7 +20,7 @@ impl Condition {
     pub fn matches(&self, req: &ForwardedRequest) -> bool {
         match self {
             Condition::Addr(addr) => addr.eq(&req.addr),
-            Condition::Network(cidr) => cidr.contains(req.addr),
+            Condition::Network(cidr) => cidr.contains(&req.addr),
             Condition::UserAgent(pattern) => pattern.matches(&req.user_agent),
             Condition::Host(pattern) => pattern.matches(&req.host),
             Condition::Path(pattern) => pattern.matches(&req.path),
@@ -117,7 +117,7 @@ pub struct Org;
 
 impl Match for IpCidr {
     fn matches(&self, req: &ForwardedRequest) -> bool {
-        self.contains(req.addr)
+        self.contains(&req.addr)
     }
 }
 
