@@ -3,14 +3,14 @@ pub mod pushover;
 use async_trait::async_trait;
 use serde_derive::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Clone, Default)]
+#[derive(Debug, Default)]
 pub enum Notifier {
     #[default]
     Disabled,
-    Pushover(pushover::Config),
+    Pushover(pushover::Pushover),
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug)]
 pub struct Config {
     strategy: Notifier,
 }
