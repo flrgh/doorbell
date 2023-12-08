@@ -5,6 +5,7 @@ mod config;
 mod database;
 mod geo;
 mod net;
+mod notify;
 mod routes;
 mod rules;
 mod types;
