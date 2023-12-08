@@ -190,19 +190,21 @@ impl Repository {
 
 #[cfg(test)]
 mod tests {
+    use actix_web::web;
+
     use super::*;
     use crate::types::Pattern;
     use crate::types::Repository as RepoTrait;
 
     struct Ctx {
-        pool: Arc<SqlitePool>,
+        pool: web::Data<SqlitePool>,
         repo: Repository,
     }
 
     impl Ctx {
         async fn init() -> Self {
             let path = std::path::Path::new("./test/doorbell-test.db");
-            let pool = Arc::new(crate::database::connect(path).await.unwrap());
+            let pool = web::Data::new(crate::database::connect(path).await.unwrap());
             let repo = Repository::new(pool.clone());
 
             repo.truncate().await.unwrap();
