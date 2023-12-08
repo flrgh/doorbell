@@ -4,6 +4,7 @@ use actix_web::{
 use std::io::{Error as IoError, ErrorKind};
 use tokio::sync::RwLock;
 
+use crate::access;
 use crate::config;
 use crate::database;
 use crate::geo;
@@ -64,6 +65,8 @@ pub(super) async fn run() -> std::io::Result<()> {
 
         web::Data::new(manager)
     };
+
+    let access_repo = web::Data::new(access::Repository::new(pool.clone()));
 
     {
         let manager = manager.clone();
@@ -133,6 +136,7 @@ pub(super) async fn run() -> std::io::Result<()> {
             .app_data(trusted_proxies.clone())
             .app_data(geoip.clone())
             .app_data(collection.clone())
+            .app_data(access_repo.clone())
             .service(routes::root::handler)
             .service(routes::ring::handler)
             .service(routes::rules::list)

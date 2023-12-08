@@ -18,11 +18,13 @@ clap = { version = "4", features = ["derive"] }
 config = "0.13"
 derive_builder = "0.12.0"
 env_logger = "0.10.1"
+hex = "0.4.3"
 http = "0.2"
 log = "0.4"
 lru-cache = "0.1.2"
 maxminddb = "0.23.0"
 md5 = "0.7.0"
+rand = "0.8.5"
 regex = "1"
 serde = { version = "1", features = ["derive", "serde_derive"] }
 serde_derive = "1"
@@ -34,4 +36,6 @@ sqlx-sqlite = "0.7.3"
 strum = { version = "0.25.0", features = ["derive"] }
 strum_macros = "0.25.3"
 tokio = { version = "1.34.0", features = ["rt", "macros"] }
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
 uuid = { version = "1", features = ["v4", "serde"] }

@@ -1,7 +1,13 @@
+use std::borrow::Cow;
+
 use crate::geo::CountryCode;
 use chrono::DateTime;
 use chrono::Utc;
 use derive_builder::Builder;
+use sqlx::{
+    database::HasValueRef, encode::IsNull, error::BoxDynError, sqlite::SqliteArgumentValue,
+    Database, Decode, Encode, Sqlite, Type,
+};
 
 use super::net::IpAddr;
 
@@ -13,7 +19,9 @@ pub const X_FORWARDED_METHOD: &str = "X-Forwarded-Method";
 pub const X_FORWARDED_URI: &str = "X-Forwarded-Uri";
 pub const USER_AGENT: &str = "User-Agent";
 
-#[derive(Debug, PartialEq, Eq, Builder, serde_derive::Serialize)]
+#[derive(
+    Debug, PartialEq, Eq, Builder, serde_derive::Serialize, serde_derive::Deserialize, Clone,
+)]
 #[builder(setter(into), build_fn(private, name = "build_super"))]
 pub struct ForwardedRequest {
     pub addr: IpAddr,
@@ -27,6 +35,33 @@ pub struct ForwardedRequest {
     pub org: Option<String>,
     pub timestamp: DateTime<Utc>,
     pub scheme: Scheme,
+}
+
+impl<DB> Type<DB> for ForwardedRequest
+where
+    String: Type<DB>,
+    DB: Database,
+{
+    fn type_info() -> DB::TypeInfo {
+        String::type_info()
+    }
+
+    fn compatible(ty: &DB::TypeInfo) -> bool {
+        String::compatible(ty)
+    }
+}
+
+impl<'q> Encode<'q, Sqlite> for &'q ForwardedRequest
+where
+    &'q str: Encode<'q, Sqlite>,
+    &'q ForwardedRequest: serde::Serialize,
+{
+    fn encode_by_ref(&self, args: &mut Vec<SqliteArgumentValue<'q>>) -> IsNull {
+        let s = serde_json::to_string(self).expect("wtf");
+        args.push(SqliteArgumentValue::Text(Cow::Owned(s)));
+
+        IsNull::No
+    }
 }
 
 impl ForwardedRequest {

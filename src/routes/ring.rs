@@ -2,6 +2,7 @@ use tokio::sync::RwLock;
 
 use actix_web::{get, http::header::HeaderMap, web, HttpRequest, HttpResponse, Responder};
 
+use crate::access;
 use crate::geo::GeoIp;
 use crate::net::TrustedProxies;
 use crate::rules::Collection;
@@ -54,6 +55,7 @@ pub async fn handler(
     tp: web::Data<TrustedProxies>,
     geoip: web::Data<GeoIp>,
     rules: web::Data<RwLock<Collection>>,
+    access_repo: web::Data<access::Repository>,
 ) -> impl Responder {
     let headers = req.headers();
 
@@ -73,7 +75,7 @@ pub async fn handler(
             return bad_request();
         };
 
-        let Some(forwarded_addr) = tp.get_forwarded_ip(&xff) else {
+        let Some(forwarded_addr) = tp.get_forwarded_ip(xff) else {
             return bad_request();
         };
 
@@ -180,6 +182,7 @@ pub async fn handler(
         } else {
             log::trace!("request {:?} did not match any rule", req);
             log::debug!("/ring => UNKNOWN");
+            access_repo.get_ref().incoming(&req).await;
             http::StatusCode::UNAUTHORIZED
         }
     };
