@@ -39,7 +39,7 @@ pub struct Pushover {
     token: String,
     user_key: String,
     priority: Priority,
-    last_sent: Mutex<Instant>,
+    rate: Mutex<Interval>,
 }
 
 impl Pushover {
@@ -51,22 +51,12 @@ impl Pushover {
                 Ok(v) => v.parse().unwrap_or_default(),
                 Err(_) => Default::default(),
             },
-            last_sent: Mutex::new(Instant::now() - RATE),
+            rate: Mutex::new(interval(RATE)),
         })
     }
 
     async fn delay_for_rate_limit(&self) {
-        let mut last_sent = self.last_sent.lock().await;
-        if last_sent.elapsed() < RATE {
-            let delay = RATE - last_sent.elapsed();
-            log::trace!(
-                "sleeping for {}ms until next Pushover request",
-                delay.as_millis()
-            );
-            sleep(delay).await;
-        }
-
-        *last_sent = Instant::now();
+        self.rate.lock().await.tick().await;
     }
 }
 
