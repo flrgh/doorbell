@@ -3,12 +3,13 @@ use crate::rules::repo::Repository;
 use crate::rules::{Collection, Source};
 use crate::types::Repository as RepoTrait;
 use actix_web::web;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 pub struct Manager {
     repo: web::Data<Repository>,
     config: web::Data<Conf>,
     collection: web::Data<RwLock<Collection>>,
+    version: tokio::sync::Mutex<u64>,
 }
 
 impl Manager {
@@ -17,10 +18,12 @@ impl Manager {
         repo: web::Data<Repository>,
         collection: web::Data<RwLock<Collection>>,
     ) -> Self {
+        let version = Mutex::new(0);
         Self {
             repo,
             config,
             collection,
+            version,
         }
     }
 
@@ -37,20 +40,32 @@ impl Manager {
     }
 
     pub async fn update_matcher(&self) -> anyhow::Result<()> {
+        let mut my_version = self.version.lock().await;
+
         let rules = self.repo.get_all().await?;
 
         let version = { self.collection.read().await.version() };
-        log::debug!("Got version: {}", version);
+        anyhow::ensure!(*my_version == version);
 
-        let new_collection = Collection::new(rules, version + 1);
+        let new_version = version + 1;
+        let new_collection = Collection::new(rules, new_version);
         log::debug!("Built new collection: {:?}", new_collection);
 
         {
             let mut collection = self.collection.write().await;
+            if collection.version() != version {
+                return Err(anyhow::anyhow!(
+                        "The global collection was modified while building a new one (expected: {}, actual: {})",
+                        version,
+                        collection.version()));
+            }
+
             *collection = new_collection;
         }
 
         log::debug!("Updated collection");
+
+        *my_version = new_version;
 
         Ok(())
     }
