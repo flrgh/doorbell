@@ -1,13 +1,12 @@
 use chrono::prelude::*;
 use derive_builder::Builder;
-use serde::Deserializer;
 use serde_derive::{Deserialize, Serialize};
 use sqlx::{FromRow, Type};
 use std::{cmp::Ordering, time::Duration};
-//use std::net::IpAddr;
 
 use self::condition::*;
 use crate::geo::*;
+use crate::types::api::Patch;
 pub(crate) use crate::types::{IpAddr, IpCidr, Pattern, Uuid, Validate};
 use anyhow::{anyhow, Result};
 
@@ -387,36 +386,6 @@ impl crate::types::Update for Rule {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Default)]
-pub(crate) enum Patch<T> {
-    #[default]
-    Unchanged,
-    Remove,
-    Value(T),
-}
-
-impl<T> From<Option<T>> for Patch<T> {
-    fn from(opt: Option<T>) -> Patch<T> {
-        match opt {
-            Some(v) => Patch::Value(v),
-            None => Patch::Remove,
-        }
-    }
-}
-
-impl<'de, T> serde::Deserialize<'de> for Patch<T>
-where
-    T: serde::Deserialize<'de>,
-    T: std::fmt::Debug,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        Option::deserialize(deserializer).map(Into::into)
-    }
-}
-
 #[derive(Debug, Eq, PartialEq, Type, Deserialize, Default)]
 pub struct RuleUpdates {
     #[serde(default)]
@@ -448,32 +417,6 @@ pub struct RuleUpdates {
     pub asn: Patch<u32>,
     #[serde(default)]
     pub org: Patch<Pattern>,
-}
-
-trait UpdateChanged<T> {
-    fn update(&mut self, t: T) -> bool;
-}
-
-impl<T: PartialEq> UpdateChanged<T> for Option<T> {
-    fn update(&mut self, t: T) -> bool {
-        let old = self.take();
-        let changed = old.is_none() || old.is_some_and(|old| old != t);
-        let _ = self.insert(t);
-        changed
-    }
-}
-
-impl<T> Patch<T> {
-    pub fn update(self, field: &mut Option<T>) -> bool
-    where
-        T: PartialEq,
-    {
-        match self {
-            Self::Unchanged => false,
-            Self::Value(new) => UpdateChanged::update(field, new),
-            Self::Remove => field.take().is_some(),
-        }
-    }
 }
 
 impl RuleUpdates {
@@ -754,68 +697,3 @@ impl crate::types::Entity for Rule {
         "rules"
     }
 }
-
-//impl<'a, R: ::sqlx::Row> ::sqlx::FromRow<'a, R> for Rule
-//where
-//    &'a ::std::primitive::str: ::sqlx::ColumnIndex<R>,
-//
-//    String: ::sqlx::decode::Decode<'a, R::Database>,
-//    String: ::sqlx::types::Type<R::Database>,
-//
-//    uuid::Uuid: ::sqlx::decode::Decode<'a, R::Database>,
-//    uuid::Uuid: ::sqlx::types::Type<R::Database>,
-//
-//    DateTime<Utc>: ::sqlx::decode::Decode<'a, R::Database>,
-//    DateTime<Utc>: ::sqlx::types::Type<R::Database>,
-//
-//    Action: ::sqlx::decode::Decode<'a, R::Database>,
-//    Action: ::sqlx::types::Type<R::Database>,
-//
-//    Source: ::sqlx::decode::Decode<'a, R::Database>,
-//    Source: ::sqlx::types::Type<R::Database>,
-//
-//    Pattern: ::sqlx::decode::Decode<'a, R::Database>,
-//    Pattern: ::sqlx::types::Type<R::Database>,
-//
-//    CountryCode: ::sqlx::decode::Decode<'a, R::Database>,
-//    CountryCode: ::sqlx::types::Type<R::Database>,
-//
-//    IpAddr: ::sqlx::decode::Decode<'a, R::Database>,
-//    IpAddr: ::sqlx::types::Type<R::Database>,
-//
-//    IpCidr: ::sqlx::decode::Decode<'a, R::Database>,
-//    IpCidr: ::sqlx::types::Type<R::Database>,
-//
-//    bool: ::sqlx::decode::Decode<'a, R::Database>,
-//    bool: ::sqlx::types::Type<R::Database>,
-//
-//    u32: ::sqlx::decode::Decode<'a, R::Database>,
-//    u32: ::sqlx::types::Type<R::Database>,
-//
-//    Method: ::sqlx::decode::Decode<'a, R::Database>,
-//    Method: ::sqlx::types::Type<R::Database>,
-//
-//{
-//    fn from_row(row: &'a R) -> ::sqlx::Result<Self> {
-//        Ok(Rule {
-//            id: row.try_get("id")?,
-//            action: row.try_get("action")?,
-//            hash: row.try_get("hash")?,
-//            created_at: row.try_get("created_at")?,
-//            updated_at: row.try_get("updated_at")?,
-//            terminate: row.try_get("terminate")?,
-//            comment: row.try_get("comment")?,
-//            source: row.try_get("source")?,
-//            expires: row.try_get("expires")?,
-//            addr: row.try_get("addr")?,
-//            cidr: row.try_get("cidr")?,
-//            user_agent: row.try_get("user_agent")?,
-//            host: row.try_get("host")?,
-//            path: row.try_get("path")?,
-//            country_code: row.try_get("country_code")?,
-//            method: row.try_get("method")?,
-//            asn: row.try_get("asn")?,
-//            org: row.try_get("org")?,
-//        })
-//    }
-//}

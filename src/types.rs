@@ -1,9 +1,11 @@
+pub mod api;
 pub mod http;
 pub mod net;
 pub mod pattern;
 pub mod storage;
 pub mod uuid;
 
+pub use api::*;
 pub use http::*;
 pub use net::*;
 pub use pattern::*;
