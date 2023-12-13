@@ -1,5 +1,37 @@
 pub use crate::geo::CountryCode;
 pub use crate::types::{ForwardedRequest, IpAddr, IpCidr, Method, Pattern};
+use serde_derive::{Deserialize, Serialize};
+
+#[derive(Debug, Eq, PartialEq, Default, Clone, Serialize, Deserialize)]
+pub struct Conditions {
+    pub addr: Option<IpAddr>,
+    pub cidr: Option<IpCidr>,
+    pub user_agent: Option<Pattern>,
+    pub host: Option<Pattern>,
+    pub path: Option<Pattern>,
+    pub country_code: Option<CountryCode>,
+    pub method: Option<Method>,
+    pub asn: Option<u32>,
+    pub org: Option<Pattern>,
+}
+
+impl Conditions {
+    pub fn count(&self) -> usize {
+        let mut len = 0;
+
+        len += if self.addr.is_some() { 1 } else { 0 };
+        len += if self.cidr.is_some() { 1 } else { 0 };
+        len += if self.user_agent.is_some() { 1 } else { 0 };
+        len += if self.host.is_some() { 1 } else { 0 };
+        len += if self.path.is_some() { 1 } else { 0 };
+        len += if self.country_code.is_some() { 1 } else { 0 };
+        len += if self.method.is_some() { 1 } else { 0 };
+        len += if self.asn.is_some() { 1 } else { 0 };
+        len += if self.org.is_some() { 1 } else { 0 };
+
+        len
+    }
+}
 
 #[derive(Debug, Eq, PartialEq, Default, Clone)]
 pub enum Condition {
