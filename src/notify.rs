@@ -1,22 +1,24 @@
 pub mod pushover;
+use pushover::Pushover;
 
 use async_trait::async_trait;
 use serde_derive::{Deserialize, Serialize};
 
-#[derive(Debug, Default)]
-pub enum Notifier {
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[serde(tag = "strategy", content = "config")]
+pub enum Config {
     #[default]
     Disabled,
-    Pushover(pushover::Pushover),
+    Pushover {
+        config: pushover::Config,
+    },
 }
 
-#[derive(Debug)]
-pub struct Config {
-    strategy: Notifier,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct Access {}
+//#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+//pub struct Config {
+//    strategy: Strategy,
+//    //quiet_hours: Vec<Period>,
+//}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
@@ -26,9 +28,35 @@ pub struct Message {
     pub uri_title: Option<String>,
 }
 
+#[derive(Debug)]
+pub struct Disabled;
+
+#[async_trait]
+impl Notify for Disabled {
+    async fn send(&self, msg: Message) -> Result<(), anyhow::Error> {
+        Ok(())
+    }
+}
+
 #[async_trait]
 trait Notify {
-    type Err;
+    async fn send(&self, msg: Message) -> Result<(), anyhow::Error>;
+}
 
-    async fn send(&self, msg: Message) -> Result<(), Self::Err>;
+pub struct Service {
+    strategy: Box<dyn Notify + Send + Sync>,
+}
+
+impl Service {
+    pub fn try_from_config(config: &crate::config::Config) -> anyhow::Result<Self> {
+        let strategy: Box<dyn Notify + Send + Sync> = match &config.notify {
+            Config::Disabled => Box::new(Disabled),
+            Config::Pushover { config } => Box::new(Pushover::try_from_config(&config)?),
+        };
+        Ok(Self { strategy })
+    }
+
+    pub async fn send(&self, msg: Message) -> Result<(), anyhow::Error> {
+        self.strategy.send(msg).await
+    }
 }

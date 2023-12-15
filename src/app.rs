@@ -9,6 +9,7 @@ use crate::config;
 use crate::database;
 use crate::geo;
 use crate::net;
+use crate::notify;
 use crate::routes;
 use crate::rules;
 use crate::types::Repository as RepoTrait;
@@ -16,7 +17,7 @@ use crate::types::Repository as RepoTrait;
 pub(super) async fn run() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("debug"));
 
-    let conf = match config::Conf::new() {
+    let config = match config::Config::new() {
         Ok(conf) => {
             dbg!(&conf);
             web::Data::new(conf)
@@ -27,9 +28,9 @@ pub(super) async fn run() -> std::io::Result<()> {
         }
     };
 
-    let listen = conf.listen;
+    let listen = config.listen;
 
-    let geoip = match geo::GeoIp::try_from_config(&conf) {
+    let geoip = match geo::GeoIp::try_from_config(&config) {
         Ok(geoip) => web::Data::new(geoip),
         Err(e) => {
             log::error!("{}", e);
@@ -37,7 +38,7 @@ pub(super) async fn run() -> std::io::Result<()> {
         }
     };
 
-    let pool = match database::connect(&conf.db).await {
+    let pool = match database::connect(&config.db).await {
         Ok(pool) => web::Data::new(pool),
         Err(e) => {
             log::error!("{}", e);
@@ -52,11 +53,11 @@ pub(super) async fn run() -> std::io::Result<()> {
         return Err(IoError::new(ErrorKind::Other, e));
     }
 
-    let trusted_proxies = web::Data::new(net::TrustedProxies::from_config(&conf));
+    let trusted_proxies = web::Data::new(net::TrustedProxies::from_config(&config));
     let collection = web::Data::new(RwLock::new(rules::Collection::default()));
 
     let manager = {
-        let mut manager = rules::Manager::new(conf.clone(), repo.clone(), collection.clone());
+        let mut manager = rules::Manager::new(config.clone(), repo.clone(), collection.clone());
 
         if let Err(e) = manager.init().await {
             log::error!("{}", e);
@@ -66,7 +67,20 @@ pub(super) async fn run() -> std::io::Result<()> {
         web::Data::new(manager)
     };
 
-    let access_repo = web::Data::new(access::Repository::new(pool.clone()));
+    let notify = {
+        let notify = notify::Service::try_from_config(&config).map_err(|e| {
+            log::error!("failed to configure notification service: {}", e);
+            IoError::new(ErrorKind::Other, e)
+        })?;
+
+        web::Data::new(notify)
+    };
+
+    let access_repo = web::Data::new(access::Repository::new(
+        pool.clone(),
+        notify.clone(),
+        config.clone(),
+    ));
 
     {
         let manager = manager.clone();
@@ -131,12 +145,13 @@ pub(super) async fn run() -> std::io::Result<()> {
             .wrap(DefaultHeaders::new().add(("Server", "Doorbell")))
             .app_data(json_config)
             .app_data(repo.clone())
-            .app_data(conf.clone())
+            .app_data(config.clone())
             .app_data(manager.clone())
             .app_data(trusted_proxies.clone())
             .app_data(geoip.clone())
             .app_data(collection.clone())
             .app_data(access_repo.clone())
+            .app_data(notify.clone())
             .service(routes::root::handler)
             .service(routes::ring::handler)
             .service(routes::rules::list)

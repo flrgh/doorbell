@@ -1,12 +1,13 @@
 use crate::rules::condition::*;
 use crate::rules::{Action, IpAddr, IpCidr, Rule, RuleBuilder, Source};
-use config::{Config, ConfigError, Environment, File};
+use config::{Environment, File};
 use serde_derive::Deserialize;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct Conf {
+pub struct Config {
+    pub public_url: String,
     pub db: PathBuf,
     pub listen: SocketAddr,
     pub allow: Vec<ConfRule>,
@@ -15,6 +16,7 @@ pub struct Conf {
     pub geoip_city_db: Option<PathBuf>,
     pub geoip_country_db: Option<PathBuf>,
     pub trusted_proxies: Vec<IpCidr>,
+    pub notify: crate::notify::Config,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -69,9 +71,9 @@ impl ConfRule {
     }
 }
 
-impl Conf {
-    pub fn new() -> Result<Self, ConfigError> {
-        Config::builder()
+impl Config {
+    pub fn new() -> Result<Self, config::ConfigError> {
+        config::Config::builder()
             .add_source(File::with_name("config.default"))
             .add_source(File::with_name("config").required(false))
             .add_source(Environment::with_prefix("DOORBELL"))

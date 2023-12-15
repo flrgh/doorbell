@@ -1,4 +1,4 @@
-use crate::config::Conf;
+use crate::config::Config;
 use crate::rules::repo::Repository;
 use crate::rules::{Collection, Source};
 use crate::types::Repository as RepoTrait;
@@ -7,14 +7,14 @@ use tokio::sync::{Mutex, RwLock};
 
 pub struct Manager {
     repo: web::Data<Repository>,
-    config: web::Data<Conf>,
+    config: web::Data<Config>,
     collection: web::Data<RwLock<Collection>>,
     version: tokio::sync::Mutex<u64>,
 }
 
 impl Manager {
     pub fn new(
-        config: web::Data<Conf>,
+        config: web::Data<Config>,
         repo: web::Data<Repository>,
         collection: web::Data<RwLock<Collection>>,
     ) -> Self {

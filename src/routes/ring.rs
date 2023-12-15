@@ -56,6 +56,7 @@ pub async fn handler(
     geoip: web::Data<GeoIp>,
     rules: web::Data<RwLock<Collection>>,
     access_repo: web::Data<access::Repository>,
+    notifier: web::Data<crate::notify::Service>,
 ) -> impl Responder {
     let headers = req.headers();
 
