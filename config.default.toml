@@ -1,7 +1,10 @@
 listen = "127.0.0.1:9876"
+public_url = "http://localhost"
 db = "doorbell.db"
 allow = []
 deny = []
 trusted_proxies = [
 	"127.0.0.1/8",
 ]
+[notify]
+strategy = "Disabled"

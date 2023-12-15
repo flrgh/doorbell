@@ -33,16 +33,26 @@ impl Request {
 
 pub struct Repository {
     pool: Data<SqlitePool>,
+    notifier: Data<crate::notify::Service>,
+    config: Data<crate::config::Config>,
 }
 
 impl Repository {
-    pub fn new(pool: Data<SqlitePool>) -> Self {
-        Self { pool }
+    pub fn new(
+        pool: Data<SqlitePool>,
+        notifier: Data<crate::notify::Service>,
+        config: Data<crate::config::Config>,
+    ) -> Self {
+        Self {
+            pool,
+            notifier,
+            config,
+        }
     }
 }
 
 impl Repository {
-    async fn insert(&self, req: &Request) -> anyhow::Result<()> {
+    async fn insert(&self, req: &Request) -> anyhow::Result<Request> {
         let Request {
             token,
             addr,
@@ -65,9 +75,8 @@ impl Repository {
         .bind(&addr)
         .bind(&request)
         .bind(timestamp)
-        .fetch_all(self.pool.as_ref())
+        .fetch_one(self.pool.as_ref())
         .await
-        .map(|_| ())
         .map_err(|e| anyhow::anyhow!(e))
     }
 
@@ -149,7 +158,53 @@ impl Repository {
         }
 
         let req = Request::from_forwarded(&forwarded);
-        let res = self.insert(&req).await;
-        dbg!(res);
+        let req = match self.insert(&req).await {
+            Ok(req) => req,
+            Err(e) => {
+                log::error!("{}", e);
+                return;
+            }
+        };
+
+        dbg!(&req);
+
+        let fwd = req.request;
+
+        let mut body = String::new();
+        body.push_str(&format!("IP Address: {}\n", fwd.addr));
+        if let Some(ref cc) = fwd.country_code {
+            body.push_str(&format!("Country: {}\n", cc));
+        }
+
+        if let Some(ref org) = fwd.org {
+            body.push_str(&format!("Network: {}\n", org));
+        }
+
+        body.push_str(&format!("User-Agent: {}\n", fwd.user_agent));
+        body.push_str(&format!(
+            "Request: {} {}://{}{}\n",
+            fwd.method, fwd.scheme, fwd.host, fwd.uri
+        ));
+
+        let title = format!("Access requested for {}", fwd.addr);
+
+        let uri = Some(format!(
+            "{}/answer.html?t={}",
+            &self.config.public_url, req.token
+        ));
+        let uri_title = Some("Approve/Deny access".to_string());
+
+        let msg = crate::notify::Message {
+            title,
+            body,
+            uri,
+            uri_title,
+        };
+
+        dbg!(&msg);
+
+        if let Err(e) = self.notifier.send(msg).await {
+            log::error!("{}", e);
+        }
     }
 }

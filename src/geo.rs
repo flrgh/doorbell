@@ -619,7 +619,7 @@ impl GeoIp {
         })
     }
 
-    pub fn try_from_config(config: &crate::config::Conf) -> Result<Self, MaxMindDBError> {
+    pub fn try_from_config(config: &crate::config::Config) -> Result<Self, MaxMindDBError> {
         let asn = match &config.geoip_asn_db {
             Some(path) => Some(GeoIpDb::new(path.as_path())?),
             None => None,

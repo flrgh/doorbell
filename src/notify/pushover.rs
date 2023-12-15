@@ -10,6 +10,9 @@ use tokio::time::*;
 const URI: &str = "https://api.pushover.net/1/messages.json";
 const USER_AGENT: &str = "Doorbell Forward Auth Server";
 const RATE: Duration = Duration::from_millis(500);
+const ENV_TOKEN: &str = "PUSHOVER_TOKEN";
+const ENV_USER_KEY: &str = "PUSHOVER_USER_KEY";
+const ENV_PRIORITY: &str = "PUSHOVER_PRIORITY";
 
 #[derive(Debug, Serialize, Clone)]
 struct Request {
@@ -34,6 +37,12 @@ pub enum Priority {
     Emergency = 2,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct Config {
+    token: Option<String>,
+    user_key: Option<String>,
+}
+
 #[derive(Debug)]
 pub struct Pushover {
     token: String,
@@ -42,7 +51,34 @@ pub struct Pushover {
     rate: Mutex<Interval>,
 }
 
+fn get_env(name: &str) -> Option<String> {
+    env::var(name).ok()
+}
+
 impl Pushover {
+    pub fn try_from_config(config: &Config) -> anyhow::Result<Self> {
+        let token = get_env(ENV_TOKEN)
+            .or(config.token.clone())
+            .ok_or(anyhow::anyhow!("Missing Pushover API token"))?;
+
+        let user_key = get_env(ENV_USER_KEY)
+            .or(config.token.clone())
+            .ok_or(anyhow::anyhow!("Missing Pushover API user key"))?;
+
+        let priority = get_env(ENV_PRIORITY)
+            .and_then(|var| var.parse().ok())
+            .unwrap_or_default();
+
+        let rate = Mutex::new(interval(RATE));
+
+        Ok(Self {
+            token,
+            user_key,
+            priority,
+            rate,
+        })
+    }
+
     fn try_from_env() -> Result<Self, anyhow::Error> {
         Ok(Pushover {
             token: env::var("PUSHOVER_TOKEN")?,
@@ -62,9 +98,7 @@ impl Pushover {
 
 #[async_trait]
 impl Notify for Pushover {
-    type Err = anyhow::Error;
-
-    async fn send(&self, msg: Message) -> Result<(), Self::Err> {
+    async fn send(&self, msg: Message) -> Result<(), anyhow::Error> {
         self.delay_for_rate_limit().await;
 
         let req = Request {
