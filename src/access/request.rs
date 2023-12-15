@@ -75,9 +75,10 @@ impl Repository {
         .bind(&addr)
         .bind(&request)
         .bind(timestamp)
-        .fetch_one(self.pool.as_ref())
+        .fetch_optional(self.pool.as_ref())
         .await
         .map_err(|e| anyhow::anyhow!(e))
+        .map(|_| req.clone())
     }
 
     async fn get(&self, token: &str) -> Result<Option<Request>, anyhow::Error> {

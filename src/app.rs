@@ -33,6 +33,7 @@ pub(super) async fn run() -> std::io::Result<()> {
     let geoip = match geo::GeoIp::try_from_config(&config) {
         Ok(geoip) => web::Data::new(geoip),
         Err(e) => {
+            dbg!(&e);
             log::error!("{}", e);
             return Err(IoError::new(ErrorKind::Other, e));
         }
