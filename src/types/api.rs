@@ -19,6 +19,14 @@ impl<T> Patch<T> {
             Self::Remove => field.take().is_some(),
         }
     }
+
+    pub fn is_changed(&self) -> bool {
+        match self {
+            Self::Unchanged => false,
+            Self::Value(_) => true,
+            Self::Remove => true,
+        }
+    }
 }
 
 impl<T> From<Option<T>> for Patch<T> {

@@ -497,6 +497,41 @@ impl RuleUpdates {
 
         Ok(changed)
     }
+
+    pub fn count(&self) -> usize {
+        let mut count = 0;
+
+        let conditions =
+            (if self.addr.is_changed() { 1 } else { 0 })
+            + (if self.cidr.is_changed() { 1 } else { 0 })
+            + (if self.user_agent.is_changed() { 1 } else { 0 })
+            + (if self.host.is_changed() { 1 } else { 0 })
+            + (if self.path.is_changed() { 1 } else { 0 })
+            + (if self.method.is_changed() { 1 } else { 0 })
+            + (if self.asn.is_changed() { 1 } else { 0 })
+            + (if self.org.is_changed() { 1 } else { 0 })
+            + (if self.country_code.is_changed() { 1 } else { 0 })
+        ;
+
+        // if any conditions changed, `hash` will be updated
+        if conditions > 0 {
+            count += 1;
+        }
+        count += conditions;
+
+        count += if self.action.is_some() { 1 } else { 0 };
+        count += if self.terminate.is_some() { 1 } else { 0 };
+        count += if self.expires.is_changed() { 1 } else { 0 };
+        count += if self.comment.is_changed() { 1 } else { 0 };
+
+
+        // if anything was changed, `updated_at` will be updated
+        if count > 0 {
+            count += 1;
+        }
+
+        count
+    }
 }
 
 pub struct RuleConditions {
