@@ -47,6 +47,12 @@ pub struct Service {
     strategy: Box<dyn Notify + Send + Sync>,
 }
 
+impl core::fmt::Debug for Service {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
 impl Service {
     pub fn try_from_config(config: &crate::config::Config) -> anyhow::Result<Self> {
         let strategy: Box<dyn Notify + Send + Sync> = match &config.notify {

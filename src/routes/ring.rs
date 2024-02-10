@@ -55,8 +55,7 @@ pub async fn handler(
     tp: web::Data<TrustedProxies>,
     geoip: web::Data<GeoIp>,
     rules: web::Data<RwLock<Collection>>,
-    access_repo: web::Data<access::Repository>,
-    notifier: web::Data<crate::notify::Service>,
+    access_control: web::Data<access::Control>,
 ) -> impl Responder {
     let headers = req.headers();
 
@@ -76,7 +75,7 @@ pub async fn handler(
             return bad_request();
         };
 
-        let Some(forwarded_addr) = tp.get_forwarded_ip(xff) else {
+        let Some(forwarded_addr) = tp.parse_forwarded_ip(xff) else {
             return bad_request();
         };
 
@@ -183,7 +182,7 @@ pub async fn handler(
         } else {
             log::trace!("request {:?} did not match any rule", req);
             log::debug!("/ring => UNKNOWN");
-            access_repo.get_ref().incoming(&req).await;
+            access_control.incoming(&req).await;
             http::StatusCode::UNAUTHORIZED
         }
     };

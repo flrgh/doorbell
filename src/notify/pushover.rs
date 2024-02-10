@@ -90,16 +90,15 @@ impl Pushover {
             rate: Mutex::new(interval(RATE)),
         })
     }
-
-    async fn delay_for_rate_limit(&self) {
-        self.rate.lock().await.tick().await;
-    }
 }
 
 #[async_trait]
 impl Notify for Pushover {
     async fn send(&self, msg: Message) -> Result<(), anyhow::Error> {
-        self.delay_for_rate_limit().await;
+        // rate-limit ourselves and also require an exclusive lock
+        // for sending
+        let mut rate = self.rate.lock().await;
+        rate.tick().await;
 
         let req = Request {
             token: self.token.clone(),

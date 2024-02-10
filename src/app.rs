@@ -29,6 +29,7 @@ pub(super) async fn run() -> std::io::Result<()> {
     };
 
     let listen = config.listen;
+    let workers = config.workers;
 
     let geoip = match geo::GeoIp::try_from_config(&config) {
         Ok(geoip) => web::Data::new(geoip),
@@ -77,11 +78,15 @@ pub(super) async fn run() -> std::io::Result<()> {
         web::Data::new(notify)
     };
 
-    let access_repo = web::Data::new(access::Repository::new(
-        pool.clone(),
-        notify.clone(),
-        config.clone(),
-    ));
+    let access_control = {
+        let access_control = access::Control::new(
+            access::Repository::new(pool.clone()),
+            notify.clone(),
+            config.clone(),
+        );
+
+        web::Data::new(access_control)
+    };
 
     {
         let manager = manager.clone();
@@ -151,7 +156,7 @@ pub(super) async fn run() -> std::io::Result<()> {
             .app_data(trusted_proxies.clone())
             .app_data(geoip.clone())
             .app_data(collection.clone())
-            .app_data(access_repo.clone())
+            .app_data(access_control.clone())
             .app_data(notify.clone())
             .service(routes::root::handler)
             .service(routes::ring::handler)
@@ -160,8 +165,9 @@ pub(super) async fn run() -> std::io::Result<()> {
             .service(routes::rules::get)
             .service(routes::rules::delete)
             .service(routes::rules::patch)
+            .service(routes::answer::get)
     })
-    .workers(4)
+    .workers(workers)
     .bind(listen)
     .map_err(|e| IoError::new(ErrorKind::Other, e))?
     .run()
