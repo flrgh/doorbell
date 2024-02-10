@@ -10,12 +10,12 @@ use sqlx_sqlite::Sqlite;
 
 #[derive(Debug, Eq, PartialEq, Type, Clone, Serialize, FromRow)]
 pub struct Request {
-    token: String,
-    addr: IpAddr,
+    pub token: String,
+    pub addr: IpAddr,
 
     #[sqlx(json)]
-    request: ForwardedRequest,
-    timestamp: DateTime<Utc>,
+    pub request: ForwardedRequest,
+    pub timestamp: DateTime<Utc>,
 }
 
 impl Request {
@@ -29,30 +29,33 @@ impl Request {
             timestamp: fr.timestamp,
         }
     }
-}
 
-pub struct Repository {
-    pool: Data<SqlitePool>,
-    notifier: Data<crate::notify::Service>,
-    config: Data<crate::config::Config>,
-}
-
-impl Repository {
-    pub fn new(
-        pool: Data<SqlitePool>,
-        notifier: Data<crate::notify::Service>,
-        config: Data<crate::config::Config>,
-    ) -> Self {
+    pub fn dummy() -> Self {
+        let token: [u8; 24] = rand::random();
+        let fr = ForwardedRequest::dummy();
+        let ts = fr.timestamp;
         Self {
-            pool,
-            notifier,
-            config,
+            token: hex::encode(token),
+            addr: fr.addr,
+            request: fr,
+            timestamp: ts,
         }
     }
 }
 
+#[derive(Debug)]
+pub struct Repository {
+    pool: Data<SqlitePool>,
+}
+
 impl Repository {
-    async fn insert(&self, req: &Request) -> anyhow::Result<Request> {
+    pub fn new(pool: Data<SqlitePool>) -> Self {
+        Self { pool }
+    }
+}
+
+impl Repository {
+    pub async fn insert(&self, req: &Request) -> anyhow::Result<Request> {
         let Request {
             token,
             addr,
@@ -81,7 +84,7 @@ impl Repository {
         .map(|_| req.clone())
     }
 
-    async fn get(&self, token: &str) -> Result<Option<Request>, anyhow::Error> {
+    pub async fn get(&self, token: &str) -> Result<Option<Request>, anyhow::Error> {
         let rule = sqlx::query_as::<_, Request>("SELECT * FROM access_requests WHERE token = ?")
             .bind(token)
             .fetch_one(self.pool.as_ref())
@@ -94,7 +97,7 @@ impl Repository {
         }
     }
 
-    async fn get_by_addr(&self, addr: &IpAddr) -> Result<Option<Request>, anyhow::Error> {
+    pub async fn get_by_addr(&self, addr: &IpAddr) -> Result<Option<Request>, anyhow::Error> {
         let rule = sqlx::query_as::<_, Request>("SELECT * FROM access_requests WHERE addr = ?")
             .bind(addr)
             .fetch_one(self.pool.as_ref())
@@ -107,7 +110,7 @@ impl Repository {
         }
     }
 
-    async fn get_all(&self) -> Result<Vec<Request>, anyhow::Error> {
+    pub async fn get_all(&self) -> Result<Vec<Request>, anyhow::Error> {
         Ok(
             sqlx::query_as::<_, Request>("SELECT * FROM access_requests")
                 .fetch_all(self.pool.as_ref())
@@ -115,7 +118,7 @@ impl Repository {
         )
     }
 
-    async fn delete(&self, token: &str) -> Result<Option<Request>, anyhow::Error> {
+    pub async fn delete(&self, token: &str) -> Result<Option<Request>, anyhow::Error> {
         let old = self.get(token).await?;
 
         sqlx::query("DELETE FROM access_requests WHERE token = ?")
@@ -126,7 +129,7 @@ impl Repository {
         Ok(old)
     }
 
-    async fn truncate(&self) -> Result<(), anyhow::Error> {
+    pub async fn truncate(&self) -> Result<(), anyhow::Error> {
         sqlx::query("DELETE FROM access_requests")
             .execute(self.pool.as_ref())
             .await
@@ -147,65 +150,5 @@ impl Repository {
             .await
             .map(|_| ())
             .map_err(|e| anyhow::anyhow!(e))
-    }
-
-    pub async fn incoming(&self, forwarded: &ForwardedRequest) {
-        if let Ok(Some(current)) = self.get_by_addr(&forwarded.addr).await {
-            log::info!(
-                "there's already a pending request for this client: {:#?}",
-                current
-            );
-            return;
-        }
-
-        let req = Request::from_forwarded(&forwarded);
-        let req = match self.insert(&req).await {
-            Ok(req) => req,
-            Err(e) => {
-                log::error!("{}", e);
-                return;
-            }
-        };
-
-        dbg!(&req);
-
-        let fwd = req.request;
-
-        let mut body = String::new();
-        body.push_str(&format!("IP Address: {}\n", fwd.addr));
-        if let Some(ref cc) = fwd.country_code {
-            body.push_str(&format!("Country: {}\n", cc));
-        }
-
-        if let Some(ref org) = fwd.org {
-            body.push_str(&format!("Network: {}\n", org));
-        }
-
-        body.push_str(&format!("User-Agent: {}\n", fwd.user_agent));
-        body.push_str(&format!(
-            "Request: {} {}://{}{}\n",
-            fwd.method, fwd.scheme, fwd.host, fwd.uri
-        ));
-
-        let title = format!("Access requested for {}", fwd.addr);
-
-        let uri = Some(format!(
-            "{}/answer.html?t={}",
-            &self.config.public_url, req.token
-        ));
-        let uri_title = Some("Approve/Deny access".to_string());
-
-        let msg = crate::notify::Message {
-            title,
-            body,
-            uri,
-            uri_title,
-        };
-
-        dbg!(&msg);
-
-        if let Err(e) = self.notifier.send(msg).await {
-            log::error!("{}", e);
-        }
     }
 }

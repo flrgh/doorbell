@@ -68,6 +68,22 @@ impl ForwardedRequest {
     pub fn builder() -> ForwardedRequestBuilder {
         ForwardedRequestBuilder::default()
     }
+
+    pub fn dummy() -> Self {
+        Self {
+            addr: "178.45.6.125".parse().unwrap(),
+            user_agent: String::from("Mozilla/5.0 (X11; Ubuntu; Linux i686) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2830.76 Safari/537.36"),
+            host: String::from("prometheus.pancakes2.com"),
+            uri: String::from("/wikindex.php?f=/NmRtJOUjAdutReQj/scRjKUhleBpzmTyO.txt"),
+            path: String::from("/wikindex.php"),
+            method: Method::Get,
+            country_code: Some(CountryCode::US),
+            asn: None,
+            org: None,
+            timestamp: chrono::Utc::now(),
+            scheme: Scheme::Https,
+        }
+    }
 }
 
 impl ForwardedRequestBuilder {

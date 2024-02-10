@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-readonly COMMIT=c1c74446c323acc0486cbf4720174e72d840623b
+readonly COMMIT=15ed5b26ec7bb9b3e1658939b540b27af61ae74b
 readonly BASE_URL=https://github.com/maxmind/MaxMind-DB/raw/${COMMIT}
 
 mkdir -p geoip

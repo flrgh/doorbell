@@ -1,4 +1,5 @@
 use crate::config::Config;
+use actix_web::HttpRequest;
 use cidr_utils::cidr::IpCidr;
 use cidr_utils::utils::IpCidrCombiner;
 use std::net::IpAddr;
@@ -28,7 +29,7 @@ impl TrustedProxies {
         self.cidr.contains(*addr)
     }
 
-    pub fn get_forwarded_ip(&self, xff: &str) -> Option<IpAddr> {
+    pub fn parse_forwarded_ip(&self, xff: &str) -> Option<IpAddr> {
         let mut last = None;
 
         for elem in xff.rsplit(',') {
@@ -59,5 +60,19 @@ impl TrustedProxies {
         }
 
         last
+    }
+
+    pub fn get_peer_ip(&self, req: &HttpRequest) -> IpAddr {
+        req.peer_addr().expect("failed to acquire client ip").ip()
+    }
+
+    pub fn get_client_ip(&self, req: &HttpRequest) -> IpAddr {
+        req.headers()
+            .get(crate::types::X_FORWARDED_FOR)
+            .and_then(|xff| {
+                let xff = xff.to_str().ok()?;
+                self.parse_forwarded_ip(xff)
+            })
+            .unwrap_or_else(|| self.get_peer_ip(req))
     }
 }

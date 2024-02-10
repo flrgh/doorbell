@@ -5,6 +5,8 @@ use serde_derive::Deserialize;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+fn default_workers() -> usize { 4 }
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     pub public_url: String,
@@ -17,6 +19,8 @@ pub struct Config {
     pub geoip_country_db: Option<PathBuf>,
     pub trusted_proxies: Vec<IpCidr>,
     pub notify: crate::notify::Config,
+    #[serde(default = "default_workers")]
+    pub workers: usize,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
