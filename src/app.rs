@@ -166,6 +166,7 @@ pub(super) async fn run() -> std::io::Result<()> {
             .service(routes::rules::delete)
             .service(routes::rules::patch)
             .service(routes::answer::get)
+            .service(routes::answer::post)
     })
     .workers(workers)
     .bind(listen)

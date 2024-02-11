@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<style>
+		.attr-value {
+			font-family: monospace;
+		}
+
+		.page {
+			padding: 16px;
+			font-family: Arial, Helvetica, sans-serif;
+		}
+
+		.heading {
+			margin-bottom: 0px;
+			margin-top: 0px;
+			text-align: center;
+		}
+
+		.errors {
+			margin-bottom: 0px;
+			color: red;
+		}
+
+		.item {
+			margin: 8px;
+		}
+
+		.radio {
+			margin: 8px 12px;
+		}
+
+		.button-container {
+			margin-top: 24px;
+			text-align: center;
+		}
+
+		.button {
+			min-width: 88px;
+			min-height: 36.5px;
+			border: 2px outset;
+			border-radius: 12px;
+			background-color: #1976d2;
+			text-align: center;
+			font-size: 16px;
+			color: white;
+		}
+
+		.input-field {
+			margin-bottom: 0px;
+		}
+
+		.current-ip {
+			margin-bottom: 0px;
+			font-style: italic;
+		}
+
+		table {
+			border-collapse: collapse;
+			border: 2px solid rgb(200,200,200);
+			letter-spacing: 1px;
+			font-size: 0.8rem;
+		}
+
+		td, th {
+			border: 1px solid rgb(190,190,190);
+			padding: 2px 4px;
+		}
+
+		th {
+			background-color: rgb(235,235,235);
+		}
+
+		td {
+			text-align: center;
+		}
+
+		tr:nth-child(even) td {
+			background-color: rgb(250,250,250);
+		}
+
+		tr:nth-child(odd) td {
+			background-color: rgb(245,245,245);
+		}
+
+		.request-data {
+			overflow-x: auto;
+			text-align: center;
+			margin: 0 auto;
+		}
+
+		.form {
+			width: 100%;
+			margin: 0 auto;
+		}
+
+		.form, .label {
+			text-align: center;
+		}
+
+	</style>
+	<body>
+		<div class="page">
+			<h2 class="heading">Access Request</h2>
+
+			<div class="request-data">
+				<table>
+					<!-- addr -->
+					<tr>
+						<td class="attr-key" >addr</td>
+						<td class="attr-value">{{ req.addr }}</td>
+					</tr>
+
+					<!-- country -->
+					<tr>
+						<td class="attr-key" >country</td>
+						<td class="attr-value">{{ req.country_code }}</td>
+					</tr>
+
+					<!-- user-agent -->
+					<tr>
+						<td class="attr-key" >user-agent</td>
+						<td class="attr-value">{{ req.user_agent }}</td>
+					</tr>
+
+					<!-- host -->
+					<tr>
+						<td class="attr-key" >host</td>
+						<td class="attr-value">{{ req.host }}</td>
+					</tr>
+
+					<!-- method -->
+					<tr>
+						<td class="attr-key" >method</td>
+						<td class="attr-value">{{ req.method }}</td>
+					</tr>
+
+					<!-- uri -->
+					<tr>
+						<td class="attr-key" >uri</td>
+						<td class="attr-value">{{ req.uri }}</td>
+					</tr>
+
+				</table>
+
+				{% if map_link %}
+				<a href="{{ map_link }}" target="_blank" rel="nofollow" referrerpolicy="no-referrer" >Map</a>
+				{% endif %}
+
+				{% if search_link %}
+				<a href="{{ search_link }}" target="_blank" rel="nofollow" referrerpolicy="no-referrer" >Search</a>
+				{% endif %}
+
+				{% if current_ip %}
+				<p class="current-ip" >(this is your current IP address)</p>
+				{% endif %}
+			</div>
+
+			<form class="form" action="" method="post">
+				<!-- approve || deny -->
+				<h3 class="input-field" >action</h3>
+				<input class="radio" type="radio" id="approve" name="action" value="Approve">
+				<label for="approve">approve</label>
+
+				<input class="radio" type="radio" id="deny" name="action" value="Deny" checked="checked">
+				<label for="deny">deny</label>
+
+				<br>
+
+				<!-- subject -->
+				<h3 class="input-field" >subject</h3>
+				<input class="radio" type="radio" id="addr" name="subject" value="Addr" checked="checked">
+				<label for="addr">addr</label>
+
+				<input class="radio" type="radio" id="ua" name="subject" value="UserAgent">
+				<label for="ua">user-agent</label>
+
+				<br>
+
+				<!-- scope -->
+				<h3 class="input-field" >scope</h3>
+				<input class="radio" type="radio" id="global" name="scope" value="Global" checked="checked">
+				<label for="global">global</label>
+
+				<input class="radio" type="radio" id="host" name="scope" value="Host">
+				<label for="host">app</label>
+
+				<input class="radio" type="radio" id="url" name="scope" value="Url">
+				<label for="url">URL</label>
+
+				<!-- period -->
+				<h3 class="input-field" >period</h3>
+				<input class="radio" type="radio" id="minute" name="period" value="Minute">
+				<label for="minute">minute</label>
+
+				<input class="radio" type="radio" id="hour" name="period" value="Hour">
+				<label for="hour">hour</label>
+
+				<input class="radio" type="radio" id="day" name="period" value="Day" checked="checked">
+				<label for="day">day</label>
+
+				<input class="radio" type="radio" id="week" name="period" value="Week">
+				<label for="week">week</label>
+
+				<input class="radio" type="radio" id="forever" name="period" value="Forever">
+				<label for="forever">forever</label>
+
+				<br>
+
+
+				<!-- token -->
+				<input type="hidden" id="token" name="token" value="{{ token }}">
+
+				<div class="button-container">
+					<button class="button" type="submit">submit</button>
+				</div>
+
+			</form>
+		</div>
+	</body>
+</html>
