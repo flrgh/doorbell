@@ -1,10 +1,10 @@
-use tokio::sync::RwLock;
-use serde::Deserialize;
-use actix_web::{get, http::header::HeaderMap, web, HttpRequest, HttpResponse, Responder};
 use crate::access;
 use crate::geo::GeoIp;
 use crate::net::TrustedProxies;
 use crate::rules::Collection;
+use actix_web::{get, http::header::HeaderMap, web, HttpRequest, HttpResponse, Responder};
+use serde::Deserialize;
+use tokio::sync::RwLock;
 
 #[inline]
 fn bad_request() -> HttpResponse {
@@ -21,8 +21,6 @@ fn not_found() -> HttpResponse {
     HttpResponse::NotFound().finish()
 }
 
-
-
 #[derive(Deserialize)]
 struct Answer {
     #[serde(alias = "t")]
@@ -36,7 +34,6 @@ pub async fn get(
     tp: web::Data<TrustedProxies>,
     access_control: web::Data<access::Control>,
 ) -> impl Responder {
-
     let Answer { token } = query.into_inner();
 
     let forwarded = if token == "TEST" {
