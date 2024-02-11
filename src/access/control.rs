@@ -24,7 +24,12 @@ impl Control {
     }
 
     pub async fn get_by_token(&self, token: &str) -> Option<Request> {
-        self.repo.get_all().await.ok()?.into_iter().find(|r| r.token == token)
+        self.repo
+            .get_all()
+            .await
+            .ok()?
+            .into_iter()
+            .find(|r| r.token == token)
     }
 
     pub async fn incoming(&self, forwarded: &ForwardedRequest) {

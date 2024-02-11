@@ -5,7 +5,9 @@ use serde_derive::Deserialize;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-fn default_workers() -> usize { 4 }
+fn default_workers() -> usize {
+    4
+}
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
