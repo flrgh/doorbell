@@ -136,33 +136,76 @@ pub async fn post(
 
     rule.source(crate::rules::Source::User);
 
-    rule.action(match ans.action {
-        Action::Approve => crate::rules::Action::Allow,
-        Action::Deny => crate::rules::Action::Deny,
-    });
+    let mut message = String::new();
 
-    match ans.scope {
-        Scope::Global => {}
-        Scope::Host => {
-            rule.host(Some(crate::types::Pattern::Plain(
-                forwarded.request.host.clone(),
-            )));
+    match ans.action {
+        Action::Approve => {
+            rule.action(crate::rules::Action::Allow);
+            message.push_str("Access allowed to");
         }
-        Scope::Url => {
-            rule.path(Some(crate::types::Pattern::Plain(
-                forwarded.request.path.clone(),
-            )));
+        Action::Deny => {
+            rule.action(crate::rules::Action::Deny);
+            message.push_str("Access denied to");
         }
     };
 
     match ans.subject {
         Subject::Addr => {
             rule.addr(forwarded.request.addr);
+            message.push_str(" IP address ");
+            message.push_str(&forwarded.request.addr.to_string());
         }
         Subject::UserAgent => {
             rule.user_agent(Some(crate::types::Pattern::Plain(
                 forwarded.request.user_agent.clone(),
             )));
+            message.push_str(" User-Agent '");
+            message.push_str(&forwarded.request.user_agent);
+            message.push_str("'");
+        }
+    }
+
+    match ans.scope {
+        Scope::Global => {
+            message.push_str(" for all apps");
+        }
+        Scope::Host => {
+            rule.host(Some(crate::types::Pattern::Plain(
+                forwarded.request.host.clone(),
+            )));
+
+            message.push_str(" to ");
+            message.push_str(&forwarded.request.host);
+        }
+        Scope::Url => {
+            rule.path(Some(crate::types::Pattern::Plain(
+                forwarded.request.path.clone(),
+            )));
+
+            message.push_str(" to ");
+            message.push_str(&forwarded.request.path);
+        }
+    };
+
+    match ans.period {
+        Period::Minute => {
+            message.push_str(" for one minute.");
+            rule.ttl(std::time::Duration::from_secs(60));
+        }
+        Period::Hour => {
+            message.push_str(" for one hour.");
+            rule.ttl(std::time::Duration::from_secs(60 * 60));
+        }
+        Period::Day => {
+            message.push_str(" for one day.");
+            rule.ttl(std::time::Duration::from_secs(60 * 60 * 24));
+        }
+        Period::Week => {
+            message.push_str(" for one week.");
+            rule.ttl(std::time::Duration::from_secs(60 * 60 * 24 * 7));
+        }
+        Period::Forever => {
+            message.push_str(" forever.");
         }
     }
 
@@ -174,17 +217,17 @@ pub async fn post(
         }
     };
 
-    match repo.insert(rule.clone()).await {
-        Ok(_) => {
-            log::debug!("Created a new rule: {:?}", &rule);
-            update_matcher("creation", manager).await;
-            HttpResponse::Created()
-                .insert_header(("content-type", "text/html"))
-                .finish()
-        }
-        Err(e) => {
-            dbg!(e);
-            HttpResponse::InternalServerError().finish()
-        }
+    if let Err(e) = repo.insert(rule.clone()).await {
+        dbg!(e);
+        return HttpResponse::InternalServerError().finish();
     }
+
+    log::debug!("Created a new rule: {:?}", &rule);
+    update_matcher("creation", manager).await;
+
+    access_control.delete_by_token(&ans.token).await;
+
+    HttpResponse::Created()
+        .insert_header(("content-type", "text/plain"))
+        .body(message)
 }

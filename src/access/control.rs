@@ -32,6 +32,18 @@ impl Control {
             .find(|r| r.token == token)
     }
 
+    pub async fn delete_by_token(&self, token: &str) {
+        if self.get_by_token(token).await.is_none() {
+            log::warn!("access request with token '{}' not found", token);
+            return;
+        };
+
+        self.repo
+            .delete(token)
+            .await
+            .expect("failed to delete access request");
+    }
+
     pub async fn incoming(&self, forwarded: &ForwardedRequest) {
         if let Ok(Some(current)) = self.repo.get_by_addr(&forwarded.addr).await {
             log::info!(
