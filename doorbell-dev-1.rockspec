@@ -81,6 +81,7 @@ build = {
     ["doorbell.util"] = "lib/doorbell/util.lua",
     ["doorbell.util.file"] = "lib/doorbell/util/file.lua",
     ["doorbell.util.timer"] = "lib/doorbell/util/timer.lua",
+    ["doorbell.users"] = "lib/doorbell/users.lua",
 
     ["doorbell.views"] = "lib/doorbell/views.lua",
     ["doorbell.views.answer"] = "lib/doorbell/views/answer.lua",
@@ -112,6 +113,7 @@ dependencies = {
   "penlight == 1.13.1",
   "api7-lua-resty-jwt == 0.2.5",
   "lua-resty-mlcache = 2.6.0",
+  "lua-resty-mail = 1.1.0",
 }
 
 test_dependencies = {

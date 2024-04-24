@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<style>
+		.attr-value {
+			font-family: monospace;
+		}
+
+		.page {
+			padding: 16px;
+			font-family: Arial, Helvetica, sans-serif;
+		}
+
+		.heading {
+			margin-bottom: 0px;
+			margin-top: 0px;
+			text-align: center;
+		}
+
+		.errors {
+			margin-bottom: 0px;
+			color: red;
+		}
+
+		.item {
+			margin: 8px;
+		}
+
+		.radio {
+			margin: 8px 12px;
+		}
+
+		.button-container {
+			margin-top: 24px;
+			text-align: center;
+		}
+
+		.button {
+			min-width: 88px;
+			min-height: 36.5px;
+			border: 2px outset;
+			border-radius: 12px;
+			background-color: #1976d2;
+			text-align: center;
+			font-size: 16px;
+			color: white;
+		}
+
+		.input-field {
+			margin-bottom: 0px;
+		}
+
+		.current-ip {
+			margin-bottom: 0px;
+			font-style: italic;
+		}
+
+		table {
+			border-collapse: collapse;
+			border: 2px solid rgb(200,200,200);
+			letter-spacing: 1px;
+			font-size: 0.8rem;
+		}
+
+		td, th {
+			border: 1px solid rgb(190,190,190);
+			padding: 2px 4px;
+		}
+
+		th {
+			background-color: rgb(235,235,235);
+		}
+
+		td {
+			text-align: center;
+		}
+
+		tr:nth-child(even) td {
+			background-color: rgb(250,250,250);
+		}
+
+		tr:nth-child(odd) td {
+			background-color: rgb(245,245,245);
+		}
+
+		.request-data {
+			overflow-x: auto;
+			text-align: center;
+			margin: 0 auto;
+		}
+
+		.form {
+			width: 100%;
+			margin: 0 auto;
+		}
+
+		.form, .label {
+			text-align: center;
+		}
+
+	</style>
+	<body>
+		<div class="page">
+		{% if show_form %}
+			<form class="form" action="" method="post">
+				<h3 class="input-field">enter your email address</h3>
+
+				<br>
+
+				<input type="email" id="email" name="email">
+
+				{% if token %}
+				<input type="hidden" value="{{ token }}">
+				{% end %}
+
+				<div class="button-container">
+					<button class="button" type="submit">submit</button>
+				</div>
+			</form>
+		{% end %}
+
+		{% if form_filled %}
+		<p>Please check your email for a validation link.</br>
+		{% end %}
+
+		{% if validated %}
+		<p>Success! Your IP has been granted access.</p>
+		<br>
+			{% if link %}
+		<a href="{{ link }}">Return to {{ link }}</a>
+			{% end %}
+		{% end %}
+		</div>
+	</body>
+</html>

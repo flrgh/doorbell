@@ -121,12 +121,14 @@ const.unauthorized = {
   return_401            = "return-401",
   request_approval      = "request-approval",
   redirect_for_approval = "redirect-for-approval",
+  validate_by_email     = "validate-by-email",
 }
 
 const.endpoints = {
-  get_access = "/letmein",
-  ring       = "/ring",
-  answer     = "/answer",
+  get_access     = "/letmein",
+  ring           = "/ring",
+  answer         = "/answer",
+  email_validate = "/validate-email",
 }
 
 const.testing = false

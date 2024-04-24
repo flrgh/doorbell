@@ -133,11 +133,11 @@ end
 ---
 ---@field properties table<string, doorbell.schema>
 ---
----@field patternProperties table<string, doorbell.schema>
+---@field patternProperties? table<string, doorbell.schema>
 ---
----@field additionalProperties boolean,
+---@field additionalProperties? boolean,
 ---
----@field required string[]
+---@field required? string[]
 
 
 ---@class doorbell.schema.array : doorbell.schema.base
@@ -1222,6 +1222,23 @@ config.fields.auth = {
   },
 }
 
+---@alias doorbell.config.smtp resty.mail.new.opts
+
+config.fields.smtp = {
+  title = "doorbell.config.smtp",
+  description = "Configuration for outbound mail (SMTP)",
+  type = "object",
+  properties = {
+    host     = { type = "string" },
+    port     = { type = "integer" },
+    username = { type = "string" },
+    password = { type = "string" },
+    domain   = { type = "string" },
+  },
+  required = { "host", "username", "password" },
+}
+
+
 ---@type doorbell.schema.object
 config.entity = {
   title = "doorbell.config",
@@ -1247,6 +1264,7 @@ config.entity = {
     ota                  = config.fields.ota,
     redirect_uri         = config.fields.redirect_uri,
     runtime_path         = config.fields.runtime_path,
+    smtp                 = config.fields.smtp,
     state_path           = config.fields.state_path,
     trusted              = config.fields.trusted,
     unauthorized         = config.fields.unauthorized,
