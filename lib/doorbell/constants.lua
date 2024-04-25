@@ -114,6 +114,9 @@ const.shm = {
   mlcache_main  = "mlcache_main",
   mlcache_miss  = "mlcache_miss",
   mlcache_locks = "mlcache_locks",
+
+  -- email validation state
+  email_validation = "email_validation",
 }
 
 ---@enum doorbell.unauthorized

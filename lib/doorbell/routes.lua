@@ -41,6 +41,21 @@ function _M.init()
     POST            = views.answer,
   }
 
+  router["/validate-email"] = {
+    id              = "validate-email",
+    description     = "what's yer email?",
+    metrics_enabled = true,
+    auth_strategy   = auth.require_none(),
+    middleware      = {
+      [mw.phase.REWRITE] = {
+        request.middleware.enable_logging,
+      },
+    },
+    GET             = views.validate_email,
+    POST            = views.validate_email,
+  }
+
+
   router["/notify/test"] = {
     id              = "notify-test",
     description     = "send a test notification",

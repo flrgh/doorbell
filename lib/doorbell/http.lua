@@ -244,6 +244,74 @@ end
 _M.response = {}
 _M.response.set_header = set_response_header
 
+do
+  ---@class doorbell.http.response
+  local response = {}
+  response.__index = response
+
+  ---@param status integer
+  ---@return doorbell.http.response
+  function response:status(status)
+    assert(type(status) == "number" and status >= 100 and status <= 599,
+           "invalid response status code")
+
+    self.status = status
+
+    return self
+  end
+
+  ---@param name string
+  ---@param value string|nil
+  ---@return doorbell.http.response
+  function response:header(name, value)
+    self.headers = self.headers or {}
+
+    local current = self.headers[name]
+    local typ = type(current)
+    if typ == "table" then
+      insert(current, value)
+
+    elseif typ == "string" then
+      self.headers[name] = { current, value }
+
+    else
+      self.headers[name] = value
+    end
+
+    return self
+  end
+
+  ---@param body string
+  ---@return doorbell.http.response
+  function response:body(body)
+    self.body = body
+
+    return self
+  end
+
+  ---@param json any
+  ---@return doorbell.http.response
+  function response:json(json)
+    self.body = cjson.encode(json)
+    self:header("Content-Type", "application/json")
+
+    return self
+  end
+
+  function response:send()
+    assert(self.status ~= nil, "no http response status code set")
+    return send(self.status, self.body, self.headers)
+  end
+
+  ---@return doorbell.http.response
+  function _M.response.new()
+    local res = {}
+    setmetatable(res, response)
+    return res
+  end
+end
+
+
 ---@class doorbell.http.CORS
 _M.CORS = {}
 

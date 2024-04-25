@@ -101,7 +101,7 @@
 	</style>
 	<body>
 		<div class="page">
-		{% if show_form %}
+		{% if show_form then %}
 			<form class="form" action="" method="post">
 				<h3 class="input-field">enter your email address</h3>
 
@@ -109,8 +109,8 @@
 
 				<input type="email" id="email" name="email">
 
-				{% if token %}
-				<input type="hidden" value="{{ token }}">
+				{% if pre_validate then %}
+				<input type="hidden" id="pre_validate" name="pre_validate" value="{{ pre_validate }}">
 				{% end %}
 
 				<div class="button-container">
@@ -119,15 +119,15 @@
 			</form>
 		{% end %}
 
-		{% if form_filled %}
+		{% if form_filled then %}
 		<p>Please check your email for a validation link.</br>
 		{% end %}
 
-		{% if validated %}
+		{% if validated then %}
 		<p>Success! Your IP has been granted access.</p>
 		<br>
-			{% if link %}
-		<a href="{{ link }}">Return to {{ link }}</a>
+			{% if link then %}
+		<a href="{{ link }}">Take me back to {{ link }}</a>
 			{% end %}
 		{% end %}
 		</div>

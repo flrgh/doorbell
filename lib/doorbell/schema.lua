@@ -1182,9 +1182,9 @@ validator(config.fields.network_tags)
 
 ---@class doorbell.config.auth.user.identifier : table
 ---
----@field email  string
----@field sub    string
----@field apikey string
+---@field email?  string
+---@field sub?    string
+---@field apikey? string
 
 config.fields.auth = {
   title = "doorbell.config.auth",

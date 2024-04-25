@@ -18,10 +18,12 @@ function _M.init(conf)
 end
 
 
----@param data resty.mail.mailer.send.data
+---@param to string
+---@param subject string
+---@param html string
 ---@return boolean? ok
 ---@return string? error
-function _M.send(data)
+function _M.send(to, subject, html)
   if not smtp then
     return nil, "SMTP is not enabled"
   end
@@ -30,6 +32,14 @@ function _M.send(data)
   if not mailer or err then
     return nil, err
   end
+
+  ---@type resty.mail.mailer.send.data
+  local data = {
+    from = smtp.username,
+    to = { to },
+    subject = subject,
+    html = html,
+  }
 
   return mailer:send(data)
 end

@@ -100,7 +100,7 @@ dependencies = {
   "inspect == 3.1.3",
   "lua_system_constants == 0.1.4",
   "lua-resty-ljsonschema == 1.1.6-2",
-  "lua-resty-http == 0.17.1",
+  "lua-resty-http == 0.17.2",
   "lua-resty-ipmatcher == 0.6.1",
   "lua-resty-jit-uuid == 0.0.7",
   "lua-resty-openidc == 1.7.6",
@@ -110,9 +110,9 @@ dependencies = {
   "luajit-geoip >= 2.1.0",
   "luasocket == 3.1.0",
   "nginx-lua-prometheus == 0.20230607",
-  "penlight == 1.13.1",
+  "penlight == 1.14.0",
   "api7-lua-resty-jwt == 0.2.5",
-  "lua-resty-mlcache = 2.6.0",
+  "lua-resty-mlcache = 2.7.0",
   "lua-resty-mail = 1.1.0",
 }
 

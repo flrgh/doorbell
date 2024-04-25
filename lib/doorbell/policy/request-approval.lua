@@ -61,7 +61,7 @@ end
 ---@return boolean
 function _M:pre_auth_allow(req)
   if    req.host == self.config.host
-    and req.path == ENDPOINTS.get_access
+    and req.path == ENDPOINTS.answer
   then
     log.debugf("allowing request to %s endpoint", ENDPOINTS.get_access)
     return true
