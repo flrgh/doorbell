@@ -22,6 +22,7 @@ local ota     = require "doorbell.ota"
 local env     = require "doorbell.env"
 local middleware = require "doorbell.middleware"
 local nginx = require "doorbell.nginx"
+local plugins = require "doorbell.plugins"
 
 local ngx        = ngx
 local var        = ngx.var
@@ -69,6 +70,7 @@ local submodules = {
   request,
   ota,
   routes,
+  plugins,
 }
 
 function _M.init()

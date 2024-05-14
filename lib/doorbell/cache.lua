@@ -41,14 +41,14 @@ function cache:raw_get(key)
   local value, stale = self.lru:get(key)
 
   if value ~= nil then
-    debugf("[%s] cache HIT for %s => %q", self.name, key, tostring(value))
+    debugf("[cache.%s] cache HIT for %s => %q", self.name, key, tostring(value))
     self.hit = self.hit + 1
   else
     if stale == nil then
-      debugf("[%s] cache MISS for %s", self.name, key)
+      debugf("[cache.%s] cache MISS for %s", self.name, key)
       self.miss = self.miss + 1
     else
-      debugf("[%s] cache EXPIRE for %s", self.name, key)
+      debugf("[cache.%s] cache EXPIRE for %s", self.name, key)
       self.expire = self.expire + 1
     end
   end

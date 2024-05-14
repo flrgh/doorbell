@@ -1,6 +1,6 @@
 local _M = {}
 
-local log = require "doorbell.log"
+local log = require("doorbell.log").with_namespace("ip")
 local util = require "doorbell.util"
 
 ---@class doorbell.cache
@@ -12,7 +12,20 @@ local cache_basic
 ---@class doorbell.cache
 local cache_geo
 
-local ipmatcher = require "resty.ipmatcher"
+---@class resty.ipmatcher
+local ipmatcher
+do
+  -- resty.ipmatcher logs a bunch of things at INFO level.
+  --
+  --- hack it to DEBUG to preserve our sanity
+
+  local ngx_info = ngx.INFO
+  ngx.INFO = ngx.DEBUG -- luacheck: ignore
+  package.loaded["resty.ipmatcher"] = nil
+  ipmatcher = require "resty.ipmatcher"
+  ngx.INFO = ngx_info -- luacheck: ignore
+end
+
 local split = require("ngx.re").split
 
 local assert = assert

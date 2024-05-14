@@ -53,6 +53,10 @@ build = {
     ["doorbell.notify.strategies.pushover"] = "lib/doorbell/notify/strategies/pushover.lua",
 
     ["doorbell.ota"] = "lib/doorbell/ota.lua",
+
+    ["doorbell.plugins"] = "lib/doorbell/plugins.lua",
+    ["doorbell.plugins.jellyfin"] = "lib/doorbell/plugins/jellyfin.lua",
+
     ["doorbell.request"] = "lib/doorbell/request.lua",
 
     ["doorbell.auth"] = "lib/doorbell/auth.lua",

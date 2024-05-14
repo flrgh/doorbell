@@ -1,4 +1,4 @@
-local log     = require "doorbell.log"
+local log     = require("doorbell.log").with_namespace("ring")
 local const   = require "doorbell.constants"
 local access  = require "doorbell.auth.access"
 local forward = require "doorbell.auth.forwarded-request"
@@ -30,7 +30,6 @@ local ENDPOINTS       = const.endpoints
 
 ---@type doorbell.unauthorized
 local UNAUTHORIZED
-
 
 local sleep = ngx.sleep
 local fmt = string.format
@@ -184,6 +183,46 @@ local HANDLERS = {
   end,
 }
 
+local run_hooks
+do
+  local hooks = {}
+  local hooks_by_name = {}
+  local n_hooks = #hooks
+
+  ---@param name string
+  ---@param hook fun(doorbell.forwarded_request, doorbell.ctx, doorbell.auth.access.state) doorbell.auth.access.state?
+  function _M.add_hook(name, hook)
+    if hooks_by_name[name] then
+      error("hook " .. name .. " already exists")
+    end
+
+    log.notice("added hook: ", name)
+    table.insert(hooks, hook)
+    hooks_by_name[name] = true
+    n_hooks = #hooks
+  end
+
+  ---@param req doorbell.forwarded_request
+  ---@param ctx doorbell.ctx
+  ---@param state doorbell.auth.access.state
+  ---@return doorbell.auth.access.state?
+  function run_hooks(req, ctx, state)
+    local res
+    for i = 1, n_hooks do
+      res = hooks[i](req, ctx, state)
+      if res == STATES.deny then
+        return STATES.deny
+
+      elseif res then
+        state = res
+      end
+    end
+
+    return state
+  end
+end
+
+
 function _M.GET(ctx)
   UNAUTHORIZED = UNAUTHORIZED or config.unauthorized
 
@@ -213,6 +252,9 @@ function _M.GET(ctx)
   if err then
     log.err("error checking auth state: ", err)
     state = STATES.error
+
+  else
+    state = run_hooks(req, ctx, state) or state
   end
 
   return HANDLERS[state](req, ctx, token)

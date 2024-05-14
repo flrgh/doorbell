@@ -2,7 +2,7 @@
 local _M = {}
 
 local const   = require "doorbell.constants"
-local log     = require "doorbell.log"
+local log     = require("doorbell.log").with_namespace("auth.access")
 local rules   = require "doorbell.rules.manager"
 local notify  = require "doorbell.notify"
 local util    = require "doorbell.util"

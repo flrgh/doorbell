@@ -62,6 +62,8 @@ local get_phase       = ngx.get_phase
 ---@field auth integer
 ---@field auth_http_status ngx.http.status_code
 ---@field auth_client_message string
+---
+---@field plugin table # scratch space for plugin storage
 
 
 ---@param ctx? table
@@ -77,12 +79,14 @@ function _M.new(ctx)
 
   ip_init_request(ctx)
 
-  ctx.schema = var.scheme
+  ctx.scheme = var.scheme
   ctx.method = get_method()
 
   local uri = var.request_uri
   ctx.uri = uri
   ctx.path = get_path(ctx.uri)
+
+  ctx.plugin = {}
 
   ctx.doorbell_init = true
   return ctx

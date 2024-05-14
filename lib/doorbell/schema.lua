@@ -106,6 +106,16 @@ end
 ---@field value   any
 
 
+---@alias doorbell.schema.type
+---| "array"
+---| "boolean"
+---| "integer"
+---| "null"
+---| "number"
+---| "object"
+---| "string"
+
+
 ---@class doorbell.schema.base : table
 ---
 ---@field title string
@@ -125,19 +135,24 @@ end
 ---@field examples doorbell.schema.example[]
 ---
 ---@field default any
+---
+---@field type? doorbell.schema.type|doorbell.schema.type[]|nil
+
+
+---@alias doorbell.schema.any doorbell.schema.base
 
 
 ---@class doorbell.schema.object : doorbell.schema.base
 ---
 ---@field type "object"
 ---
----@field properties table<string, doorbell.schema>
+---@field properties? table<string, doorbell.schema>
 ---
----@field patternProperties table<string, doorbell.schema>
+---@field patternProperties? table<string, doorbell.schema>
 ---
----@field additionalProperties boolean,
+---@field additionalProperties? boolean,
 ---
----@field required string[]
+---@field required? string[]
 
 
 ---@class doorbell.schema.array : doorbell.schema.base
@@ -184,6 +199,7 @@ end
 ---| doorbell.schema.string
 ---| doorbell.schema.boolean
 ---| doorbell.schema.number
+---| doorbell.schema.any
 
 
 ---@param cidr string|string[]
@@ -450,6 +466,11 @@ rule.fields.org = {
   type = "string",
 }
 
+rule.fields.plugin = {
+  description = "plugin responsible for creating this rule",
+  type = "string",
+}
+
 for name, field in pairs(rule.fields) do
   field.title = name
   validator(field)
@@ -573,6 +594,7 @@ rule.entity = {
     method      = rule.fields.method,
     org         = rule.fields.org,
     path        = rule.fields.path,
+    plugin      = rule.fields.plugin,
     source      = rule.fields.source,
     terminate   = rule.fields.terminate,
     ua          = rule.fields.ua,
@@ -616,6 +638,7 @@ rule.create = {
     method      = rule.fields.method,
     org         = rule.fields.org,
     path        = rule.fields.path,
+    plugin      = rule.fields.plugin,
     source      = rule.fields.source,
     terminate   = rule.fields.terminate,
     ttl         = rule.fields.ttl,
@@ -1074,6 +1097,16 @@ config.fields.utc_offset = {
   maximum = 23,
 }
 
+config.fields.plugins = {
+  description = "Enabled plugins",
+  type = "object",
+  patternProperties = {
+    [".*"] = {
+      type = { "object", "boolean" },
+    }
+  },
+}
+
 ---@class doorbell.config.approvals : table
 ---
 ---@field allowed_scopes doorbell.scope[]
@@ -1245,6 +1278,7 @@ config.entity = {
     network_tags         = config.fields.network_tags,
     notify               = config.fields.notify,
     ota                  = config.fields.ota,
+    plugins              = config.fields.plugins,
     redirect_uri         = config.fields.redirect_uri,
     runtime_path         = config.fields.runtime_path,
     state_path           = config.fields.state_path,
@@ -1289,6 +1323,7 @@ config.input = {
     network_tags       = config.fields.network_tags,
     notify             = config.fields.notify,
     ota                = config.fields.ota,
+    plugins            = config.fields.plugins,
     redirect_uri       = config.fields.redirect_uri,
     runtime_path       = config.fields.runtime_path,
     state_path         = config.fields.state_path,

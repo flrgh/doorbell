@@ -1,6 +1,6 @@
 local _M = {}
 
-local log      = require "doorbell.log"
+local log      = require("doorbell.log").with_namespace("rules.codec")
 local rules    = require "doorbell.rules"
 local schema   = require "doorbell.schema"
 

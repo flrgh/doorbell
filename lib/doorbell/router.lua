@@ -13,6 +13,7 @@ local cache = require("doorbell.cache").new("routes", 1000)
 
 local re_match = ngx.re.match
 local type     = type
+local insert   = table.insert
 local set_response_header = require("doorbell.http").response.set_header
 
 ---@alias doorbell.route.handler fun(ctx:table, match:table)
@@ -37,15 +38,26 @@ local set_response_header = require("doorbell.http").response.set_header
 ---@field auth_required   function
 ---@field auth_strategy   integer
 
----@class doorbell.route_list : table
----@field [1] string
----@field [2] doorbell.route
+---@alias doorbell.router.regex_entry  [string, doorbell.route]
 
 ---@type table<string, doorbell.route>
 local plain = {}
 
----@type doorbell.route_list
-local regex = { n = 0 }
+---@type doorbell.router.regex_entry[]
+local regex = {}
+local regex_n = 0
+
+---@type table<string, doorbell.route>
+local registry = {}
+
+---@param route doorbell.route
+local function rebuild_middleware(route)
+  route._middleware = {}
+  for _, phase in pairs(middleware.phase) do
+    local mws = route.middleware and route.middleware[phase]
+    route._middleware[phase] = middleware.compile(mws)
+  end
+end
 
 ---@param path string
 ---@param route doorbell.route
@@ -74,9 +86,9 @@ function _M.add(path, route)
       util.errorf("invalid route path regex (%q): %s", path, err)
     end
 
-    local n = regex.n + 1
+    local n = regex_n + 1
     regex[n] = { re, route }
-    regex.n = n
+    regex_n = n
 
     -- we only cache regex route matches, so this only needs to be flushed
     -- when adding a regex route
@@ -95,12 +107,26 @@ function _M.add(path, route)
     plain[path .. "/"] = route
   end
 
-  route._middleware = {}
-  for _, phase in pairs(middleware.phase) do
-    local mws = route.middleware and route.middleware[phase]
-    route._middleware[phase] = middleware.compile(mws)
-  end
+  rebuild_middleware(route)
+
+  registry[route.id] = route
 end
+
+
+---@param route doorbell.route
+---@param phase doorbell.middleware.phase
+---@param handler doorbell.middleware
+function _M.add_middleware(route, phase, handler)
+  assert(type(route) == "table" and type(route.id) == "string",
+         "invalid route")
+  assert(type(phase) == "string", "invalid middleware phase")
+  assert(registry[route.id], "unknown route")
+
+  route.middleware[phase] = route.middleware[phase] or {}
+  insert(route.middleware[phase], handler)
+  rebuild_middleware(route)
+end
+
 
 ---@class doorbell.route_match : table
 
@@ -119,7 +145,7 @@ function _M.match(path)
     return cached.route, cached.match
   end
 
-  for i = 1, regex.n do
+  for i = 1, regex_n do
     local item = regex[i]
     local re = item[1]
     local match = re_match(path, re, "oj", nil, match_t)

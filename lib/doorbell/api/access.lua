@@ -3,7 +3,7 @@ local routes = {}
 
 local access  = require "doorbell.auth.access"
 local config  = require "doorbell.config"
-local log     = require "doorbell.log"
+local log     = require("doorbell.log").with_namespace("api.access")
 local mw      = require "doorbell.middleware"
 local request = require "doorbell.request"
 local schema  = require "doorbell.schema"

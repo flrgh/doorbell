@@ -1,6 +1,6 @@
 local _M = {}
 
-local log = require "doorbell.log"
+local log = require("doorbell.log").with_namespace("logger")
 local util = require "doorbell.util"
 local timer = require "doorbell.util.timer"
 

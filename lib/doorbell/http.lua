@@ -1,6 +1,6 @@
 local _M = {}
 
-local log = require "doorbell.log"
+local log = require("doorbell.log").with_namespace("util.http")
 
 local cjson = require "cjson"
 local safe_decode = require("cjson.safe").decode
@@ -346,6 +346,9 @@ do
     return false
   end
 
+  ---@param a doorbell.http.accept.entry
+  ---@param b doorbell.http.accept.entry
+  ---@return boolean
   local function weight_sort(a, b)
     if a[2] ~= b[2] then
       return a[2] > b[2]
@@ -354,10 +357,22 @@ do
     end
   end
 
+  --- mime type
+  ---@alias doorbell.http.accept.mime_type string
+
+  --- client-specified weight of the mime-type (e.g. q=1.0)
+  ---@alias doorbell.http.accept.weight number
+
+  --- position of the mime type in the Accept header
+  ---@alias doorbell.http.accept.position integer
+
+  ---@alias doorbell.http.accept.entry [doorbell.http.accept.mime_type, doorbell.http.accept.weight, doorbell.http.accept.position]
+
+  ---@type doorbell.http.accept.entry[]|string[]
   local buf = {}
 
   ---@param accept string
-  ---@param available string[]
+  ---@param available doorbell.http.accept.mime_type[]
   ---@return string?
   local function negotiate(accept, available)
     split(accept, ", *", "jo", nil, nil, buf)

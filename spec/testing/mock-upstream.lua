@@ -63,18 +63,18 @@ end
 
 ---@class spec.testing.mock-upstream.response
 ---
----@field status       ngx.http.status_code
----@field body         string|nil
----@field json         table|nil
+---@field status?      ngx.http.status_code
+---@field body?        string
+---@field json?        table
 ---@field headers      table<string,string>|nil
 ---@field delay        number|nil
 
 ---@class spec.testing.mock-upstream.route
 ---
----@field once     boolean|nil
----@field method   string
----@field host     string
----@field path     string
+---@field once?    boolean
+---@field method?  string
+---@field host?    string
+---@field path?    string
 ---@field response spec.testing.mock-upstream.response
 
 

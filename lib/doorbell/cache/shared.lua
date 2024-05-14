@@ -9,7 +9,7 @@ do
 
   cache, err = mlcache.new("db", const.shm.mlcache_main, {
     ipc                 = nil,
-    ipc_shm             = nil,
+    ipc_shm             = const.shm.mlcache_ipc,
     l1_serializer       = nil,
     lru                 = nil,
     lru_size            = 1000,
