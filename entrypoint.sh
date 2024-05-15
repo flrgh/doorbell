@@ -43,6 +43,10 @@ if [[ ${1:-} = start ]]; then
         < "$DOORBELL_ASSET_PATH"/nginx.template.conf \
         > "$DOORBELL_RUNTIME_PATH"/nginx.conf
 
+    find "$DOORBELL_RUNTIME_PATH" \
+        -type s \
+        -delete
+
     echo "Starting up..."
     exec nginx \
         -p "$DOORBELL_RUNTIME_PATH" \
