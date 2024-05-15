@@ -22,6 +22,7 @@
 ---@field trusted          string[]
 ---@field unauthorized     doorbell.unauthorized
 ---@field utc_offset       integer
+---@field plugins          table<string, any>
 local _M = {}
 
 local util = require "doorbell.util"

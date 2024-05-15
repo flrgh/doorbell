@@ -2,7 +2,7 @@
 local _M = {}
 
 local metrics = require "doorbell.metrics"
-local log = require "doorbell.log"
+local log = require("doorbell.log").with_namespace("auth")
 local http = require "doorbell.http"
 local access = require "doorbell.auth.access"
 local openid = require "doorbell.auth.openid"

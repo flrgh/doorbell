@@ -5,7 +5,7 @@ local _M = {
 }
 
 local const = require "doorbell.constants"
-local log   = require "doorbell.log"
+local log   = require("doorbell.log").with_namespace("metrics")
 local timer = require "doorbell.util.timer"
 
 local ipairs   = ipairs
@@ -36,7 +36,7 @@ local function run_hooks()
   for _, hook in ipairs(HOOKS) do
     local ok, err = pcall(hook)
     if not ok then
-      log.err("metric hook threw an error: ", err)
+      log.err("hook threw an error: ", err)
       metric_errors:inc(1)
     end
   end

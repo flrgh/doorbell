@@ -144,6 +144,7 @@ end
 
 ---@alias spec.testing.client.headers table<string, string|string[]>
 
+--- create a header table
 ---@param t? spec.testing.client.headers
 ---@return spec.testing.client.headers
 function _M.headers(t)
@@ -221,6 +222,8 @@ function client:close()
   return self.httpc:close()
 end
 
+--- resets the client headers and current request as well as the most
+--- recent response and error
 function client:reset()
   self.headers = _M.headers()
   self.request = {

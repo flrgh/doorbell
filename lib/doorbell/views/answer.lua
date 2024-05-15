@@ -1,4 +1,4 @@
-local log     = require "doorbell.log"
+local log     = require("doorbell.log").with_namespace("answer")
 local const   = require "doorbell.constants"
 local access  = require "doorbell.auth.access"
 local ip      = require "doorbell.ip"

@@ -10,7 +10,7 @@ const.actions = {
   deny  = "deny",
 }
 
----@alias doorbell.source "config"|"user"|"ota"|"api"
+---@alias doorbell.source "config"|"user"|"ota"|"api"|"plugin"
 
 
 --- lookup table of valid doorbell rule sources
@@ -19,6 +19,7 @@ const.sources = {
   user   = "user",
   ota    = "ota",
   api    = "api",
+  plugin = "plugin",
 }
 
 ---@alias doorbell.deny_action "exit"|"tarpit"
@@ -111,9 +112,13 @@ const.shm = {
   pending    = "pending",
 
   -- doorbell.cache.shared / lua-resty-mlcache
+  mlcache_ipc   = "mlcache_ipc",
+  mlcache_locks = "mlcache_locks",
   mlcache_main  = "mlcache_main",
   mlcache_miss  = "mlcache_miss",
-  mlcache_locks = "mlcache_locks",
+
+  -- shared plugin storage
+  plugins = "plugins",
 }
 
 ---@enum doorbell.unauthorized

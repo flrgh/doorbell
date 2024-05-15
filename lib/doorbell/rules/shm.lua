@@ -2,7 +2,7 @@ local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
-local log   = require "doorbell.log"
+local log   = require("doorbell.log").with_namespace("rules.shm")
 local util  = require "doorbell.util"
 local codec = require "doorbell.rules.codec"
 

@@ -2,7 +2,7 @@ local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
-local log   = require "doorbell.log"
+local log   = require("doorbell.log").with_namespace("stats")
 local util  = require "doorbell.util"
 local timer = require "doorbell.util.timer"
 

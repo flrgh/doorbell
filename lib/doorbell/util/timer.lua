@@ -1,6 +1,6 @@
 local _M = {}
 
-local log = require "doorbell.log"
+local log = require("doorbell.log").with_namespace("timer")
 
 local exiting = ngx.worker.exiting
 local timer_at = ngx.timer.at
@@ -15,8 +15,8 @@ local NOOP = function() end
 
 ---@class doorbell.util.timer.opts : table
 ---
----@field stop_on_error boolean
----@field run_on_premature boolean
+---@field stop_on_error?    boolean
+---@field run_on_premature? boolean
 
 
 local function updated_time()
@@ -29,12 +29,14 @@ end
 ---@param f function
 ---@return function
 local function wrapped(name, f)
+  local running = "running task: " .. name
+
   return function()
-    log.debug("executing timer: ", name)
+    log.debug(running)
 
     local ok, err = pcall(f)
     if not ok then
-      log.errf("timer %s threw an error: %s", name, err)
+      log.errf("task %s threw an error: %s", name, err)
     end
 
     return ok, err
@@ -76,7 +78,7 @@ local function run_every(premature, time, name, period, fn, opts)
     local elapsed = time() - start
 
     if elapsed >= period then
-      log.warnf("timer %s took longer than its period (%s) to execute: %s",
+      log.warnf("task %s took longer than its period (%s) to execute: %s",
                 name, elapsed, period)
 
       sleep(0.001)

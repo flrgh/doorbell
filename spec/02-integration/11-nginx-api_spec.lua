@@ -67,6 +67,7 @@ describe("nginx api", function()
       uptime       = "number",
       worker_count = "number",
       workers      = "table",
+      shm          = "table",
     }, info)
 
     assert.is_table(info.workers[1])

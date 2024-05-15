@@ -2,7 +2,7 @@
 local _M = {}
 
 local http = require "doorbell.http"
-local log = require "doorbell.log"
+local log = require("doorbell.log").with_namespace("openid")
 local request = require "doorbell.request"
 local cache = require "doorbell.cache.shared"
 local util = require "doorbell.util"

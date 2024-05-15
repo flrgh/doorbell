@@ -7,7 +7,7 @@ local manager = require "doorbell.rules.manager"
 local null = ngx.null
 
 
----@param  opts           table
+---@param  opts           doorbell.rule.new.opts
 ---@return doorbell.rule? rule
 ---@return string?        error
 ---@return integer?       status_code

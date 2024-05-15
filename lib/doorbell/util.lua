@@ -1,7 +1,7 @@
 local _M = {}
 
 local const   = require "doorbell.constants"
-local log     = require "doorbell.log"
+local log     = require("doorbell.log").with_namespace("util")
 local cjson = require "cjson.safe"
 local resty_lock = require "resty.lock"
 local uuid = require("resty.jit-uuid").generate_v4
@@ -261,21 +261,21 @@ end
 
 
 ---@class doorbell.lock : resty.lock
----@field _name string
----@field _action string
+---@field name string
+---@field action string
 ---@field unlock fun(self:doorbell.lock, ...: any):any
----@field _unlock fun(self:resty.lock)
+---@field inner resty.lock
 
----@param lock doorbell.lock
+---@param self doorbell.lock
 ---@param ... any
 ---@return any
-local function _unlock(lock, ...)
-  local ok, err = lock:_unlock()
+local function unlock(self, ...)
+  local ok, err = self.inner:unlock()
   if not ok then
     log.errf(
       "failed unlocking lock %s (action = %s): %s",
-      lock._name,
-      lock._action,
+      self.name,
+      self.action,
       err
     )
   end
@@ -283,6 +283,9 @@ local function _unlock(lock, ...)
   return ...
 end
 
+local function expire(self, ...)
+  return self.inner:expire(...)
+end
 
 ---@param  ns             string
 ---@param  key            string
@@ -306,9 +309,14 @@ function _M.lock(ns, key, action, opts)
     return nil, err
   end
 
-  lock._name = name
-  lock._unlock = lock.unlock
-  lock.unlock = _unlock
+  lock = {
+    inner = lock,
+    name = name,
+    action = action,
+    unlock = unlock,
+    expire = expire,
+  }
+
   return lock
 end
 

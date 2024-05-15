@@ -68,7 +68,7 @@ if ngx.config.is_console then
   end
 end
 
-local function noop() end
+local function NOOP() end
 
 local log_varargs
 do
@@ -128,13 +128,6 @@ end
 ---@field emergf  doorbell.log.fnf
 local log = {}
 
-setmetatable(log, {
-  __index = function(self, k)
-    rawset(self, k, noop)
-    return noop
-  end,
-})
-
 do
   for name, lvl in pairs(levels_by_name) do
     if get_level() >= lvl then
@@ -143,6 +136,11 @@ do
 
       -- add a vararg index by numeric log level
       rawset(log, lvl, make_log(lvl, log_varargs))
+
+    else
+      rawset(log, name, NOOP)
+      rawset(log, name .. "f", NOOP)
+      rawset(log, lvl, NOOP)
     end
   end
 end
@@ -173,5 +171,55 @@ end
 
 log.LEVEL = LEVEL
 log.IS_DEBUG = IS_DEBUG
+
+---@param ns string
+---@return doorbell.log
+function log.with_namespace(ns)
+  assert(type(ns) == "string" and #ns > 0)
+
+  local namespaced = {}
+
+  ns = "[" .. ns .. "] "
+
+  for k, v in pairs(log) do
+    namespaced[k] = v
+
+    if type(v) == "function" and v ~= NOOP then
+      if     k == "debugf"
+          or k == "infof"
+          or k == "noticef"
+          or k == "warnf"
+          or k == "errf"
+          or k == "alertf"
+          or k == "critf"
+          or k == "emergf"
+          or k == "stdoutf"
+          or k == "stderrf"
+      then
+        namespaced[k] = function(f, ...)
+          f = "%s" .. f
+          return v(f, ns, ...)
+        end
+
+      elseif k == "debug"
+          or k == "info"
+          or k == "notice"
+          or k == "warn"
+          or k == "err"
+          or k == "alert"
+          or k == "crit"
+          or k == "emerg"
+          or k == "stdout"
+          or k == "stderr"
+      then
+        namespaced[k] = function(...)
+          return v(ns, ...)
+        end
+      end
+    end
+  end
+
+  return namespaced
+end
 
 return log

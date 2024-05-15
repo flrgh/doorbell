@@ -6,10 +6,11 @@ local tostring = tostring
 local max = math.max
 local bit = require "bit"
 local lshift = bit.lshift
+local tnew = require "table.new"
 
 
 local SHM = require("doorbell.shm").nginx
-local log = require "doorbell.log"
+local log = require("doorbell.log").with_namespace("nginx")
 local metrics = require "doorbell.metrics"
 
 local PG_ID = 0
@@ -338,6 +339,49 @@ function _M.init_worker()
   end
 end
 
+local get_shm_info
+do
+  ---@type string[]
+  local names = {}
+
+  ---@type ngx.shared.DICT[]
+  local shms = {}
+
+  local num_dicts = 0
+
+  for name, shdict in pairs(ngx.shared) do
+    num_dicts = num_dicts + 1
+    names[num_dicts] = name
+    shms[num_dicts] = shdict
+  end
+
+  ---@return table<string, doorbell.nginx.shm.info>
+  function get_shm_info()
+    local infos = tnew(0, num_dicts)
+
+    for i = 1, num_dicts do
+      local name = names[i]
+      local shm = shms[i]
+
+      local cap = shm:capacity()
+      local avail = shm:free_space()
+      local used = cap - avail
+
+      infos[name] = {
+        name = name,
+        bytes_total = cap,
+        bytes_free = avail,
+        bytes_used = used,
+        utilization = 100 - ((avail / cap) * 100),
+      }
+    end
+
+    return infos
+  end
+end
+
+---@class doorbell.nginx.shm.info
+
 ---@class doorbell.nginx.info : table
 ---
 ---@field agent          doorbell.nginx.process.info|nil
@@ -348,6 +392,7 @@ end
 ---@field uptime         number
 ---@field worker_count   integer
 ---@field workers        doorbell.nginx.process.info[]
+---@field shm            table<string, doorbell.nginx.shm.info>
 ---@field ok             boolean
 
 ---@return doorbell.nginx.info
@@ -365,6 +410,7 @@ local function get_info()
     uptime           = (started and t - started),
     worker_count     = WORKER_COUNT,
     workers          = {},
+    shm              = get_shm_info(),
     ok               = false,
   }
 

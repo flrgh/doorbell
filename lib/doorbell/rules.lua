@@ -137,6 +137,7 @@ local SERIALIZED_FIELDS = {
   "method",
   "org",
   "path",
+  "plugin",
   "source",
   "terminate",
   "ua",
@@ -196,6 +197,7 @@ table.sort(SERIALIZED_FIELDS)
 ---@field id      string
 ---@field comment string
 ---@field source  doorbell.source
+---@field plugin  string
 ---@field created number
 
 
@@ -220,6 +222,7 @@ table.sort(SERIALIZED_FIELDS)
 ---@field host        string
 ---@field method      string
 ---@field path        string
+---@field plugin      string
 ---@field terminate   boolean
 ---@field org         doorbell.rule.fields.org
 ---@field ua          string
@@ -431,6 +434,7 @@ function _M.new(opts)
     host        = opts.host,
     method      = opts.method,
     path        = opts.path,
+    plugin      = opts.plugin,
     source      = opts.source,
     terminate   = opts.terminate,
     ua          = opts.ua,
