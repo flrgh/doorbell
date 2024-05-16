@@ -6,6 +6,8 @@ local cjson = require "cjson"
 local safe_decode = require("cjson.safe").decode
 local nkeys = require "table.nkeys"
 local split = require("ngx.re").split
+local util = require "doorbell.util"
+local shm = require "doorbell.shm"
 
 local ngx                 = ngx
 local print               = ngx.print
@@ -18,6 +20,7 @@ local get_query           = ngx.req.get_uri_args
 local get_req_headers     = ngx.req.get_headers
 local get_post_args       = ngx.req.get_post_args
 local clear_req_header    = ngx.req.clear_header
+local now                 = ngx.now
 
 local open   = io.open
 local encode = cjson.encode
@@ -25,15 +28,17 @@ local find   = string.find
 local sub    = string.sub
 local insert = table.insert
 local concat = table.concat
-
+local random_string = util.random_string
 local type   = type
 local assert = assert
 local tonumber = tonumber
 
+local CSRF = shm.with_namespace(shm.doorbell, "csrf")
 
 local MAX_QUERY_ARGS = 100
 local MAX_REQUEST_HEADERS = 100
 local MAX_POST_ARGS = 100
+local CSRF_MAX_AGE = 60 * 15 -- 15 minutes
 
 ---@alias doorbell.http.headers table<string, string|string[]>
 
@@ -454,5 +459,42 @@ function _M.parse_cache_control(value)
   return cc
 end
 
+--- CSRF utilities
+_M.csrf = {}
+
+--- Generates and returns a CSRF token
+---@return string
+function _M.csrf.generate()
+  local token = random_string(32)
+  local ok, err = CSRF:safe_add(token, now() + CSRF_MAX_AGE)
+
+  if err == "exists" then
+    error("randomly generated a duplicate CSRF token")
+
+  elseif not ok then
+    error("failed generating a CSRF token: " .. tostring(err))
+  end
+
+  return token
+end
+
+--- Validates a CSRF token
+---
+---@param token string?
+---@return boolean? valid
+---@return "expired"|"not found"? error
+function _M.csrf.validate(token)
+  local ts = CSRF:get(token)
+  CSRF:delete(token)
+
+  if not ts then
+    return nil, "not found"
+
+  elseif now() > ts then
+    return nil, "expired"
+  end
+
+  return true
+end
 
 return _M

@@ -1,0 +1,119 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+		{% if need_email then %}
+    <title>Request Access</title>
+		{% end %}
+
+		{% if validated_email then %}
+    <title>Email Validated</title>
+		{% end %}
+
+		{% if access_granted then %}
+    <title>Access Granted</title>
+		{% end %}
+
+
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f4f4f4;
+        }
+        .container {
+            text-align: center;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        input[type="email"], button {
+            margin-top: 10px;
+            padding: 10px;
+            font-size: 16px;
+            width: 300px; /* Adjust the width as necessary */
+        }
+        button {
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .error-message {
+            color: #D8000C;
+            background-color: #FFD2D2;
+            border: 1px solid #D8000C;
+            margin: 20px 0;
+            padding: 10px;
+						{% if error_message then %}
+						display: block;
+						{% else %}
+            display: none; /* Hidden by default */
+						{% end %}
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+		{% if validated_email then %}
+		{% end %}
+
+		{% if need_email then %}
+				<h1>Request access for {{ addr }}</h1>
+
+				{% if addr_is_current then %}
+        <p>This is your current IP address.</p>
+				{% end %}
+
+        <form action="" method="POST">
+            <input type="email" name="email" placeholder="Enter your email address" required>
+
+						{% if state_token then %}
+						<input type="hidden" name="state_token" value="{{ state_token }}">
+						{% end %}
+
+						{% if csrf_token then %}
+						<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+						{% end %}
+
+            <button type="submit">Submit</button>
+        </form>
+
+		{% end %}
+
+		{% if need_finalize then %}
+        <p>Thank you for validating your email. Please click here to finalize the process.</p>
+        <form action="" method="POST">
+
+					{% if csrf_token then %}
+					<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+					{% end %}
+
+            <button type="submit">Submit</button>
+        </form>
+		{% end %}
+
+		{% if access_granted then %}
+        <h1>Success! Access Granted</h1>
+				<p>You can close this tab now.</p>
+		{% end %}
+
+		<div class="error-message" id="error-message">
+				{{ error_message }}
+		</div>
+
+    </div>
+</body>
+</html>

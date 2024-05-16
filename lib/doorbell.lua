@@ -23,6 +23,9 @@ local env     = require "doorbell.env"
 local middleware = require "doorbell.middleware"
 local nginx = require "doorbell.nginx"
 local plugins = require "doorbell.plugins"
+local users = require "doorbell.users"
+local mail = require "doorbell.mail"
+local policy = require "doorbell.policy"
 
 local ngx        = ngx
 local var        = ngx.var
@@ -60,6 +63,9 @@ local GLOBAL_AUTH_MWARE = middleware.compile({
 -- keeping these in a single table ensures that we run init() and init_worker()
 -- functions in a consistent order
 local submodules = {
+  policy,
+  users,
+  mail,
   metrics,
   cache,
   ip,

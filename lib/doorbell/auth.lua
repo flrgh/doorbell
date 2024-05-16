@@ -94,7 +94,6 @@ _M.API_KEY               = AUTH_API_KEY
 function _M.init(conf)
   access.init(conf)
   openid.init(conf)
-  apikey.init(conf)
 end
 
 

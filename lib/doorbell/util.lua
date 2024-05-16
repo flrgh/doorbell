@@ -20,6 +20,7 @@ local sort    = table.sort
 local select  = select
 local concat  = table.concat
 local to_hex  = require("resty.string").to_hex
+local rand_bytes = require("resty.random").bytes
 local run_worker_thread = ngx.run_worker_thread
 local get_phase = ngx.get_phase
 local exiting = ngx.worker.exiting
@@ -513,5 +514,15 @@ do
 end
 
 _M.unpack = _G.table.unpack or _G.unpack
+
+
+---@param nbytes? integer
+---@return string
+function _M.random_string(nbytes)
+  nbytes = nbytes or 24
+  local bytes = rand_bytes(nbytes, true)
+  return to_hex(bytes)
+end
+
 
 return _M

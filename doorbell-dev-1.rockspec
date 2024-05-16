@@ -19,12 +19,20 @@ build = {
     ["doorbell"] = "lib/doorbell.lua",
 
     ["doorbell.api"] = "lib/doorbell/api.lua",
-    ["doorbell.api.ip"] = "lib/doorbell/api/ip.lua",
-    ["doorbell.api.rules"] = "lib/doorbell/api/rules.lua",
     ["doorbell.api.access"] = "lib/doorbell/api/access.lua",
-    ["doorbell.api.schema"] = "lib/doorbell/api/schema.lua",
-    ["doorbell.api.nginx"] = "lib/doorbell/api/nginx.lua",
     ["doorbell.api.auth-test"] = "lib/doorbell/api/auth-test.lua",
+    ["doorbell.api.ip"] = "lib/doorbell/api/ip.lua",
+    ["doorbell.api.nginx"] = "lib/doorbell/api/nginx.lua",
+    ["doorbell.api.rules"] = "lib/doorbell/api/rules.lua",
+    ["doorbell.api.schema"] = "lib/doorbell/api/schema.lua",
+
+    ["doorbell.auth"] = "lib/doorbell/auth.lua",
+    ["doorbell.auth.access"] = "lib/doorbell/auth/access.lua",
+    ["doorbell.auth.api-key"] = "lib/doorbell/auth/api-key.lua",
+    ["doorbell.auth.email"] = "lib/doorbell/auth/email.lua",
+    ["doorbell.auth.forwarded-request"] = "lib/doorbell/auth/forwarded-request.lua",
+    ["doorbell.auth.openid"] = "lib/doorbell/auth/openid.lua",
+    ["doorbell.auth.ring"] = "lib/doorbell/auth/ring.lua",
 
     ["doorbell.cache"] = "lib/doorbell/cache.lua",
     ["doorbell.cache.shared"] = "lib/doorbell/cache/shared.lua",
@@ -40,6 +48,8 @@ build = {
 
     ["doorbell.log"] = "lib/doorbell/log.lua",
     ["doorbell.log.request"] = "lib/doorbell/log/request.lua",
+
+    ["doorbell.mail"] = "lib/doorbell/mail.lua",
 
     ["doorbell.metrics"] = "lib/doorbell/metrics.lua",
 
@@ -57,17 +67,17 @@ build = {
     ["doorbell.plugins"] = "lib/doorbell/plugins.lua",
     ["doorbell.plugins.jellyfin"] = "lib/doorbell/plugins/jellyfin.lua",
 
+    ["doorbell.policy"] = "lib/doorbell/policy.lua",
+    ["doobrell.policy.redirect-for-approval"] = "lib/doorbell/policy/redirect-for-approval.lua",
+    ["doobrell.policy.request-approval"] = "lib/doorbell/policy/request-approval.lua",
+    ["doobrell.policy.return-401"] = "lib/doorbell/policy/return-401.lua",
+    ["doobrell.policy.validate-email"] = "lib/doorbell/policy/validate-email.lua",
+
     ["doorbell.request"] = "lib/doorbell/request.lua",
 
-    ["doorbell.auth"] = "lib/doorbell/auth.lua",
-    ["doorbell.auth.ring"] = "lib/doorbell/auth/ring.lua",
-    ["doorbell.auth.forwarded-request"] = "lib/doorbell/auth/forwarded-request.lua",
-    ["doorbell.auth.access"] = "lib/doorbell/auth/access.lua",
-    ["doorbell.auth.openid"] = "lib/doorbell/auth/openid.lua",
-    ["doorbell.auth.api-key"] = "lib/doorbell/auth/api-key.lua",
+    ["doorbell.router"] = "lib/doorbell/router.lua",
 
     ["doorbell.routes"] = "lib/doorbell/routes.lua",
-    ["doorbell.router"] = "lib/doorbell/router.lua",
 
     ["doorbell.rules"] = "lib/doorbell/rules.lua",
     ["doorbell.rules.api"] = "lib/doorbell/rules/api.lua",
@@ -80,7 +90,10 @@ build = {
     ["doorbell.rules.transaction"] = "lib/doorbell/rules/transaction.lua",
 
     ["doorbell.schema"] = "lib/doorbell/schema.lua",
+
     ["doorbell.shm"] = "lib/doorbell/shm.lua",
+
+    ["doorbell.users"] = "lib/doorbell/users.lua",
 
     ["doorbell.util"] = "lib/doorbell/util.lua",
     ["doorbell.util.file"] = "lib/doorbell/util/file.lua",
@@ -88,7 +101,8 @@ build = {
 
     ["doorbell.views"] = "lib/doorbell/views.lua",
     ["doorbell.views.answer"] = "lib/doorbell/views/answer.lua",
-    ["doorbell.views.rule_list"] = "lib/doorbell/views/rule_list.lua"
+    ["doorbell.views.rule_list"] = "lib/doorbell/views/rule_list.lua",
+    ["doobrell.views.validate_email"] = "lib/doorbell/views/validate_email.lua",
   },
   install = {
     bin = {
@@ -116,6 +130,7 @@ dependencies = {
   "penlight == 1.13.1",
   "api7-lua-resty-jwt == 0.2.5",
   "lua-resty-mlcache = 2.6.0",
+  "lua-resty-mail = 1.1.0",
 }
 
 test_dependencies = {
