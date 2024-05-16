@@ -188,8 +188,6 @@ local function get_auth(req, ctx)
       local m = re_match(header, TOKEN_RE, "oj")
       if m and m[1] then
         return m[1]
-      else
-        log.infof("failed extracting auth token from %q", header)
       end
     end
   end
