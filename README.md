@@ -34,7 +34,7 @@ What makes Doorbell convenient is how access control policies ("rules") are mana
 
 ## Status
 
-Doorell has been fulfilling its purpose of protecting my home server for over two years now.
+Doorbell has been fulfilling its purpose of protecting my home server for over two years now.
 
 ## How it Works
 
