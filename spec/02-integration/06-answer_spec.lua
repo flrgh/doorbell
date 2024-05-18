@@ -116,13 +116,24 @@ describe("doorbell", function()
         end)
 
         local token = await_answer_token()
+
+        -- need to GET first to extract the CSRF token
         answer_client.request.query = { t = token }
+        answer_client.request.method = "GET"
+        answer_client:send()
+        assert.is_nil(answer_client.err)
+        assert.equals(200, answer_client.response.status)
+
+        local csrf = assert(answer_client:get_response_csrf_token(),
+                            "failed extracting CSRF token from GET /answer")
+
         answer_client.request.method = "POST"
         answer_client.request.post = {
-          action  = "approve",
-          subject = const.subjects.ua,
-          scope   = const.scopes.host,
-          period  = "hour",
+          action     = "approve",
+          subject    = const.subjects.ua,
+          scope      = const.scopes.host,
+          period     = "hour",
+          csrf_token = csrf,
         }
 
         res, err = answer_client:send()

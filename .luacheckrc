@@ -12,3 +12,8 @@ not_globals = {
     "string.len",
     "table.getn",
 }
+
+ignore = {
+  -- don't complain when obj:method() doesn't make use of `self`
+  "212/self",
+}

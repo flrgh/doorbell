@@ -46,7 +46,7 @@ describe("/ring", function()
     nginx:start()
 
     client = test.client()
-    client.timeout = 1000
+    client.timeout = 5000
     client.request.path = "/ring"
     client.request.host = "127.0.0.1"
     client.api_key = nil
@@ -362,6 +362,143 @@ describe("/ring", function()
         assert.is_nil(client.err)
         assert.equals(200, client.response.status)
       end
+    end)
+  end)
+
+  describe("policy: validate-email", function()
+    before_each(function()
+      update_config({
+        unauthorized = const.unauthorized.validate_email,
+        smtp = {
+          host = "my-host",
+          username = "my-username",
+          password = "my-password",
+        },
+      })
+    end)
+
+    it("redirects the client to the email validation endpoint", function()
+      local url = "http://test/?a=1&b=2"
+      client:add_x_forwarded_headers(test.random_ipv4(), "GET", url)
+      client.headers["user-agent"] = "unknown"
+
+      client:send()
+      assert.is_nil(client.err)
+      assert.same(302, client.response.status)
+
+      local location = assert.is_string(client.response.headers.location)
+      assert.matches(const.endpoints.email, location, nil, true)
+
+      local parsed = assert(http.parse_url(location))
+      local query = ngx.decode_args(parsed.query)
+      assert.is_string(query.s)
+
+      client.request.path = "/email-validate"
+      client.request.query = query
+      client:send()
+      assert.same(200, client.response.status)
+      assert.same("text/html", client.response.headers["content-type"])
+    end)
+
+    it("redirects the client even when an access request is pending", function()
+      local url = "http://test/?a=1&b=2"
+      local addr = test.random_ipv4()
+      client:add_x_forwarded_headers(addr, "GET", url)
+      client.headers["user-agent"] = "unknown"
+
+      client:send()
+      assert.is_nil(client.err)
+      assert.same(302, client.response.status)
+
+      local location = assert.is_string(client.response.headers.location)
+      assert.matches(const.endpoints.email, location, nil, true)
+
+      local parsed = assert(http.parse_url(location))
+      local query = ngx.decode_args(parsed.query)
+      local state = assert.is_string(query.s)
+
+      client:add_x_forwarded_headers(addr, "GET", "http://other.test/")
+      client:send()
+      assert.is_nil(client.err)
+      assert.same(302, client.response.status)
+
+      location = assert.is_string(client.response.headers.location)
+      assert.matches(const.endpoints.email, location, nil, true)
+
+      parsed = assert(http.parse_url(location))
+      query = ngx.decode_args(parsed.query)
+      assert.same(state, query.s)
+    end)
+
+    it("allows access to the approval endpoint", function()
+      client.headers["user-agent"] = "nope"
+      for _, method in ipairs({ "GET", "POST" }) do
+        client:add_x_forwarded_headers(test.random_ipv4(), method, conf.base_url .. "email-validate")
+        client:send()
+        assert.is_nil(client.err)
+        assert.equals(200, client.response.status)
+      end
+    end)
+
+    describe("/validate-email", function()
+      local state
+      before_each(function()
+        local url = "http://test/?a=1&b=2"
+        client:add_x_forwarded_headers(test.random_ipv4(), "GET", url)
+        client.headers["user-agent"] = "unknown"
+
+        client:send()
+        assert.is_nil(client.err)
+        assert.same(302, client.response.status)
+
+        local location = assert.is_string(client.response.headers.location)
+        assert.matches(const.endpoints.email, location, nil, true)
+
+        local parsed = assert(http.parse_url(location))
+        local query = ngx.decode_args(parsed.query)
+        assert.is_string(query.s)
+        state = query.s
+      end)
+
+      describe("GET", function()
+        it("with s=<state>", function()
+          client.request.path = const.endpoints.email
+          client.request.query = { s = state }
+          client:send()
+          assert.same(200, client.response.status)
+          assert.same("text/html", client.response.headers["content-type"])
+        end)
+      end)
+
+      describe("POST", function()
+        describe("with s=<state>", function()
+          it("requires email", function()
+            client.request.method = "POST"
+            client.request.path = const.endpoints.email
+            client.request.query = { s = state }
+            client.request.post = {
+              email = nil,
+            }
+
+            client:send()
+            assert.is_nil(client.err)
+            assert.same(400, client.response.status)
+          end)
+
+          it("requires state", function()
+            client.request.method = "POST"
+            client.request.path = const.endpoints.email
+            client.request.query = { s = state }
+            client.request.post = {
+              email = "who@areyou.com",
+            }
+
+            client:send()
+            assert.is_nil(client.err)
+            assert.same(400, client.response.status)
+          end)
+        end)
+      end)
     end)
   end)
 

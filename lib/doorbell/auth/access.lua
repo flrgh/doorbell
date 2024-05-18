@@ -9,11 +9,8 @@ local util    = require "doorbell.util"
 local schema  = require "doorbell.schema"
 local api     = require "doorbell.rules.api"
 local metrics = require "doorbell.metrics"
-
-local random     = require "resty.random"
-local str        = require "resty.string"
-local buffer     = require "string.buffer"
-local bit        = require "bit"
+local buffer  = require "string.buffer"
+local bit     = require "bit"
 
 local encode   = buffer.encode
 local decode   = buffer.decode
@@ -21,6 +18,7 @@ local fmt      = string.format
 local now      = ngx.now
 local sleep    = ngx.sleep
 local band     = bit.band
+local rand     = util.random_string
 
 
 local TTL_PENDING = const.ttl.pending
@@ -349,8 +347,7 @@ _M.get = get_state
 ---@return string? token
 ---@return string? error
 local function generate_request_token(item, flags)
-  local bytes = random.bytes(24, true)
-  local token = str.to_hex(bytes)
+  local token = rand(24)
 
   item.created = now()
   item.token = token

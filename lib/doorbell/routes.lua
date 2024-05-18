@@ -7,6 +7,7 @@ local views   = require "doorbell.views"
 local mw      = require "doorbell.middleware"
 local request = require "doorbell.request"
 local auth    = require "doorbell.auth"
+local const   = require "doorbell.constants"
 
 local send = http.send
 
@@ -39,6 +40,20 @@ function _M.init()
     },
     GET             = views.answer,
     POST            = views.answer,
+  }
+
+  router[const.endpoints.email] = {
+    id              = "validate-email",
+    description     = "gotta get yer email",
+    metrics_enabled = true,
+    auth_strategy   = auth.require_none(),
+    middleware      = {
+      [mw.phase.REWRITE] = {
+        request.middleware.enable_logging,
+      },
+    },
+    GET             = views.validate_email,
+    POST            = views.validate_email,
   }
 
   router["/notify/test"] = {

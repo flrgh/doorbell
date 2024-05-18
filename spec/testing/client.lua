@@ -375,6 +375,17 @@ function client:parse_uri(uri, query_in_path)
   return self.httpc:parse_uri(uri, query_in_path)
 end
 
+---@return string?
+function client:get_response_csrf_token()
+  assert(self.response, "no response object--did you forget to make a request?")
+  assert(self.response.body, "no response body")
+  local m = ngx.re.match(self.response.body,
+                         [=[.*csrf_token.* value=['"](?<csrf>[^"']+)['"].*]=],
+                         "oji")
+
+  return m and m.csrf
+end
+
 ---@param addr   string
 ---@param method string
 ---@param url    string

@@ -7,6 +7,7 @@ local request = require "doorbell.request"
 local cache = require "doorbell.cache.shared"
 local util = require "doorbell.util"
 local httpc = require "resty.http"
+local users = require "doorbell.users"
 
 local oidc = require "resty.openidc"
 local validators = require "resty.jwt-validators"
@@ -56,15 +57,6 @@ local VALIDATORS = {
   sub = validators.required(),
   exp = validators.required(),
 }
-
----@type table <string, doorbell.config.auth.user>
-local USERS = {}
-
----@type table <string, doorbell.config.auth.user>
-local USERS_BY_SUB = {}
-
----@type table <string, doorbell.config.auth.user>
-local USERS_BY_EMAIL = {}
 
 local CONFIGURED = false
 local DISABLED = false
@@ -271,7 +263,7 @@ local function get_user(jwt, raw_token)
   local sub = jwt.sub
   assert(type(sub) == "string")
 
-  local u = USERS_BY_SUB[sub]
+  local u = users.get_by_jwt_sub(sub)
   if u then
     return u
   end
@@ -285,7 +277,7 @@ local function get_user(jwt, raw_token)
   end
 
   if info.email and info.email_verified == true then
-    u = USERS_BY_EMAIL[info.email]
+    u = users.get_by_email(info.email)
   end
 
   return u
@@ -371,33 +363,6 @@ function _M.init(conf)
   DISCOVERY_URL = iss .. ".well-known/openid-configuration"
   OIDC_OPTS.discovery = DISCOVERY_URL
   VALIDATORS.iss = validators.equals(iss)
-
-  USERS = {}
-  USERS_BY_SUB = {}
-  USERS_BY_EMAIL = {}
-
-  for _, u in ipairs(conf.auth.users or {}) do
-    local user = { name = u.name }
-    assert(USERS[u.name] == nil, "duplicate username: " .. u.name)
-    USERS[u.name] = user
-
-    for _, id in ipairs(u.identifiers or {}) do
-      if id.email then
-        assert(USERS_BY_EMAIL[id.email] == nil,
-               "duplicate user email: " .. id.email)
-
-        USERS_BY_EMAIL[id.email] = user
-      end
-
-      if id.sub then
-        assert(USERS_BY_SUB[id.sub] == nil,
-               "duplicate user sub: " .. id.sub)
-
-        USERS_BY_SUB[id.sub] = user
-      end
-    end
-  end
-
   CONFIGURED = true
 end
 

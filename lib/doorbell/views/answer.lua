@@ -35,6 +35,7 @@ local function render_form(tpl, req, errors, current)
     current_ip  = current,
     map_link    = info.map_link,
     search_link = info.search_link,
+    csrf_token  = http.csrf.generate(),
   })
 end
 
@@ -98,8 +99,15 @@ return function(ctx)
                      { ["content-type"] = "text/html" })
   end
 
-  ngx.req.read_body()
-  local args = ngx.req.get_post_args()
+  local args = http.request.get_post_args(true)
+
+  local csrf_token = args.csrf_token
+  if not csrf_token or not http.csrf.validate(csrf_token) then
+    log.info("got a POST request without a valid CSRF token")
+    return http.send(400,
+                     render_form(ctx.template, req, { "try again" }, current_ip),
+                     { ["content-type"] = "text/plain" })
+  end
 
   if args.action == "approve" then
     args.action = "allow"
