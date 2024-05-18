@@ -34,7 +34,7 @@ What makes Doorbell convenient is how access control policies ("rules") are mana
 
 ## Status
 
-I've been using
+Doorell has been fulfilling its purpose of protecting my home server for over two years now.
 
 ## How it Works
 
@@ -68,7 +68,7 @@ If the request matches no known rule, the unauthorized policy takes over. This i
 
 This module is licensed under the BSD license.
 
-Copyright (C) 2021-2023, by Michael Martin <flrgh@protonmail.com>.
+Copyright (C) 2021-2024, by Michael Martin <flrgh@protonmail.com>.
 
 All rights reserved.
 
