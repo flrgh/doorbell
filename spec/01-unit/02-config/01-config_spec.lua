@@ -11,8 +11,7 @@ describe("doorbell.config", function()
 
     before_each(function()
       tmp = fs.tmpdir()
-      env.CONFIG_STRING = nil
-      env.CONFIG = nil
+      env.reset()
     end)
 
     after_each(function()
@@ -48,6 +47,49 @@ describe("doorbell.config", function()
 
       assert.same("http://from-file/", config.base_url)
       assert.same(4321, config.cache_size)
+    end)
+
+    it("fills values from env vars", function()
+      fs.write_json_file(tmp .. "/config.json", {
+        base_url = "${BASE_URL}",
+        cache_size = "${CACHE_SIZE}",
+        trusted = "${TRUSTED_IPS}",
+        ota = {
+          url = "https://my-ota-url/",
+          interval = "${ALT_PREFIX_OTA_INTERVAL}",
+        },
+        auth = {
+          users = {
+            {
+              name = "test",
+              identifiers = {
+                { apikey = "${MY_API_KEY}" },
+              },
+            },
+          },
+        },
+      })
+
+      env.CONFIG = tmp .. "/config.json"
+      env.BASE_URL = "http://from-env/"
+      env.CACHE_SIZE = "1234"
+      env.TRUSTED_IPS = "1.2.3.4, 5.6.7.8"
+      env.all.ALT_PREFIX_OTA_INTERVAL = "90"
+      env.all.MY_API_KEY = "hooray"
+
+      config.init()
+
+      assert.same("http://from-env/", config.base_url)
+      assert.same(1234, config.cache_size)
+      assert.same({"1.2.3.4", "5.6.7.8" }, config.trusted)
+      assert.same("https://my-ota-url/", config.ota.url)
+      assert.same(90, config.ota.interval)
+      assert.same({
+        name = "test",
+        identifiers = {
+          { apikey = "hooray" },
+        },
+      }, config.auth.users[1])
     end)
 
     describe(".base_url", function()
