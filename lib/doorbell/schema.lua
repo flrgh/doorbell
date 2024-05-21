@@ -115,34 +115,34 @@ end
 ---| "object"
 ---| "string"
 
-
----@class doorbell.schema.base : table
+---@class doorbell.schema.common : table
 ---
----@field title string
+---@field title? string
 ---
----@field description string
+---@field description? string
 ---
----@field allOf doorbell.schema[]
+---@field allOf? doorbell.schema[]
 ---
----@field anyOf doorbell.schema[]
+---@field anyOf? doorbell.schema[]
 ---
----@field not doorbell.schema
+---@field not? doorbell.schema
 ---
----@field post_validate fun(value:any):boolean?, string?
+---@field post_validate? fun(value:any):boolean?, string?
 ---
----@field validate fun(value:any):boolean?, string?
+---@field validate? fun(value:any):boolean?, string?
 ---
----@field examples doorbell.schema.example[]
+---@field examples? doorbell.schema.example[]
 ---
----@field default any
+---@field default? any
 ---
 ---@field type? doorbell.schema.type|doorbell.schema.type[]|nil
+---
+---@field enum? any[]
+
+---@alias doorbell.schema.any doorbell.schema.common
 
 
----@alias doorbell.schema.any doorbell.schema.base
-
-
----@class doorbell.schema.object : doorbell.schema.base
+---@class doorbell.schema.object : doorbell.schema.common
 ---
 ---@field type "object"
 ---
@@ -155,7 +155,7 @@ end
 ---@field required? string[]
 
 
----@class doorbell.schema.array : doorbell.schema.base
+---@class doorbell.schema.array : doorbell.schema.common
 ---
 ---@field type "array"
 ---
@@ -166,7 +166,7 @@ end
 ---@field minItems integer
 
 
----@class doorbell.schema.string : doorbell.schema.base
+---@class doorbell.schema.string : doorbell.schema.common
 ---
 ---@field type "string"
 ---
@@ -179,7 +179,7 @@ end
 ---@field maxLength integer
 
 
----@class doorbell.schema.number : doorbell.schema.base
+---@class doorbell.schema.number : doorbell.schema.common
 ---
 ---@field type "integer"|"number"
 ---
@@ -189,7 +189,7 @@ end
 ---@field exclusiveMaximum boolean
 
 
----@class doorbell.schema.boolean : doorbell.schema.base
+---@class doorbell.schema.boolean : doorbell.schema.common
 ---
 ---@field type "boolean"
 
@@ -199,7 +199,7 @@ end
 ---| doorbell.schema.string
 ---| doorbell.schema.boolean
 ---| doorbell.schema.number
----| doorbell.schema.any
+---| doorbell.schema.common
 
 
 ---@param cidr string|string[]
@@ -1215,9 +1215,9 @@ validator(config.fields.network_tags)
 
 ---@class doorbell.config.auth.user.identifier : table
 ---
----@field email  string
----@field sub    string
----@field apikey string
+---@field email  string|nil
+---@field sub    string|nil
+---@field apikey string|nil
 
 config.fields.auth = {
   title = "doorbell.config.auth",

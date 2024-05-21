@@ -20,10 +20,19 @@ local defaults = {
   STATE_PATH   = "/var/run/doorbell",
 }
 
+---@return table<string, string>
+local function make_defaults()
+  local t = {}
+  setmetatable(t, { __index = defaults })
+  return t
+end
+
+
 ---@type table<string, string|table<string, string>>
 local env = {
+  or_default = make_defaults(),
   ---@type table<string, string>
-  or_default = setmetatable({}, { __index = defaults }),
+  all = {},
 }
 
 
@@ -44,8 +53,30 @@ function env.init()
       log.debugf("Setting %s from env var: %q", name, value)
       env[name] = value
       env.or_default[name] = value
+
+    else
+      name, value = var:match("^([^=]+)=(.+)")
+      if name then
+        env.all[name] = value
+      end
     end
     i = i + 1
+  end
+end
+
+function env.reset()
+  env.all = {}
+  env.or_default = make_defaults()
+
+  local reset = {}
+  for k, v in pairs(env) do
+    if type(v) == "string" then
+      table.insert(reset, k)
+    end
+  end
+
+  for _, k in ipairs(reset) do
+    env[k] = nil
   end
 end
 

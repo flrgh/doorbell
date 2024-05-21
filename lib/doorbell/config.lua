@@ -32,7 +32,11 @@ local cjson_safe = require "cjson.safe"
 local env = require "doorbell.env"
 local schema = require "doorbell.schema"
 
+local byte = string.byte
+
 local prefix = ngx.config.prefix()
+
+local EMPTY = {}
 
 
 ---@param s string
@@ -48,16 +52,23 @@ local function split_at_comma(s)
 end
 
 
-local function unserialize(field, value)
+---@param name string
+---@param field doorbell.schema
+---@param value any
+---@return any value
+local function unserialize(name, field, value)
   if not value then return end
 
-  if field.type == "integer" or field.type == "number" then
+  if not field then
+    return value
+
+  elseif field.type == "integer" or field.type == "number" then
     local parsed = tonumber(value)
     if parsed then
       return parsed
     end
 
-    util.errorf("could not parse %s value %q as number", field.name, value)
+    util.errorf("could not parse %s value %q as number", name, value)
 
   elseif field.type == "array" then
     return split_at_comma(value)
@@ -66,7 +77,76 @@ local function unserialize(field, value)
   return value
 end
 
+local is_env
+do
+  local DOLLAR = byte("$")
+  local LBRACE = byte("{")
+  local RBRACE = byte("}")
 
+  ---@param s string
+  ---@return boolean
+  function is_env(s)
+    if type(s) ~= "string" then
+      return false
+    end
+
+    local a, b = byte(s, 1, 2)
+    return a == DOLLAR
+       and b == LBRACE
+       and byte(s, -1) == RBRACE
+  end
+end
+
+
+---@param s string
+---@param name string
+---@param field doorbell.schema|nil
+---@return any
+local function get_env(s, name, field)
+  local var = s:sub(3, -2)
+               :gsub("^%s*(.-)%s*$", "%1")
+               :upper()
+
+  local value = env[var] or env.all[var]
+  if field then
+    value = unserialize(name, field, value)
+  end
+
+  return value
+end
+
+---@param name string|number
+---@param value any
+---@param field doorbell.schema
+local function fill_from_env(name, value, field)
+  field = field or EMPTY
+
+  if is_env(value) then
+    return get_env(value, name, field)
+  end
+
+  if type(value) == "table" then
+    if field.type == "object" then
+      local properties = field.properties or EMPTY
+
+      for k, v in pairs(value) do
+        value[k] = fill_from_env(k, v, properties[k])
+      end
+
+    elseif field.type == "array" then
+      local items = field.items
+
+      for i = 1, #value do
+        value[i] = fill_from_env(i, value[i], items)
+      end
+    end
+  end
+
+  return value
+end
+
+
+---@return doorbell.config
 local function get_user_config()
   local source, config_string
 
@@ -106,7 +186,9 @@ function _M.init()
   ---@type doorbell.config
   local config = {}
 
-  for name, field in pairs(schema.config.fields) do
+  local fields = schema.config.fields
+
+  for name, field in pairs(fields) do
     config[name] = field.default
   end
 
@@ -116,19 +198,21 @@ function _M.init()
     config[k] = v
   end
 
-  for name, field in pairs(schema.config.fields) do
+  for name, field in pairs(fields) do
     local value = env[name:upper()]
     if value then
-      config[name] = unserialize(field, value)
+      config[name] = unserialize(name, field, value)
     end
   end
 
   config.approvals = config.approvals or {}
-  for name, property in pairs(schema.config.fields.approvals.properties) do
+  for name, property in pairs(fields.approvals.properties) do
     if config.approvals[name] == nil then
       config.approvals[name] = property.default
     end
   end
+
+  fill_from_env("config", config, schema.config.entity)
 
   assert(schema.config.input.validate(config))
 
