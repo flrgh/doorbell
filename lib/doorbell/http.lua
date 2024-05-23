@@ -8,6 +8,7 @@ local nkeys = require "table.nkeys"
 local split = require("ngx.re").split
 local util = require "doorbell.util"
 local shm = require "doorbell.shm"
+local http_const = require "doorbell.http.constants"
 
 local ngx                 = ngx
 local print               = ngx.print
@@ -33,7 +34,7 @@ local type   = type
 local assert = assert
 local tonumber = tonumber
 
-local CSRF = shm.with_namespace(shm.doorbell, "csrf")
+local CSRF = shm.with_namespace("csrf")
 
 local MAX_QUERY_ARGS = 100
 local MAX_REQUEST_HEADERS = 100
@@ -83,6 +84,8 @@ end
 local function send(status, body, headers)
   if type(body) == "table" then
     body = encode(body)
+    headers = headers or {}
+    headers[http_const.headers.CONTENT_TYPE] = http_const.types.JSON
   end
 
   if headers then
@@ -242,6 +245,35 @@ end
 ---@param value string|string[]|nil
 local function set_response_header(name, value)
   header[name] = value
+end
+
+
+---@param key fun(doorbell.ctx):string|nil, integer?, number?
+---@return doorbell.middleware
+function _M.request.middleware.rate_limit(key)
+  local rl = require("doorbell.rate-limit")
+
+  assert(type(key) == "function")
+
+  local rl_req = rl.request
+
+  ---@type doorbell.middleware
+  return function(ctx)
+    local k, limit, period = key(ctx)
+    if not k then return end
+
+    local allow, remain, reset = rl_req(k, limit, period)
+
+    set_response_header("X-RateLimit-Limit", tostring(limit))
+    set_response_header("X-RateLimit-Limit-Remaining", tostring(remain))
+    set_response_header("X-RateLimit-Limit-Reset", tostring(reset))
+
+    if not allow then
+      set_response_header("Retry-After", tostring(now() + reset))
+      set_response_header("Content-Type", "application/json")
+      return send(429, [[{ "message": "too many requests" }]])
+    end
+  end
 end
 
 
@@ -466,7 +498,7 @@ _M.csrf = {}
 ---@return string
 function _M.csrf.generate()
   local token = random_string(32)
-  local ok, err = CSRF:safe_add(token, now() + CSRF_MAX_AGE)
+  local ok, err = CSRF:add(token, now() + CSRF_MAX_AGE)
 
   if err == "exists" then
     error("randomly generated a duplicate CSRF token")
@@ -496,5 +528,8 @@ function _M.csrf.validate(token)
 
   return true
 end
+
+_M.headers = http_const.headers
+_M.types = http_const.types
 
 return _M

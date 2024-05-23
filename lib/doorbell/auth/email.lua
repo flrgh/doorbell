@@ -1,13 +1,12 @@
 local _M = {}
 
 local shm    = require "doorbell.shm"
-local buffer = require "string.buffer"
 local util = require "doorbell.util"
 local mail    = require "doorbell.mail"
 local config = require "doorbell.config"
 local const   = require "doorbell.constants"
 
-local SHM = shm.with_namespace(shm.doorbell, "email-validate")
+local SHM = shm.with_namespace("email-validate")
 
 local TTL = 60 * 60
 
@@ -51,8 +50,7 @@ local EMAIL = [[<!DOCTYPE html>
 ---@param token string
 ---@return doorbell.email.validation?
 local function get_by_token(token)
-  local v = SHM:get(token)
-  return v and buffer.decode(v)
+  return SHM:get(token)
 end
 
 
@@ -69,14 +67,14 @@ end
 ---@param v doorbell.email.validation
 local function add(v)
   assert(SHM:add(v.addr, v.token, TTL))
-  assert(SHM:add(v.token, buffer.encode(v), TTL))
+  assert(SHM:add(v.token, v, TTL))
 end
 
 
 ---@param v doorbell.email.validation
 local function update(v)
   assert(SHM:set(v.addr, v.token, TTL))
-  assert(SHM:set(v.token, buffer.encode(v), TTL))
+  assert(SHM:set(v.token, v, TTL))
 end
 
 

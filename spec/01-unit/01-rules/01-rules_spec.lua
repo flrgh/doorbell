@@ -215,6 +215,13 @@ describe("doorbell.rules", function()
         expect = "property org validation failed",
         plain = true,
       },
+
+      {
+        desc = "metadata must be a table/object",
+        input = { meta = true },
+        expect = "property meta validation failed",
+        plain = true,
+      },
     }
 
     for _, case in ipairs(validation) do
@@ -283,6 +290,12 @@ describe("doorbell.rules", function()
       local rule, err = new { ua = "test", action = "deny", source = "config" }
       assert.is_nil(err)
       assert.equals("exit", rule.deny_action)
+    end)
+
+    it("meta defaults to an empty table", function()
+      local rule, err = new { ua = "test", action = "deny", source = "config" }
+      assert.is_nil(err)
+      assert.same({}, rule.meta)
     end)
   end)
 

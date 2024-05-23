@@ -26,6 +26,7 @@ local plugins = require "doorbell.plugins"
 local users = require "doorbell.users"
 local mail = require "doorbell.mail"
 local policy = require "doorbell.policy"
+local verify = require "doorbell.verify"
 
 local ngx        = ngx
 local var        = ngx.var
@@ -76,6 +77,7 @@ local submodules = {
   request,
   ota,
   routes,
+  verify,
   plugins,
 }
 

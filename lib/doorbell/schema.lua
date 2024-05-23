@@ -87,7 +87,7 @@ local function validator(schema)
     local ok, err = validate_schema(value)
 
     if ok and is_set(value) then
-      ok, err = post_validate(value)
+      ok, err = post_validate(value, schema)
     end
 
     if not ok then
@@ -127,7 +127,7 @@ end
 ---
 ---@field not? doorbell.schema
 ---
----@field post_validate? fun(value:any):boolean?, string?
+---@field post_validate? fun(value:any, schema:doorbell.schema):boolean?, string?
 ---
 ---@field validate? fun(value:any):boolean?, string?
 ---
@@ -471,6 +471,26 @@ rule.fields.plugin = {
   type = "string",
 }
 
+rule.fields.meta = {
+  description = "rule metadata",
+  type = "object",
+  patternProperties = {
+    [".*"] = {
+      type = "string",
+    }
+  },
+}
+
+rule.fields.meta_patch = {
+  description = "rule metadata updates",
+  type = "object",
+  patternProperties = {
+    [".*"] = {
+      type = { "string", "null" },
+    }
+  },
+}
+
 for name, field in pairs(rule.fields) do
   field.title = name
   validator(field)
@@ -541,14 +561,16 @@ rule.policy.deny_action_deny = {
 
 
 ---@param obj doorbell.rule.new.opts
+---@param rule_schema doorbell.schema
 ---@return boolean? ok
 ---@return string? error
-local function validate_rule(obj)
+---@return table<string, string>?
+local function validate_rule(obj, rule_schema)
   local errors = {}
   local fail = false
 
   for name, value in pairs(obj) do
-    local field_schema = assert(rule.fields[name],
+    local field_schema = assert(rule_schema.properties[name],
                                 "no schema found for field: " .. name)
     local ok, err = field_schema.validate(value)
     if not ok then
@@ -591,6 +613,7 @@ rule.entity = {
     hash        = rule.fields.hash,
     host        = rule.fields.host,
     id          = rule.fields.id,
+    meta        = rule.fields.meta,
     method      = rule.fields.method,
     org         = rule.fields.org,
     path        = rule.fields.path,
@@ -635,6 +658,7 @@ rule.create = {
     expires     = rule.fields.expires,
     host        = rule.fields.host,
     id          = rule.fields.id,
+    meta        = rule.fields.meta,
     method      = rule.fields.method,
     org         = rule.fields.org,
     path        = rule.fields.path,
@@ -713,6 +737,7 @@ rule.patch = {
     country     = rule.fields.country,
     expires     = rule.fields.expires,
     host        = rule.fields.host,
+    meta        = rule.fields.meta_patch,
     method      = rule.fields.method,
     org         = rule.fields.org,
     path        = rule.fields.path,
@@ -770,6 +795,7 @@ local config_rule = {
     comment     = rule.fields.comment,
     country     = rule.fields.country,
     host        = rule.fields.host,
+    meta        = rule.fields.meta,
     method      = rule.fields.method,
     org         = rule.fields.org,
     path        = rule.fields.path,
@@ -1218,6 +1244,7 @@ validator(config.fields.network_tags)
 ---@field email  string|nil
 ---@field sub    string|nil
 ---@field apikey string|nil
+---@field tel    string|nil
 
 config.fields.auth = {
   title = "doorbell.config.auth",
@@ -1244,8 +1271,17 @@ config.fields.auth = {
             items = {
               type = "object",
               properties = {
-                email = { type = "string" },
-                sub   = { type = "string" },
+                email  = { type = "string" },
+                sub    = { type = "string" },
+                apikey = { type = "string" },
+                tel    = { type = "string" },
+              },
+
+              oneOf = {
+                { required = { "email" } },
+                { required = { "sub" } },
+                { required = { "apikey" } },
+                { required = { "tel" } },
               },
             },
           },
@@ -1275,6 +1311,18 @@ config.fields.smtp = {
   required = { "host", "username", "password" },
 }
 
+config.fields.twilio = {
+  title = "doorbell.config.twilio",
+  description = "Twilio configuration for user verification",
+  type = "object",
+  properties = {
+    service_id = { type = "string" },
+    auth_sid = { type = "string" },
+    auth_secret = { type = "string" },
+    base_url = { type = "string" },
+  },
+  required = { "service_id", "auth_sid", "auth_secret" },
+}
 
 ---@type doorbell.schema.object
 config.entity = {
@@ -1305,6 +1353,7 @@ config.entity = {
     smtp                 = config.fields.smtp,
     state_path           = config.fields.state_path,
     trusted              = config.fields.trusted,
+    twilio               = config.fields.twilio,
     unauthorized         = config.fields.unauthorized,
     utc_offset           = config.fields.utc_offset,
   },
@@ -1351,6 +1400,7 @@ config.input = {
     smtp               = config.fields.smtp,
     state_path         = config.fields.state_path,
     trusted            = config.fields.trusted,
+    twilio             = config.fields.twilio,
     unauthorized       = config.fields.unauthorized,
     utc_offset         = config.fields.utc_offset,
   },

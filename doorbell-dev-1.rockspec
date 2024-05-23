@@ -73,6 +73,8 @@ build = {
     ["doobrell.policy.return-401"] = "lib/doorbell/policy/return-401.lua",
     ["doobrell.policy.validate-email"] = "lib/doorbell/policy/validate-email.lua",
 
+    ["doorbell.rate-limit"] = "lib/doorbell/rate-limit.lua",
+
     ["doorbell.request"] = "lib/doorbell/request.lua",
 
     ["doorbell.router"] = "lib/doorbell/router.lua",
