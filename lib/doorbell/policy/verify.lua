@@ -6,7 +6,6 @@ local _M = {}
 local http   = require "doorbell.http"
 local log    = require "doorbell.log"
 local const  = require "doorbell.constants"
-local email  = require "doorbell.auth.email"
 
 local ENDPOINT = const.endpoints.verify
 
