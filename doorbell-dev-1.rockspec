@@ -103,6 +103,9 @@ build = {
     ["doorbell.util.file"] = "lib/doorbell/util/file.lua",
     ["doorbell.util.timer"] = "lib/doorbell/util/timer.lua",
 
+    ["doorbell.verify"] = "lib/doorbell/verify.lua",
+    ["doorbell.verify.twilio"] = "lib/doorbell/verify/twilio.lua",
+
     ["doorbell.views"] = "lib/doorbell/views.lua",
     ["doorbell.views.answer"] = "lib/doorbell/views/answer.lua",
     ["doorbell.views.rule_list"] = "lib/doorbell/views/rule_list.lua",
