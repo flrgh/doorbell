@@ -180,9 +180,18 @@ function verifyCode() {
     .then(({ status, body }) => {
       if (status === 200) {
         displayMessage(body.message, false);
-        document.getElementsByTagName('h1')[0].innerText = 'Access granted';
+        document.getElementsByTagName('h1')[0].innerText = 'Success!';
         document.title = 'Access granted';
-        document.querySelector('.container').innerHTML = '<h1>Access granted</h1>';
+
+        const container = document.querySelector('.container');
+        const params = new URLSearchParams(window.location.search);
+        const next = params.get("next");
+        if (next) {
+          container.innerHTML = `<h1>Access granted</h1><br><a href="${next}">Take me back to ${next}</a>`;
+        } else {
+          container.innerHTML = '<h1>Access granted</h1>';
+        }
+
       } else {
         displayMessage(body.message, true);
       }

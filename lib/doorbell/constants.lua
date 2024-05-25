@@ -127,6 +127,7 @@ const.unauthorized = {
   request_approval      = "request-approval",
   redirect_for_approval = "redirect-for-approval",
   validate_email        = "validate-email",
+  verify                = "verify",
 }
 
 const.endpoints = {
