@@ -153,7 +153,7 @@ function shm:add(key, value, ttl)
   local flags
   value, flags = encode_value(value)
 
-  local ok, err = shared_shm:safe_add(key, value, ttl, flags)
+  local ok, err = shared_shm:add(key, value, ttl, flags)
   return ok, err
 end
 
@@ -174,7 +174,7 @@ function shm:set(key, value, ttl)
   local flags
   value, flags = encode_value(value)
 
-  local ok, err = shared_shm:safe_set(key, value, ttl, flags)
+  local ok, err = shared_shm:set(key, value, ttl, flags)
   return ok, err
 end
 
@@ -306,16 +306,13 @@ function SHM.reset_shared()
   shared_shm:flush_all()
 end
 
+function SHM.init() end
+
 function SHM.init_worker()
   if ngx.worker.id() == 0 then
     local timer = require "doorbell.util.timer"
-    local log = require("doorbell.log").with_namespace("shm")
-
     timer.every(60, "shared-shm-cleanup", function()
-      local flushed = shared_shm:flush_expired(10) or 0
-      while flushed > 0 do
-        log.notice("flushed ", flushed, " items from the shared shm")
-        flushed = shared_shm:flush_expired(10) or 0
+      while (shared_shm:flush_expired(10) or 0) > 0 do
         ngx.sleep(0)
       end
     end)

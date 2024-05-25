@@ -6,27 +6,28 @@ local _M = {
 }
 
 
-local manager = require "doorbell.rules.manager"
-local metrics = require "doorbell.metrics"
-local request = require "doorbell.request"
-local ip      = require "doorbell.ip"
-local auth    = require "doorbell.auth"
-local views   = require "doorbell.views"
-local notify  = require "doorbell.notify"
-local cache   = require "doorbell.cache"
-local config  = require "doorbell.config"
-local routes  = require "doorbell.routes"
-local router  = require "doorbell.router"
-local http    = require "doorbell.http"
-local ota     = require "doorbell.ota"
-local env     = require "doorbell.env"
-local middleware = require "doorbell.middleware"
-local nginx = require "doorbell.nginx"
-local plugins = require "doorbell.plugins"
-local users = require "doorbell.users"
-local mail = require "doorbell.mail"
-local policy = require "doorbell.policy"
-local verify = require "doorbell.verify"
+local manager        = require "doorbell.rules.manager"
+local metrics        = require "doorbell.metrics"
+local request        = require "doorbell.request"
+local ip             = require "doorbell.ip"
+local auth           = require "doorbell.auth"
+local views          = require "doorbell.views"
+local notify         = require "doorbell.notify"
+local cache          = require "doorbell.cache"
+local config         = require "doorbell.config"
+local routes         = require "doorbell.routes"
+local router         = require "doorbell.router"
+local http           = require "doorbell.http"
+local ota            = require "doorbell.ota"
+local env            = require "doorbell.env"
+local middleware     = require "doorbell.middleware"
+local nginx          = require "doorbell.nginx"
+local plugins        = require "doorbell.plugins"
+local users          = require "doorbell.users"
+local mail           = require "doorbell.mail"
+local policy         = require "doorbell.policy"
+local verify         = require "doorbell.verify"
+local shm            = require "doorbell.shm"
 
 local ngx        = ngx
 local var        = ngx.var
@@ -79,6 +80,7 @@ local submodules = {
   routes,
   verify,
   plugins,
+  shm,
 }
 
 function _M.init()

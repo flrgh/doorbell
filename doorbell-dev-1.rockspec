@@ -42,6 +42,7 @@ build = {
     ["doorbell.constants"] = "lib/doorbell/constants.lua",
 
     ["doorbell.http"] = "lib/doorbell/http.lua",
+    ["doorbell.http.constants"] = "lib/doorbell/http/constants.lua",
 
     ["doorbell.ip"] = "lib/doorbell/ip.lua",
     ["doorbell.ip.countries"] = "lib/doorbell/ip/countries.lua",
