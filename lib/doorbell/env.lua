@@ -50,7 +50,7 @@ function env.init()
     local name, value = var:match("^DOORBELL_([^=]+)=(.+)")
 
     if name and value and value ~= "" and value ~= defaults[name] then
-      log.debugf("Setting %s from env var: %q", name, value)
+      log.debug("Setting ", name, " from env var")
       env[name] = value
       env.or_default[name] = value
 
