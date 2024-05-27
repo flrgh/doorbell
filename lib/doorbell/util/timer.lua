@@ -8,7 +8,11 @@ local pcall = pcall
 local sleep = ngx.sleep
 local now = ngx.now
 local update_time = ngx.update_time
+local min = math.min
+local max = math.max
 
+local MAX_SLEEP = 1
+local MIN_SLEEP = 0.001
 local ROUNDS = 1000
 local EMPTY = {}
 local NOOP = function() end
@@ -36,7 +40,7 @@ local function wrapped(name, f)
 
     local ok, err = pcall(f)
     if not ok then
-      log.errf("task %s threw an error: %s", name, err)
+      log.err("task ", name, " threw an error: ", err)
     end
 
     return ok, err
@@ -44,10 +48,10 @@ local function wrapped(name, f)
 end
 
 
-
 ---@param premature boolean
----@param period number
+---@param time fun():number
 ---@param name string
+---@param period number
 ---@param fn function
 ---@param opts doorbell.util.timer.opts
 local function run_every(premature, time, name, period, fn, opts)
@@ -59,7 +63,15 @@ local function run_every(premature, time, name, period, fn, opts)
     return
   end
 
+  local next_run = time()
+
   for _ = 1, ROUNDS do
+    local t = time()
+    while (next_run - t) > MIN_SLEEP and not exiting() do
+      sleep(min(MAX_SLEEP, max(next_run - t, MIN_SLEEP)))
+      t = time()
+    end
+
     if exiting() then
       on_premature()
       return
@@ -77,14 +89,13 @@ local function run_every(premature, time, name, period, fn, opts)
 
     local elapsed = time() - start
 
+    next_run = start + period
+
     if elapsed >= period then
       log.warnf("task %s took longer than its period (%s) to execute: %s",
                 name, elapsed, period)
 
-      sleep(0.001)
-
-    else
-      sleep(period - elapsed)
+      sleep(MIN_SLEEP)
     end
   end
 
