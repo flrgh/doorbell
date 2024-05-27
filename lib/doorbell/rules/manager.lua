@@ -17,7 +17,6 @@ local ngx         = ngx
 local now         = ngx.now
 local sleep       = ngx.sleep
 local get_phase   = ngx.get_phase
-local null        = ngx.null
 local start_time  = ngx.req.start_time
 
 local assert       = assert
@@ -446,7 +445,7 @@ function _M.delete(rule)
 end
 
 ---@param  id_or_hash     string
----@param  updates        doorbell.rule
+---@param  updates        doorbell.rule.update.opts
 ---@return doorbell.rule? patched
 ---@return string?        error
 ---@return integer?       status_code
@@ -459,25 +458,24 @@ function _M.patch(id_or_hash, updates)
     return nil, "rule not found", 404
   end
 
-  for k, v in pairs(updates) do
-    if v == null then
-      v = nil
-    end
+  local ok, err = rules.validate_update(updates)
 
-    rule[k] = v
-  end
-
-
-  local ok, err = rules.validate_entity(rule)
   if not ok then
     return nil, err, 400
   end
 
+  rules.update(rule, updates)
+
+  ok, err = rules.validate_entity(rule)
+  if not ok then
+    return nil, err, 400
+  end
 
   return create(rule, true, true)
 end
 
 --- retrieve a list of all current rules
+--- NOTE: must not yield
 ---@return doorbell.rule[]
 function _M.list()
   return util.array(get_all_rules())

@@ -33,7 +33,7 @@ local log = require("doorbell.log").with_namespace(_M.name)
 ---@field allow_ttl? integer
 
 local STATES = const.states
-local SHM = shm.with_namespace(shm.plugins, "jf")
+local SHM = shm.with_namespace("jf")
 
 ---@type string
 local HOST

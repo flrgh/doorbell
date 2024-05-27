@@ -16,6 +16,7 @@ local byte         = string.byte
 local deep_copy    = util.deep_copy
 local type         = type
 local assert       = assert
+local null         = ngx.null
 
 
 local CONDITIONS = {
@@ -134,6 +135,7 @@ local SERIALIZED_FIELDS = {
   "expires",
   "host",
   "id",
+  "meta",
   "method",
   "org",
   "path",
@@ -175,6 +177,11 @@ table.sort(SERIALIZED_FIELDS)
 --- Network Organization
 ---@alias doorbell.rule.fields.org string
 
+--- Rule Metadata
+---@alias doorbell.rule.fields.meta table<string, string>
+
+--- Rule Metadata Updates
+---@alias doorbell.rule.fields.meta.patch table<string, string|cjson.null|userdata|nil>
 
 ---@class doorbell.rule.dehydrated: table
 ---
@@ -199,6 +206,7 @@ table.sort(SERIALIZED_FIELDS)
 ---@field source  doorbell.source
 ---@field plugin  string
 ---@field created number
+---@field meta    doorbell.rule.fields.meta
 
 
 ---@class doorbell.rule.shorthand_fields : table
@@ -206,26 +214,29 @@ table.sort(SERIALIZED_FIELDS)
 ---@field ttl integer
 
 
----@class doorbell.rule.new.opts : doorbell.rule.dehydrated : doorbell.rule.shorthand_fields
+---@class doorbell.rule.new.opts : doorbell.rule.dehydrated
+---
+---@field ttl? integer
 
 
 ---@class doorbell.rule.update.opts : doorbell.rule.shorthand_fields
 ---
----@field action      doorbell.action
----@field addr        string
----@field asn         doorbell.rule.fields.asn
----@field cidr        string
----@field comment     string
----@field country     string
----@field deny_action doorbell.deny_action
----@field expires     number
----@field host        string
----@field method      string
----@field path        string
----@field plugin      string
----@field terminate   boolean
----@field org         doorbell.rule.fields.org
----@field ua          string
+---@field action?      doorbell.action
+---@field addr?        string
+---@field asn?         doorbell.rule.fields.asn
+---@field cidr?        string
+---@field comment?     string
+---@field country?     string
+---@field deny_action? doorbell.deny_action
+---@field expires?     number
+---@field host?        string
+---@field meta?        doorbell.rule.fields.meta.patch
+---@field method?      string
+---@field org?         doorbell.rule.fields.org
+---@field path?        string
+---@field plugin?      string
+---@field terminate?   boolean
+---@field ua?          string
 
 
 ---@alias doorbell.rules doorbell.rule[]
@@ -339,6 +350,8 @@ do
       end
     end
 
+    rule.meta = rule.meta or {}
+
     rule:update_generated_fields()
 
     return rule
@@ -378,6 +391,45 @@ end
 _M.hydrate = hydrate
 _M.dehydrate = dehydrate
 
+---@param current table
+---@param updates table
+local function merge(current, updates)
+  for uk, uv in pairs(updates) do
+    if uv == null then
+      uv = nil
+    end
+
+    local cv = current[uk]
+
+    if cv == nil then
+      current[uk] = uv
+
+    elseif type(uv) == "table" then
+      assert(type(cv) == "table")
+      merge(cv, uv)
+
+    else
+      current[uk] = uv
+    end
+  end
+end
+
+
+---@param current doorbell.rule
+---@param updates doorbell.rule.update.opts
+function _M.update(current, updates)
+  if is_rule(current) then
+    if updates.ttl ~= nil then
+      update_time()
+      updates.expires = now() + updates.ttl
+      updates.ttl = nil
+    end
+  end
+
+  merge(current, updates)
+  current:update_generated_fields()
+end
+
 
 ---@param opts doorbell.rule.new.opts
 local function populate(opts)
@@ -404,6 +456,10 @@ local function populate(opts)
   if not opts.created then
     opts.created = t
   end
+
+  if not opts.meta then
+    opts.meta = {}
+  end
 end
 
 _M.populate = populate
@@ -428,10 +484,15 @@ function _M.new(opts)
     addr        = opts.addr,
     asn         = opts.asn,
     cidr        = opts.cidr,
+    ---@diagnostic disable-next-line: assign-type-mismatch
+    conditions  = nil,
     created     = opts.created,
     deny_action = opts.deny_action,
     expires     = opts.expires,
+    ---@diagnostic disable-next-line: assign-type-mismatch
+    hash        = nil,
     host        = opts.host,
+    meta        = opts.meta,
     method      = opts.method,
     path        = opts.path,
     plugin      = opts.plugin,
@@ -467,7 +528,6 @@ end
 function _M.validate_update(opts)
   return schema.rule.patch.validate(opts)
 end
-
 
 _M.validate = _M.validate_entity
 

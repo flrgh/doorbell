@@ -42,6 +42,7 @@ build = {
     ["doorbell.constants"] = "lib/doorbell/constants.lua",
 
     ["doorbell.http"] = "lib/doorbell/http.lua",
+    ["doorbell.http.constants"] = "lib/doorbell/http/constants.lua",
 
     ["doorbell.ip"] = "lib/doorbell/ip.lua",
     ["doorbell.ip.countries"] = "lib/doorbell/ip/countries.lua",
@@ -72,6 +73,9 @@ build = {
     ["doobrell.policy.request-approval"] = "lib/doorbell/policy/request-approval.lua",
     ["doobrell.policy.return-401"] = "lib/doorbell/policy/return-401.lua",
     ["doobrell.policy.validate-email"] = "lib/doorbell/policy/validate-email.lua",
+    ["doorbell.policy.verify"] = "lib/doorbell/policy/verify.lua",
+
+    ["doorbell.rate-limit"] = "lib/doorbell/rate-limit.lua",
 
     ["doorbell.request"] = "lib/doorbell/request.lua",
 
@@ -98,6 +102,9 @@ build = {
     ["doorbell.util"] = "lib/doorbell/util.lua",
     ["doorbell.util.file"] = "lib/doorbell/util/file.lua",
     ["doorbell.util.timer"] = "lib/doorbell/util/timer.lua",
+
+    ["doorbell.verify"] = "lib/doorbell/verify.lua",
+    ["doorbell.verify.twilio"] = "lib/doorbell/verify/twilio.lua",
 
     ["doorbell.views"] = "lib/doorbell/views.lua",
     ["doorbell.views.answer"] = "lib/doorbell/views/answer.lua",

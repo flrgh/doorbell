@@ -29,8 +29,11 @@ function _M.init(conf)
   smtp.timeout_send    = smtp.timeout_send    or DEFAULT_TIMEOUT
 end
 
+---@class doorbell.mail.data : resty.mail.mailer.send.data
+---
+---@field from? string # optional
 
----@param data resty.mail.mailer.send.data
+---@param data doorbell.mail.data
 ---@return boolean? ok
 ---@return string? error
 function _M.send(data)
@@ -58,5 +61,8 @@ function _M.send(data)
   return mailer:send(data)
 end
 
+function _M.enabled()
+  return smtp ~= nil
+end
 
 return _M

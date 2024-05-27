@@ -117,8 +117,8 @@ const.shm = {
   mlcache_main  = "mlcache_main",
   mlcache_miss  = "mlcache_miss",
 
-  -- shared plugin storage
-  plugins = "plugins",
+  -- shared storage, see `doorbell.shm.namespace`
+  shared = "shared",
 }
 
 ---@enum doorbell.unauthorized
@@ -127,6 +127,7 @@ const.unauthorized = {
   request_approval      = "request-approval",
   redirect_for_approval = "redirect-for-approval",
   validate_email        = "validate-email",
+  verify                = "verify",
 }
 
 const.endpoints = {
@@ -134,6 +135,7 @@ const.endpoints = {
   ring       = "/ring",
   answer     = "/answer",
   email      = "/email-validate",
+  verify     = "/verify",
 }
 
 const.testing = false

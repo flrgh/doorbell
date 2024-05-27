@@ -1,0 +1,36 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Request Access for 1.2.3.4</title>
+    <link rel="stylesheet" href="/verify.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Request Access for 1.2.3.4</h1>
+        <div id="initial-step">
+            <div>
+                <label for="verification-method">Choose a verification method:</label>
+                <select id="verification-method" onchange="showInputField()">
+                    <option value="" disabled selected>Select an option</option>
+                    <option value="email">Email</option>
+                    <option value="phone">Phone</option>
+                </select>
+            </div>
+            <div id="input-field"></div>
+            <input type="hidden" id="csrf" value="placeholder">
+            <button id="send-button" disabled class="disabled" onclick="sendVerification()">Send</button>
+        </div>
+        <div id="verification-step" class="hidden">
+            <p id="verification-message"></p>
+            <label for="verification-code">Enter the verification code:</label>
+            <input type="text" inputmode="numeric" pattern="\d*" id="verification-code" maxlength="16">
+            <button onclick="verifyCode()">Verify Code</button>
+        </div>
+        <div id="spinner" class="spinner hidden"></div>
+        <div id="result" class="error hidden"></div>
+    </div>
+    <script src="/verify.js"></script>
+</body>
+</html>

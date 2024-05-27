@@ -51,6 +51,16 @@ function _M.init()
       [mw.phase.REWRITE] = {
         request.middleware.enable_logging,
       },
+      [mw.phase.PRE_HANDLER] = {
+        http.request.middleware.rate_limit(function(ctx)
+          if ctx.method == "POST" then
+            local addr = ctx.forwarded_addr
+            if addr then
+              return "global:" .. addr, 10, 10
+            end
+          end
+        end),
+      },
     },
     GET             = views.validate_email,
     POST            = views.validate_email,

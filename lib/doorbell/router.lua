@@ -16,27 +16,27 @@ local type     = type
 local insert   = table.insert
 local set_response_header = require("doorbell.http").response.set_header
 
----@alias doorbell.route.handler fun(ctx:table, match:table)
+---@alias doorbell.route.handler fun(ctx:doorbell.ctx, match:table)
 
 ---@class doorbell.route : table
----@field id              string
----@field path            string
----@field description     string
----@field metrics_enabled boolean
----@field log_enabled     boolean
----@field allow_untrusted boolean
----@field need_query      boolean
----@field content_type    string
----@field GET             doorbell.route.handler
----@field POST            doorbell.route.handler
----@field DELETE          doorbell.route.handler
----@field PUT             doorbell.route.handler
----@field PATCH           doorbell.route.handler
----@field middleware      table<doorbell.middleware.phase, doorbell.middleware[]>
----@field _middleware     table<doorbell.middleware.phase, doorbell.middleware>
+---@field id               string
+---@field path?            string
+---@field description      string
+---@field metrics_enabled? boolean
+---@field log_enabled?     boolean
+---@field allow_untrusted? boolean
+---@field need_query?      boolean
+---@field content_type?    string
+---@field GET?             doorbell.route.handler
+---@field POST?            doorbell.route.handler
+---@field DELETE?          doorbell.route.handler
+---@field PUT?             doorbell.route.handler
+---@field PATCH?           doorbell.route.handler
+---@field middleware?      table<doorbell.middleware.phase, doorbell.middleware[]>
+---@field _middleware?     table<doorbell.middleware.phase, doorbell.middleware>
 ---
----@field auth_required   function
----@field auth_strategy   integer
+---@field auth_required?   boolean
+---@field auth_strategy    function
 
 ---@alias doorbell.router.regex_entry  [string, doorbell.route]
 

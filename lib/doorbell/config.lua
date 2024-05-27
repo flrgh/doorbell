@@ -24,6 +24,7 @@
 ---@field utc_offset       integer
 ---@field plugins          table<string, any>
 ---@field smtp             doorbell.config.smtp
+---@field twilio           doorbell.verify.twilio.conf
 local _M = {}
 
 local util = require "doorbell.util"

@@ -65,6 +65,7 @@ _M.get_current_version = get_current_version
 _M.get_latest_version = get_latest_version
 
 
+--- NOTE: must not yield
 ---@param version? number
 ---@return doorbell.rule[]
 function _M.get(version)
