@@ -133,7 +133,7 @@ dependencies = {
   "luafilesystem-ffi == 0.3.0",
   "luajit-geoip >= 2.1.0",
   "luasocket == 3.1.0",
-  "nginx-lua-prometheus == 0.20230607",
+  "nginx-lua-prometheus == 0.20240525",
   "penlight == 1.14.0",
   "api7-lua-resty-jwt == 0.2.6",
   "lua-resty-mlcache = 2.7.0",
