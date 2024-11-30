@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Docker Image Tests
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Run Tests
         run: ./scripts/test-docker-container.sh
