@@ -880,7 +880,7 @@ config.fields.trusted = {
     type = "string",
     minLength = 1,
   },
-  minLength = 1,
+  minItems = 1,
   examples = {
     { comment = "trust localhost and two private networks",
       value   = { "127.0.0.1", "10.0.3.1", "10.0.4.0/24" },
