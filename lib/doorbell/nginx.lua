@@ -2,6 +2,9 @@ local _M = {}
 
 local ngx = ngx
 local exiting = ngx.worker.exiting
+local now = ngx.now
+local update_time = ngx.update_time
+local sleep = ngx.sleep
 local tostring = tostring
 local max = math.max
 local bit = require "bit"
@@ -68,8 +71,8 @@ local B_GLOBAL_ID = 0
 
 
 local function time()
-  ngx.update_time()
-  return ngx.now()
+  update_time()
+  return now()
 end
 
 ---@param f fun(integer, boolean)
@@ -106,11 +109,16 @@ local function pg_get(pg, key)
   return SHM:get(shm_key)
 end
 
+---@return integer
 local function get_current_pg()
   return SHM:get(make_global_key(B_MAX_GROUP)) or 0
 end
 
 
+---@param pg integer
+---@param id integer
+---@param key integer
+---@return integer
 local function b_make_proc_key(pg, id, key)
   if id == -1 then
     id = 0xFF
@@ -435,12 +443,12 @@ function _M.info(block)
   local info = get_info()
 
   if block and block > 0 and not info.ok then
-    ngx.update_time()
-    local start = ngx.now()
+    update_time()
+    local start = now()
     local deadline = start + block
 
-    while not info.ok and ngx.now() < deadline do
-      ngx.sleep(0.05)
+    while not info.ok and now() < deadline do
+      sleep(0.05)
       info = get_info()
     end
   end
