@@ -127,7 +127,7 @@ dependencies = {
   "lua-resty-http == 0.17.1",
   "lua-resty-ipmatcher == 0.6.1",
   "lua-resty-jit-uuid == 0.0.7",
-  "lua-resty-openidc == 1.7.6",
+  "lua-resty-openidc == 1.8.0",
   "lua-resty-pushover == 0.1.0",
   "lua-resty-template == 2.0",
   "luafilesystem-ffi == 0.3.0",
