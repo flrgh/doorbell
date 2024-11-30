@@ -131,7 +131,7 @@ dependencies = {
   "lua-resty-pushover == 0.1.0",
   "lua-resty-template == 2.0",
   "luafilesystem-ffi == 0.3.0",
-  "luajit-geoip >= 2.1.0",
+  "luajit-geoip == 2.1.0",
   "luasocket == 3.1.0",
   "nginx-lua-prometheus == 0.20240525",
   "penlight == 1.14.0",
