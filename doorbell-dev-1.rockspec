@@ -124,7 +124,7 @@ dependencies = {
   "inspect == 3.1.3",
   "lua_system_constants == 0.1.4",
   "lua-resty-ljsonschema == 1.1.6-2",
-  "lua-resty-http == 0.17.1",
+  "lua-resty-http == 0.17.2",
   "lua-resty-ipmatcher == 0.6.1",
   "lua-resty-jit-uuid == 0.0.7",
   "lua-resty-openidc == 1.8.0",
