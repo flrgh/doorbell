@@ -136,7 +136,7 @@ dependencies = {
   "nginx-lua-prometheus == 0.20230607",
   "penlight == 1.13.1",
   "api7-lua-resty-jwt == 0.2.5",
-  "lua-resty-mlcache = 2.6.0",
+  "lua-resty-mlcache = 2.7.0",
   "lua-resty-mail = 1.1.0",
 }
 
