@@ -31,7 +31,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install Lua
         uses: leafo/gh-actions-lua@v10
@@ -69,7 +69,7 @@ jobs:
               --with-threads
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install OS Deps
         run: |
@@ -99,7 +99,7 @@ jobs:
           echo '${{ matrix.openresty-opts }}' > .resty-opts
 
       - name: Cache OpenResty
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         id: cache-openresty
         with:
           path: |
@@ -137,7 +137,7 @@ jobs:
           luarocksVersion: ${{ env.LUAROCKS_VERSION }}
 
       - name: Cache LuaRocks Dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         id: cache-luarocks-deps
         with:
           path: .luarocks/
