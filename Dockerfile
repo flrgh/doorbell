@@ -10,7 +10,7 @@ COPY ./doorbell-dev-1.rockspec /tmp/
 RUN luarocks install --deps-only /tmp/doorbell-dev-1.rockspec && \
     rm /tmp/doorbell-dev-1.rockspec
 
-ARG RUSTY_CLI_VERSION=0.1.0
+ARG RUSTY_CLI_VERSION=0.3.0
 RUN curl \
         --proto '=https' \
         --tlsv1.2 \
