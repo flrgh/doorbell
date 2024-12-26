@@ -26,7 +26,7 @@ describe("jellyfin", function()
         jellyfin = {
           url = "http://jellyfin",
           api = fmt("http://127.0.0.1:%s", const.MOCK_UPSTREAM_PORT),
-          allow_ttl = 3,
+          allow_ttl = 2,
         }
       }
     end
@@ -123,11 +123,7 @@ describe("jellyfin", function()
         assert.is_nil(client.err)
         assert.equals(200, client.response.status)
 
-        local res, req = ms.mock.get_last()
-        assert.is_table(res)
-        assert.equals(200, res.status)
-        assert.is_table(req)
-        assert.is_table(req.headers)
+        local req = ms.mock.assert_request_received()
         assert.equals(token, req.headers["x-emby-token"])
       end
 
@@ -179,6 +175,8 @@ describe("jellyfin", function()
         client:send()
         assert.is_Nil(client.err)
         assert.equals(200, client.response.status)
+
+        ms.mock.assert_no_request_received()
       end)
     end)
 
@@ -207,16 +205,12 @@ describe("jellyfin", function()
       assert.is_nil(client.err)
       assert.equals(200, client.response.status)
 
-      local res, req = ms.mock.get_last()
-      assert.is_table(res)
-      assert.equals(200, res.status)
-      assert.is_table(req)
-      assert.is_table(req.headers)
+      local req = ms.mock.assert_request_received()
       assert.equals(token, req.headers["x-emby-token"])
 
       local api = nginx:add_client(test.client())
       test.await.truthy(function()
-        res = api:get("/rules")
+        local res = api:get("/rules")
         assert.is_nil(api.err)
         assert.equals(200, res.status)
         assert.is_table(res.json)
@@ -234,7 +228,7 @@ describe("jellyfin", function()
         end
 
         return false
-      end, 5, 1)
+      end, 5)
     end)
 
     it("recreates allow rules as necessary", function()
@@ -262,11 +256,7 @@ describe("jellyfin", function()
       assert.is_nil(client.err)
       assert.equals(200, client.response.status)
 
-      local res, req = ms.mock.get_last()
-      assert.is_table(res)
-      assert.equals(200, res.status)
-      assert.is_table(req)
-      assert.is_table(req.headers)
+      local req = ms.mock.assert_request_received()
       assert.equals(token, req.headers["x-emby-token"])
 
       local api = nginx:add_client(test.client())
@@ -274,7 +264,7 @@ describe("jellyfin", function()
       local rule_id
 
       local function have_rule()
-        res = api:get("/rules")
+        local res = api:get("/rules")
         assert.is_nil(api.err)
         assert.equals(200, res.status)
         assert.is_table(res.json)
@@ -297,8 +287,8 @@ describe("jellyfin", function()
         return false
       end
 
-      test.await.truthy(have_rule, 5, 1)
-      test.await.falsy(have_rule, 10, 1)
+      test.await.truthy(have_rule, 5)
+      test.await.falsy(have_rule, 10)
 
       local old_id = rule_id
 
@@ -306,7 +296,7 @@ describe("jellyfin", function()
       assert.is_nil(client.err)
       assert.equals(200, client.response.status)
 
-      test.await.truthy(have_rule, 5, 1)
+      test.await.truthy(have_rule, 5)
       assert.not_equal(rule_id, old_id)
     end)
 
@@ -359,17 +349,13 @@ describe("jellyfin", function()
       assert.is_nil(client.err)
       assert.equals(200, client.response.status)
 
-      local res, req = ms.mock.get_last()
-      assert.is_table(res)
-      assert.equals(200, res.status)
-      assert.is_table(req)
-      assert.is_table(req.headers)
+      local req = ms.mock.assert_request_received()
       assert.equals(token, req.headers["x-emby-token"])
 
       local api = nginx:add_client(test.client())
 
       local function have_rule()
-        res = api:get("/rules")
+        local res = api:get("/rules")
         assert.is_nil(api.err)
         assert.equals(200, res.status)
         assert.is_table(res.json)
@@ -389,7 +375,7 @@ describe("jellyfin", function()
         return false
       end
 
-      test.await.truthy(have_rule, 5, 1)
+      test.await.truthy(have_rule, 5)
 
       client:add_x_forwarded_headers(addr, "POST", "http://jellyfin/Sessions/Logout")
       client.headers["X-Mediabrowser-Token"] = token
@@ -398,7 +384,7 @@ describe("jellyfin", function()
       assert.equals(200, client.response.status)
 
       -- wait for the rule to expire
-      test.await.falsy(have_rule, 10, 1)
+      test.await.falsy(have_rule, 10)
 
       ms.mock.prepare({
         path = "/Users/Me",

@@ -28,9 +28,9 @@ local log = require("doorbell.log").with_namespace(_M.name)
 
 ---@class doorbell.config.plugin.jellyfin
 ---
----@field url        string # jellyfin address
----@field api?       string # jellyfin API address (derived from `url` if not set)
----@field allow_ttl? integer
+---@field url        string  # jellyfin address
+---@field api?       string  # jellyfin API address (derived from `url` if not set)
+---@field allow_ttl? integer # duration (in seconds) to create `allow` rules for
 
 local STATES = const.states
 local SHM = shm.with_namespace("jf")
@@ -41,14 +41,16 @@ local HOST
 ---@type string
 local API_URL
 
-local ALLOW_TTL = 60 * 60
+---@type string
+local AUTH_CHECK_URL
+
+local ALLOW_TTL = 60 * 60 * 24
 
 local LOGIN_PATH = "/users/authenticatebyname"
 local LOGOUT_PATH = "/sessions/logout"
 local AUTH_QUERY_PARAM = lower("api_key")
 local AUTH_SELF = "/Users/Me"
 local AUTH_SELF_HEADER = "X-Emby-Token"
-local AUTH_CHECK_URL
 local UNKNOWN = "<unknown>"
 
 local TOKEN_RE = [=[Token=['"]([^'"]+)['"]]=]
@@ -79,10 +81,10 @@ local function check_jellyfin_token(token)
     json, err = cjson.decode(res.body)
     if not json then
       log.warn("`GET /Users/Me` returned invalid json: ", err)
-      return true
+      return nil, "json decode error: " .. err
     end
 
-    return json.Name or json.name or true
+    return json.Name or json.name or UNKNOWN
 
   else
     return false, nil, 5
@@ -92,7 +94,7 @@ end
 ---@param token string
 ---@return string
 local function auth_cache_key(token)
-  return "doorbell.auth_token." .. sha256(token)
+  return "jellyfin.auth_token." .. sha256(token)
 end
 
 ---@param token string
@@ -314,6 +316,9 @@ local function timer_handler()
       source = "plugin",
       plugin = "jellyfin",
       comment = fmt("allowed via jellyfin plugin for user %q", user),
+      meta = {
+        ["jellyfin.user"] = user,
+      },
     })
 
     if rule then
