@@ -6,6 +6,7 @@ local cjson_safe = require "cjson.safe"
 local http  = require "doorbell.http"
 local uuid  = require("resty.jit-uuid").generate_v4
 local resty_http = require "resty.http"
+local luassert = require "luassert"
 
 local SHM = ngx.shared.mock
 local EMPTY = {}
@@ -142,7 +143,7 @@ local function get_request()
 
   local errors = {}
   local body = http.request.get_raw_body()
-  local json = ngx.null
+  local json
 
   if body and content_type:lower():find("application/json") then
     local err
@@ -155,18 +156,22 @@ local function get_request()
 
   body = body or ngx.null
 
-  ---@class spec.testing.mock-upstream.request : table
-  return {
+  ---@class spec.testing.mock-upstream.request
+  local req = {
     headers = headers,
     method  = ngx.req.get_method(),
     host    = ngx.var.host:lower(),
     uri     = ngx.var.request_uri,
     path    = ngx.var.request_uri:gsub("%?.*", ""),
     query   = ngx.req.get_uri_args(1000),
+    ---@type string|nil
     body    = body,
+    ---@type any|nil
     json    = json,
     errors  = errors,
   }
+
+  return req
 end
 
 ---@param res spec.testing.mock-upstream.response
@@ -322,17 +327,38 @@ mock.mock = {
     assert(res.status == 200)
   end,
 
+  ---@return spec.testing.mock-upstream.request|nil
   get_last = function()
     local res = mocker_send("/_/last")
     assert(res.status == 200 or res.status == 404)
-    return res, cjson.decode(res.body)
+
+    if res.status == 404 then
+      return
+    end
+
+    return cjson.decode(res.body)
   end,
 
   reset = function()
     local res = mocker_send("/_/reset", nil, { method = "POST" })
     assert(res.status == 200)
   end,
-
 }
+
+mock.mock.assert_no_request_received = function()
+  local req = mock.mock.get_last()
+  luassert.is_nil(req, "expected no recent requests to the mock upstream")
+end
+
+
+---@return spec.testing.mock-upstream.request
+mock.mock.assert_request_received = function()
+  local req = mock.mock.get_last()
+  luassert.not_nil(req, "expected the mock upstream to have received a request")
+  luassert.is_table(req)
+  luassert.is_table(req.headers)
+
+  return req
+end
 
 return mock

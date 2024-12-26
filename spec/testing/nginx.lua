@@ -34,7 +34,7 @@ end
 ---@param timeout? number
 local function wait_pid(pid, fn, timeout)
   timeout = timeout or 5
-  return await.truthy(timeout, 0.05, fn, pid)
+  return await.truthy(timeout, nil, fn, pid)
 end
 
 

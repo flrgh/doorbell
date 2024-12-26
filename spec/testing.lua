@@ -42,14 +42,26 @@ _M.fs = require("spec.testing.fs")
 
 
 _M.await = {
+  ---@param fn       function
+  ---@param timeout? number
+  ---@param step?    number
+  ---@param msg      any
   truthy = function(fn, timeout, step, msg)
     assert(await.truthy(timeout, step, fn), msg or "timeout reached", 2)
   end,
 
+  ---@param fn       function
+  ---@param timeout? number
+  ---@param step?    number
+  ---@param msg      any
   falsy = function(fn, timeout, step, msg)
     assert(await.falsy(timeout, step, fn), msg or "timeout reached", 2)
   end,
 
+  ---@param fn       function
+  ---@param timeout? number
+  ---@param step?    number
+  ---@param msg      any
   no_error = function(fn, timeout, step, msg)
     local wrapped = function(...)
       return pcall(fn, ...)
