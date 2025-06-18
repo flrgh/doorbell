@@ -292,6 +292,14 @@ end
 ---@return string? error
 ---@return doorbell.transaction.action? action
 function trx:commit()
+  local lock = self.lock
+  self.lock = nil
+
+  if not lock then
+    self:abort()
+    error("commit() on a closed transaction")
+  end
+
   local commit = {
     id = COMMIT,
     params = {
@@ -300,7 +308,8 @@ function trx:commit()
     index = self.actions.n + 1,
   }
 
-  if not self.lock:expire() then
+  if not lock:expire() then
+    self:abort(lock)
     return nil, "unlocked", commit
   end
 
@@ -309,8 +318,8 @@ function trx:commit()
     local handler = ACTIONS[act.id]
 
     if not handler(self, act.params, act) then
-      self:abort()
-      return self.lock:unlock(nil, act.error, act)
+      self:abort(lock)
+      return nil, act.error, act
     end
   end
 
@@ -333,13 +342,13 @@ function trx:commit()
   self.len = last
 
   if shm.get_latest_version() ~= self.version then
-    self:abort()
+    self:abort(lock)
     return nil, "stale", commit
   end
 
   shm.set(list, self.version)
-
-  return self.lock:unlock(true)
+  lock:unlock()
+  return true
 end
 
 
@@ -399,9 +408,18 @@ function trx:update(hash_or_id, updates)
 end
 
 
----@return boolean success
-function trx:abort()
+---@param lock doorbell.lock?
+---@return true
+function trx:abort(lock)
   shm.cancel_pending_version(self.version)
+
+  lock = lock or self.lock
+  self.lock = nil
+
+  if lock then
+    lock:unlock()
+  end
+
   return true
 end
 
