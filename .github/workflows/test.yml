@@ -85,7 +85,7 @@ jobs:
 
       - name: Install OS Deps
         run: |
-          sudo apt-get install -y libmaxminddb0 libpcre3
+          sudo apt-get install -y libmaxminddb0 libpcre2-dev
           dpkg -L libmaxminddb0
           sudo ldconfig
           sudo ln -fs /usr/lib/x86_64-linux-gnu/libmaxminddb.so.0 \
