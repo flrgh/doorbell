@@ -64,6 +64,18 @@ jobs:
               --with-compat
               --with-http_realip_module
               --with-http_ssl_module
+              --with-pcre
+              --with-pcre-jit
+              --with-stream
+              --with-threads
+
+          - openresty: 1.27.1.2
+            openssl: 3.4.1
+            openresty-opts: >-
+              --with-compat
+              --with-http_realip_module
+              --with-http_ssl_module
+              --with-pcre
               --with-pcre-jit
               --with-stream
               --with-threads
@@ -73,7 +85,7 @@ jobs:
 
       - name: Install OS Deps
         run: |
-          sudo apt-get install -y libmaxminddb0
+          sudo apt-get install -y libmaxminddb0 libpcre3
           dpkg -L libmaxminddb0
           sudo ldconfig
           sudo ln -fs /usr/lib/x86_64-linux-gnu/libmaxminddb.so.0 \
