@@ -1,4 +1,4 @@
-ARG OPENRESTY_VERSION=1.25.3.2
+ARG OPENRESTY_VERSION=1.27.1.2
 
 # TODO: adapt slim image
 FROM openresty/openresty:${OPENRESTY_VERSION}-alpine-fat AS builder
