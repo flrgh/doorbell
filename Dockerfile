@@ -80,3 +80,14 @@ ENV DOORBELL_LISTEN=0.0.0.0:${DOORBELL_LISTEN_PORT}
 STOPSIGNAL SIGQUIT
 
 CMD ["start"]
+
+ARG IMAGE_VERSION=0.0.0
+ARG IMAGE_REVISION=0000000000000000000000000000000000000000
+LABEL \
+    org.opencontainers.image.description="A forward auth server for the rest of us." \
+    org.opencontainers.image.revision="${IMAGE_REVISION}" \
+    org.opencontainers.image.title="doorbell" \
+    org.opencontainers.image.url="https://github.com/flrgh/doorbell" \
+    org.opencontainers.image.vendor="flrgh" \
+    org.opencontainers.image.version="${IMAGE_VERSION}" \
+
