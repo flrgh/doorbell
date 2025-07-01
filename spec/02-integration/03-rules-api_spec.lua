@@ -95,16 +95,36 @@ describe("rules API", function()
         res, err = client:post("/rules", {
           json = {
             action = "allow",
-            host = "post.test",
+            host = test.random_string(8) .. ".post.test",
           }
         })
 
         assert.is_nil(err)
-        assert.same(201, res.status)
+        assert.same(201, res.status, res.json and res.json.error)
         assert.is_table(res.json)
         assert.same("allow", res.json.action)
-        assert.same("post.test", res.json.host)
+        assert.matches("post.test", res.json.host)
         assert.same(const.sources.api, res.json.source)
+      end)
+
+      it("permits duration strings for .ttl", function()
+        local ttl = assert(util.duration("1d12h5m"))
+
+        res, err = client:post("/rules", {
+          json = {
+            action = "allow",
+            host = test.random_string(8) .. ".post.test",
+            ttl = "1d12h5m",
+          }
+        })
+
+        assert.is_nil(err)
+        assert.same(201, res.status, res.json and res.json.error)
+        assert.is_table(res.json)
+        assert.same("allow", res.json.action)
+        assert.matches("post.test", res.json.host)
+        assert.same(const.sources.api, res.json.source)
+        assert.near(ngx.now() + ttl, res.json.expires, 10)
       end)
 
       it("returns 400 on invalid input", function()
@@ -122,20 +142,38 @@ describe("rules API", function()
       end)
 
       it("returns 400 on invalid input for shorthand fields (ttl)", function()
-        res, err = client:post("/rules", {
-          json = {
-            action = "allow",
-            host = "invalid.ttl.test",
-            ttl  = { "nope" },
-          }
-        })
+        local inputs = {
+          { "nope" },
+          -1,
+          "",
+          "    ",
+          "-1",
+          "3y",
+          "1h2d",
+          "0",
+          0,
+        }
 
-        assert.is_nil(err)
-        assert.same(400, res.status)
-        assert.is_table(res.json)
-        assert.is_string(res.json.error)
+        for _, ttl in ipairs(inputs) do
+          res, err = client:post("/rules", {
+            json = {
+              action = "allow",
+              host = "invalid.ttl.test",
+              ttl  = ttl,
+            }
+          })
+
+          local label = string.format("ttl %q", ttl)
+
+          assert.is_nil(err, label)
+          assert.same(400, res.status, label)
+          assert.is_table(res.json, label)
+          assert.is_string(res.json.error, label)
+          assert(res.json.error:match("property ttl validation failed") or
+                 res.json.error:match("validation failed"),
+                 label)
+        end
       end)
-
 
       it("returns a 400 if a rule with matching conditions already exists", function()
         res, err = client:post("/rules", {

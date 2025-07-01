@@ -299,6 +299,30 @@ local function validate_config(config)
 end
 
 
+---@param def doorbell.schema
+---@return doorbell.schema
+local function ttl_schema(def)
+  def = def or {}
+  return {
+    description = def.description,
+    title = def.description,
+    examples = def.examples,
+    type = { "number", "string" },
+    oneOf = {
+      {
+        type = "number",
+        exclusiveMinimum = true,
+        minimum = 0,
+      },
+      {
+        type = "string",
+      },
+    },
+    post_validate = util.duration,
+  }
+end
+
+
 local rule = {}
 
 ---@type table<string, doorbell.schema>
@@ -324,12 +348,9 @@ rule.fields.expires = {
   post_validate = validate_expires,
 }
 
-rule.fields.ttl = {
+rule.fields.ttl = ttl_schema({
   description = "Relative timestamp (in seconds) of the rule's expiration",
-  type = "number",
-  exclusiveMinimum = true,
-  minimum = 0,
-}
+})
 
 rule.fields.id = {
   description = "Universally unique identifier (UUID) for this rule",
@@ -530,7 +551,7 @@ rule.policy.expires_or_ttl = {
   oneOf = {
     {
       properties = { expires = { type = "null" },
-                         ttl = { type = "number" } },
+                         ttl = { type = { "number", "string" } } },
       required = { "ttl" },
       additionalProperties = true
     },
@@ -583,6 +604,15 @@ local function validate_rule(obj, rule_schema)
     if require("doorbell.rules").count_conditions(obj) > 1 then
       fail = true
       errors.terminate = "can only have one match condition with `terminate`"
+    end
+  end
+
+  if obj.ttl then
+    local err
+    obj.ttl, err = util.duration(obj.ttl)
+    if err then
+      fail = true
+      errors.ttl = err
     end
   end
 
@@ -765,6 +795,13 @@ rule.patch = {
       comment = "update the expiration time for a rule to 10 minutes from now",
       value = {
         ttl = 10 * 60,
+      }
+    },
+
+    {
+      comment = "update the expiration time for a rule to 10 days and 3 hours from now",
+      value = {
+        ttl = "10d 3h",
       }
     },
 

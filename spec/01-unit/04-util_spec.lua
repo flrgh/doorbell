@@ -31,6 +31,154 @@ describe("doorbell.util", function()
     end)
   end)
 
+  describe("duration()", function()
+    local MS = 0.001
+    local SECOND = 1
+    local MINUTE = 60
+    local HOUR = MINUTE * 60
+    local DAY = HOUR * 24
+
+    it("expects a string or a number", function()
+      assert.has_error(function() util.duration() end)
+      assert.has_error(function() util.duration(true) end)
+      assert.has_error(function() util.duration({}) end)
+    end)
+
+    it("treats numbers as seconds", function()
+      assert.equals(SECOND, util.duration(1))
+      assert.equals(SECOND * 5, util.duration(5))
+    end)
+
+    it("rejects negative values", function()
+      local d, err = util.duration(-1)
+      assert.is_nil(d)
+      assert.same("invalid duration", err)
+
+      d, err = util.duration("-1")
+      assert.is_nil(d)
+      assert.same("invalid duration string", err)
+    end)
+
+    it("rejects 0 values", function()
+      local d, err = util.duration(0)
+      assert.is_nil(d)
+      assert.same("invalid duration", err)
+
+      d, err = util.duration("0")
+      assert.is_nil(d)
+      assert.same("invalid duration string", err)
+
+      d, err = util.duration("0")
+      assert.is_nil(d)
+      assert.same("invalid duration string", err)
+
+      d, err = util.duration("0.0")
+      assert.is_nil(d)
+      assert.same("invalid duration string", err)
+
+      d, err = util.duration("0d")
+      assert.is_nil(d)
+      assert.same("invalid duration string", err)
+
+      d, err = util.duration("0d0s")
+      assert.is_nil(d)
+      assert.same("invalid duration string", err)
+    end)
+
+    it("rejects invalid strings", function()
+      local inputs = {
+        "",
+        "    ",
+        "1d7y",
+        "1h3d",
+        "0.1.1",
+        "7dayz",
+        ".1h",
+      }
+
+      assert(#inputs > 0)
+
+      for i, input in ipairs(inputs) do
+        local d, err = util.duration(input)
+        local label = string.format("input #%s: %q", i, input)
+        assert.is_nil(d, label)
+        assert.equals("invalid duration string", err, label)
+      end
+    end)
+
+    it("parses d/day", function()
+      assert.equals(DAY * 1, util.duration("1d"))
+      assert.equals(DAY * 1, util.duration("1.0d"))
+      assert.equals(DAY * 1, util.duration("1day"))
+      assert.equals(DAY * 1, util.duration("01d"))
+      assert.equals(DAY * 1.5, util.duration("1.5d"))
+      assert.equals(DAY * 2, util.duration("2d"))
+    end)
+
+    it("parses h/hour/hours", function()
+      assert.equals(HOUR * 1, util.duration("1h"))
+      assert.equals(HOUR * 1, util.duration("1.0h"))
+      assert.equals(HOUR * 1, util.duration("1hour"))
+      assert.equals(HOUR * 1, util.duration("1hours"))
+      assert.equals(HOUR * 1, util.duration("1hr"))
+      assert.equals(HOUR * 1.5, util.duration("1.5hr"))
+      assert.equals(HOUR * 2, util.duration("2hr"))
+    end)
+
+    it("parses m/min/minutes", function()
+      assert.equals(MINUTE * 1, util.duration("1m"))
+      assert.equals(MINUTE * 1, util.duration("1.0m"))
+      assert.equals(MINUTE * 1, util.duration("1min"))
+      assert.equals(MINUTE * 1, util.duration("1minute"))
+      assert.equals(MINUTE * 1, util.duration("1minutes"))
+      assert.equals(MINUTE * 1.5, util.duration("1.5m"))
+      assert.equals(MINUTE * 2, util.duration("2m"))
+    end)
+
+    it("parses s/sec/seconds", function()
+      assert.equals(SECOND * 1, util.duration("1s"))
+      assert.equals(SECOND * 1, util.duration("1.0s"))
+      assert.equals(SECOND * 1, util.duration("1sec"))
+      assert.equals(SECOND * 1, util.duration("1secs"))
+      assert.equals(SECOND * 1, util.duration("1second"))
+      assert.equals(SECOND * 1, util.duration("1seconds"))
+      assert.equals(SECOND * 1.5, util.duration("1.5s"))
+      assert.equals(SECOND * 2, util.duration("2s"))
+    end)
+
+    it("parses ms/millis/milliseconds", function()
+      assert.equals(MS * 1, util.duration("1ms"))
+      assert.equals(MS * 1, util.duration("1millis"))
+      assert.equals(MS * 1, util.duration("1milliseconds"))
+    end)
+
+    it("parses multiple units", function()
+      assert.equals(MINUTE + 5, util.duration("1m5s"))
+      assert.equals((5 * DAY) + (3 * MINUTE), util.duration("5d3m"))
+      assert.equals((1 * DAY) + (1 * HOUR) + (30 * MINUTE), util.duration("1d1h30m"))
+      assert.equals((1 * DAY) + (1.5 * HOUR), util.duration("1d1.5h"))
+      assert.equals((9 * HOUR) + (2 * MINUTE) + (95 * MS), util.duration("0d9h2m95ms"))
+    end)
+
+    it("handles insignificant whitespace", function()
+      local inputs = {
+        { "1d 2h",    (1 * DAY) + (2 * HOUR) },
+        { " 1d 2h  ", (1 * DAY) + (2 * HOUR) },
+        { "1d2h  ",   (1 * DAY) + (2 * HOUR) },
+        { " 1d2h",    (1 * DAY) + (2 * HOUR) },
+      }
+
+      assert(#inputs > 0)
+
+      for i, input in ipairs(inputs) do
+        local d, err = util.duration(input[1])
+        local label = string.format("input #%s: %q", i, input[1])
+        assert.is_nil(err, label)
+        assert.equals(input[2], d, label)
+      end
+    end)
+  end)
+
   describe("truthy()", function()
     it("returns true for explicit truthy values", function()
       assert.is_true(util.truthy("yes"))

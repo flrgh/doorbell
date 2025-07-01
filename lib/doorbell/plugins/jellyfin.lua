@@ -44,7 +44,7 @@ local API_URL
 ---@type string
 local AUTH_CHECK_URL
 
-local ALLOW_TTL = 60 * 60 * 24
+local ALLOW_TTL = assert(util.duration("1d"))
 
 local LOGIN_PATH = "/users/authenticatebyname"
 local LOGOUT_PATH = "/sessions/logout"

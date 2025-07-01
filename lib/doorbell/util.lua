@@ -15,6 +15,7 @@ local byte    = string.byte
 local utctime = ngx.utctime
 local error   = error
 local re_find = ngx.re.find
+local re_match = ngx.re.match
 local pairs   = pairs
 local sort    = table.sort
 local select  = select
@@ -460,6 +461,114 @@ do
     end
 
     return clone(tbuf)
+  end
+end
+
+do
+  local pattern = [[^
+  [ ]*
+  (
+    (?<days>[0-9]+(\.[0-9]+)?)
+    (d|day|days)
+  )?
+  [ ]*
+  (
+    (?<hours>[0-9]+(\.[0-9]+)?)
+    (h|hr|hour|hours)
+  )?
+  [ ]*
+  (
+    (?<minutes>[0-9]+(\.[0-9]+)?)
+    (m|min|minute|minutes)
+  )?
+  [ ]*
+  (
+    (?<seconds>[0-9]+(\.[0-9]+)?)
+    (s|sec|secs|second|seconds)
+  )?
+  [ ]*
+  (
+    (?<milliseconds>[0-9]+(\.[0-9]+)?)
+    (ms|milli|millis|milliseconds)
+  )?
+  [ ]*
+$]]
+
+  do
+    local _, err = re_match("", pattern, "ojxi")
+    if err then
+      err = string.format("error in regex pattern `%q`: %s", pattern, err)
+      error(err)
+    end
+  end
+
+  local digit_pattern = [[^[0-9]+(\.[0-9]+)?$]]
+  do
+    local _, err = re_match("", digit_pattern, "oj")
+    if err then
+      err = string.format("error in regex pattern `%q`: %s", pattern, err)
+      error(err)
+    end
+  end
+
+
+  ---@param s string|number
+  ---@return number? duration # in seconds
+  ---@return string? error
+  function _M.duration(s)
+    local typ = type(s)
+    if typ == "number" then
+      if s <= 0 then
+        return nil, "invalid duration"
+      end
+      return s
+
+    elseif typ ~= "string" then
+      error("bad arg #1 to duration(), expected: string|nummber, got: " .. typ)
+    end
+
+    if re_find(s, digit_pattern, "oj") then
+      local n = assert(tonumber(s))
+
+      if n <= 0 then
+        return nil, "invalid duration string"
+      end
+      return n
+    end
+
+    local m = re_match(s, pattern, "ojxi")
+
+    if not m then
+      return nil, "invalid duration string"
+    end
+
+    if not m.days
+      and not m.hours
+      and not m.minutes
+      and not m.seconds
+      and not m.milliseconds
+    then
+      return nil, "invalid duration string"
+    end
+
+    local days = (m.days and assert(tonumber(m.days))) or 0
+    local hours = (m.hours and assert(tonumber(m.hours))) or 0
+    local minutes = (m.minutes and assert(tonumber(m.minutes))) or 0
+    local seconds = (m.seconds and assert(tonumber(m.seconds))) or 0
+    local milliseconds = (m.milliseconds and assert(tonumber(m.milliseconds))) or 0
+
+    local duration = 0
+         + (1 * 60 * 60 * 24 * days)
+         + (1 * 60 * 60      * hours)
+         + (1 * 60           * minutes)
+         + (1                * seconds)
+         + (0.001            * milliseconds)
+
+    if duration <= 0 then
+      return nil, "invalid duration string"
+    end
+
+    return duration
   end
 end
 
