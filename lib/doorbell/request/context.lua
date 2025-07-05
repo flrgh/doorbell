@@ -13,6 +13,7 @@ local get_query       = http.request.get_query_args
 local req_headers     = http.request.get_headers
 local get_json        = http.request.get_json_body
 local get_post_args   = http.request.get_post_args
+local get_raw_body    = http.request.get_raw_body
 local ngx             = ngx
 local var             = ngx.var
 local get_method      = ngx.req.get_method
@@ -51,6 +52,7 @@ local get_phase       = ngx.get_phase
 ---@field path              string
 ---@field post_args?        table
 ---@field scheme            string
+---@field raw_body          string
 ---
 ---@field template?         any
 ---
@@ -143,6 +145,21 @@ local get_query_args = _M.get_query_args
 ---@return any?
 function _M.get_query_arg(ctx, name)
   return get_query_args(ctx)[name]
+end
+
+--- Cached method for fetching the raw request body.
+---
+---@param ctx doorbell.ctx
+---@return string? body
+function _M.get_raw_body(ctx)
+  local body = ctx.raw_body
+  if body == nil then
+    body = get_raw_body()
+    ctx.raw_body = body or false
+  end
+
+  -- coerece `false` to `nil`
+  return body or nil
 end
 
 
