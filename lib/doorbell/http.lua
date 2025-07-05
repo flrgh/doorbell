@@ -9,6 +9,7 @@ local split = require("ngx.re").split
 local util = require "doorbell.util"
 local shm = require "doorbell.shm"
 local http_const = require "doorbell.http.constants"
+local buffer = require("string.buffer")
 
 local ngx                 = ngx
 local print               = ngx.print
@@ -22,6 +23,7 @@ local get_req_headers     = ngx.req.get_headers
 local get_post_args       = ngx.req.get_post_args
 local clear_req_header    = ngx.req.clear_header
 local now                 = ngx.now
+local sleep               = ngx.sleep
 
 local open   = io.open
 local encode = cjson.encode
@@ -40,6 +42,9 @@ local MAX_QUERY_ARGS = 100
 local MAX_REQUEST_HEADERS = 100
 local MAX_POST_ARGS = 100
 local CSRF_MAX_AGE = 60 * 15 -- 15 minutes
+
+local BODY_CHUNK_SIZE = 4096
+local BODY_BUF_SIZE = BODY_CHUNK_SIZE * 4
 
 ---@alias doorbell.http.headers table<string, string|string[]>
 
@@ -68,15 +73,26 @@ local function get_request_body()
     return
   end
 
-  body, err = fh:read("*a")
-  fh:close()
+  local buf = buffer.new(BODY_BUF_SIZE)
+
+  local chunk
+  repeat
+    chunk, err = fh:read(BODY_CHUNK_SIZE)
+    if chunk then
+      buf:put(chunk)
+      -- yield
+      sleep(0)
+    end
+  until not chunk
 
   if err then
     log.warnf("read() call failed for request body file (%s): %s", fname, err)
+    return
   end
 
-  return body
+  return buf:get()
 end
+
 
 ---@param status ngx.http.status_code
 ---@param body string|table|nil
