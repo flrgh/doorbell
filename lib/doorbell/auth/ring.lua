@@ -60,12 +60,15 @@ local HANDLERS = {
 
 local run_hooks
 do
+  ---@alias doorbell.auth.ring.hook fun(req: doorbell.forwarded_request, ctx: doorbell.ctx, state: doorbell.auth.access.state): doorbell.auth.access.state?
+
+  ---@type doorbell.auth.ring.hook[]
   local hooks = {}
   local hooks_by_name = {}
   local n_hooks = #hooks
 
   ---@param name string
-  ---@param hook fun(doorbell.forwarded_request, doorbell.ctx, doorbell.auth.access.state) doorbell.auth.access.state?
+  ---@param hook doorbell.auth.ring.hook
   function _M.add_hook(name, hook)
     if hooks_by_name[name] then
       error("hook " .. name .. " already exists")
