@@ -305,6 +305,7 @@ end
 
 
 ---@param req doorbell.forwarded_request
+---@param ctx doorbell.ctx
 ---@return doorbell.auth.access.state state
 ---@return string? error
 ---@return string? token
@@ -314,6 +315,7 @@ local function get_state(req, ctx)
     if ctx then
       ctx.rule = rule
       ctx.rule_cache_hit = cached
+      ctx.deny_action = rule.deny_action
     end
     return rule.action
   end

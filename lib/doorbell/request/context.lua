@@ -66,6 +66,7 @@ local get_phase       = ngx.get_phase
 ---@field auth_client_message string
 ---
 ---@field plugin table # scratch space for plugin storage
+---@field deny_action doorbell.deny_action
 
 
 ---@param ctx? table
