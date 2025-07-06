@@ -36,7 +36,7 @@ local HANDLERS = {
 
   [STATES.deny] = function(req, ctx)
     log.notice("denying access for ", req.addr)
-    if ctx.rule.deny_action == const.deny_actions.tarpit then
+    if ctx.deny_action == const.deny_actions.tarpit then
       log.debugf("tarpit %s for %s seconds", req.addr, TARPIT_INTERVAL)
       sleep(TARPIT_INTERVAL)
     end
