@@ -1,4 +1,4 @@
-local log = require "doorbell.log"
+local log = require("doorbell.log").with_namespace("config.env")
 
 local ffi = require "ffi"
 
