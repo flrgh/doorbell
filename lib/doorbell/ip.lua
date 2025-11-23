@@ -15,15 +15,13 @@ local cache_geo
 ---@class resty.ipmatcher
 local ipmatcher
 do
-  -- resty.ipmatcher logs a bunch of things at INFO level.
-  --
-  --- hack it to DEBUG to preserve our sanity
-
-  local ngx_info = ngx.INFO
-  ngx.INFO = ngx.DEBUG -- luacheck: ignore
+  -- monkey-patch ngx.log to a noop for resty.ipmatcher
+  local ngx_log = ngx.log
+  -- luacheck: ignore
+  ngx.log = function() end
   package.loaded["resty.ipmatcher"] = nil
   ipmatcher = require "resty.ipmatcher"
-  ngx.INFO = ngx_info -- luacheck: ignore
+  ngx.log = ngx_log
 end
 
 local split = require("ngx.re").split
