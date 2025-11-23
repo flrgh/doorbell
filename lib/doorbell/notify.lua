@@ -2,9 +2,10 @@ local _M = {
   _VERSION = require("doorbell.constants").version,
 }
 
-local log = require "doorbell.log"
 local util = require "doorbell.util"
 local metrics = require "doorbell.metrics"
+
+local log = require("doorbell.log").with_namespace("notify")
 
 local UTC_OFFSET = 0
 
