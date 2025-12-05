@@ -34,13 +34,10 @@ describe("OTA updates", function()
       },
     })
 
-    client = test.client()
+    client = nginx:client()
   end)
 
   lazy_teardown(function()
-    if client then
-      client:close()
-    end
     nginx:stop()
   end)
 

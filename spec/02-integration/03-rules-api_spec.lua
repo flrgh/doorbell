@@ -15,7 +15,7 @@ describe("rules API", function()
     nginx:conf_test()
     nginx:start()
 
-    client = test.client()
+    client = nginx:client()
   end)
 
   lazy_teardown(function()
@@ -23,10 +23,6 @@ describe("rules API", function()
       print(string.rep("-", 120))
       print(nginx:read_error_log())
       print(string.rep("-", 120))
-    end
-
-    if client then
-      client:close()
     end
     nginx:stop()
   end)

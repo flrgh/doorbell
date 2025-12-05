@@ -149,7 +149,7 @@ describe("state", function()
   end)
 
   it("saves rules on API changes", function()
-    local client = test.client()
+    local client = nginx:client()
 
     finally(function() client:close() end)
 
@@ -192,7 +192,7 @@ describe("state", function()
   end)
 
   it("restores rules on start", function()
-    local client = test.client()
+    local client = nginx:client()
 
     local res = client:post("/rules", {
       json = {
@@ -211,14 +211,12 @@ describe("state", function()
       assert.same("api", state.rules[1].source)
     end, 5, 0.1, "expected state file to be updated after adding a new rule via API")
 
-    client:close()
     nginx:stop()
 
     ngx.sleep(0.1)
     nginx:start()
 
-    client = test.client()
-    finally(client:close())
+    client = nginx:client()
 
     test.await.no_error(function()
       res = client:get("/rules/" .. id)

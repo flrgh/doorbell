@@ -144,8 +144,7 @@ describe("access API", function()
     nginx:conf_test()
     nginx:start()
 
-    client = test.client()
-    nginx:add_client(client)
+    client = nginx:client()
 
     client.raise_on_connect_error = true
     client.raise_on_request_error = true
@@ -156,7 +155,6 @@ describe("access API", function()
   end)
 
   lazy_teardown(function()
-    client:close()
     nginx:stop()
   end)
 

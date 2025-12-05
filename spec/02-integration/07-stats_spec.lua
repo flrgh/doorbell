@@ -43,10 +43,6 @@ describe("rule stats", function()
   end)
 
   lazy_teardown(function()
-    if client then
-      client:close()
-    end
-
     nginx:stop()
   end)
 
@@ -54,7 +50,7 @@ describe("rule stats", function()
   local rule
 
   before_each(function()
-    client = nginx:add_client(test.client())
+    client = nginx:client()
     client.timeout = 5000
     client.request.path = "/ring"
     client.request.host = "127.0.0.1"

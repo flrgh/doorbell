@@ -26,7 +26,7 @@ describe("json request log", function()
   end)
 
   it("writes to a file", function()
-    local client = nginx:add_client(test.client())
+    local client = nginx:client()
 
     client.headers["user-agent"] = "json-log"
     client.headers["x-my-special-header"] = "json-log"

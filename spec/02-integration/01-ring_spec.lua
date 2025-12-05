@@ -45,12 +45,11 @@ describe("/ring", function()
     nginx:conf_test()
     nginx:start()
 
-    client = test.client()
+    client = nginx:client()
     client.timeout = 5000
     client.request.path = "/ring"
     client.request.host = "127.0.0.1"
     client.api_key = nil
-    nginx:add_client(client)
   end)
 
   after_each(function()
@@ -145,8 +144,7 @@ describe("/ring", function()
     client:add_x_forwarded_headers("1.2.3.4", "GET", "http://api.test/")
     client.headers["user-agent"] = ua
 
-    local api = test.client()
-    nginx:add_client(api)
+    local api = nginx:client()
 
     local rule = assert(api:post("/rules", {
       json = {
@@ -208,8 +206,7 @@ describe("/ring", function()
     client:add_x_forwarded_headers("1.2.3.4", "GET", "http://api.test/")
     client.headers["user-agent"] = ua
 
-    local api = test.client()
-    nginx:add_client(api)
+    local api = nginx:client(api)
 
     -- add a blanket deny rule
     assert(api:post("/rules", {

@@ -347,13 +347,13 @@ describe("prometheus metrics", function()
 
     nginx:start()
 
-    metrics_client = nginx:add_client(test.client())
+    metrics_client = nginx:client()
     metrics_client.reopen = true
     metrics_client.raise_on_connect_error = true
     metrics_client.assert_status.GET = { eq = 200 }
 
-    client = nginx:add_client(test.client())
-    api = nginx:add_client(test.client())
+    client = nginx:client()
+    api = nginx:client()
   end)
 
   before_each(function()
@@ -636,7 +636,7 @@ describe("prometheus metrics (disabled)", function()
 
     nginx:start()
 
-    metrics_client = nginx:add_client(test.client())
+    metrics_client = nginx:client()
   end)
 
   lazy_teardown(function()

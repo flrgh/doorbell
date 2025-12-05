@@ -47,7 +47,7 @@ describe("github-webhook", function()
     nginx:conf_test()
     nginx:start()
 
-    client = nginx:add_client(test.client())
+    client = nginx:client()
     client.timeout = 1000
   end)
 

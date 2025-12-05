@@ -35,7 +35,7 @@ describe("jellyfin", function()
     nginx:conf_test()
     nginx:start()
 
-    client = nginx:add_client(test.client())
+    client = nginx:client()
     client.timeout = 1000
   end)
 
@@ -208,7 +208,7 @@ describe("jellyfin", function()
       local req = ms.mock.assert_request_received()
       assert.equals(token, req.headers["x-emby-token"])
 
-      local api = nginx:add_client(test.client())
+      local api = nginx:client()
       test.await.truthy(function()
         local res = api:get("/rules")
         assert.is_nil(api.err)
@@ -259,7 +259,7 @@ describe("jellyfin", function()
       local req = ms.mock.assert_request_received()
       assert.equals(token, req.headers["x-emby-token"])
 
-      local api = nginx:add_client(test.client())
+      local api = nginx:client()
 
       local rule_id
 
@@ -352,7 +352,7 @@ describe("jellyfin", function()
       local req = ms.mock.assert_request_received()
       assert.equals(token, req.headers["x-emby-token"])
 
-      local api = nginx:add_client(test.client())
+      local api = nginx:client()
 
       local function have_rule()
         local res = api:get("/rules")

@@ -190,8 +190,7 @@ describe("API auth", function()
         nginx:conf_test()
         nginx:start()
 
-        client = test.client()
-        nginx:add_client(client)
+        client = nginx:client()
 
         client.api_key = nil
         client.reset_request_on_send = true
@@ -200,7 +199,6 @@ describe("API auth", function()
       end)
 
       lazy_teardown(function()
-        client:close()
         nginx:stop()
       end)
 

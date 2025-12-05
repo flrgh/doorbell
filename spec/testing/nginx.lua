@@ -324,6 +324,14 @@ function nginx:add_client(client)
   return client
 end
 
+
+---@param url? string
+---@return spec.testing.client
+function nginx:client(url)
+  local client = http.new(url)
+  return self:add_client(client)
+end
+
 ---@alias spec.testing.nginx.json.log.iter fun():doorbell.request.log.entry?
 
 

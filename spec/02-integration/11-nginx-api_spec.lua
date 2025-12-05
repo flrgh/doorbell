@@ -28,7 +28,7 @@ describe("nginx api", function()
 
     nginx:start()
 
-    client = nginx:add_client(test.client())
+    client = nginx:client()
     client.reopen = true
   end)
 

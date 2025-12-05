@@ -46,8 +46,7 @@ describe("doorbell", function()
     nginx:conf_test()
     nginx:start()
 
-    answer_client = test.client()
-    nginx:add_client(answer_client)
+    answer_client = nginx:client()
   end)
 
   lazy_teardown(function()
@@ -55,7 +54,7 @@ describe("doorbell", function()
   end)
 
   before_each(function()
-    client = nginx:add_client(test.client())
+    client = nginx:client()
     client.timeout = 1000
     client.request.path = "/ring"
     client.request.host = "127.0.0.1"
