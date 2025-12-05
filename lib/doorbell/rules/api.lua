@@ -22,7 +22,7 @@ function _M.insert(opts)
 end
 
 
----@param  opts           table
+---@param  opts           doorbell.rule.new.opts|doorbell.rule.update.opts
 ---@return doorbell.rule? rule
 ---@return string?        error
 ---@return integer?       status_code

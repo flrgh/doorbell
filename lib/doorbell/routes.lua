@@ -137,6 +137,7 @@ function _M.init()
   add_submodule_routes("doorbell.api.rules")
   add_submodule_routes("doorbell.api.nginx")
   add_submodule_routes("doorbell.api.auth-test")
+  add_submodule_routes("doorbell.api.webhooks")
 end
 
 return _M
