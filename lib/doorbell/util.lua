@@ -12,6 +12,7 @@ local proc = require("doorbell.nginx").process
 local type    = type
 local fmt     = string.format
 local byte    = string.byte
+local now     = ngx.now
 local utctime = ngx.utctime
 local error   = error
 local re_find = ngx.re.find
@@ -25,6 +26,8 @@ local rand_bytes = require("resty.random").bytes
 local run_worker_thread = ngx.run_worker_thread
 local get_phase = ngx.get_phase
 local exiting = ngx.worker.exiting
+local os_date = os.date
+local sub = string.sub
 
 local THREAD_POOL = "doorbell.util.file"
 
@@ -131,12 +134,23 @@ function _M.update_json_file(fname, json)
   return run_it("update_json", fname, json)
 end
 
---- Returns an ISO 8601 timestamp (UTC)
+--- Returns an ISO 8601 timestamp
+---@param time? integer
+---@param localtime? boolean
 ---@return string
-function _M.timestamp()
-  --    1234567890123456789
-  local yyyy_mm_dd_hh_mm_ss = utctime()
-  return fmt("%sT%s+00:00", yyyy_mm_dd_hh_mm_ss:sub(1, 10), yyyy_mm_dd_hh_mm_ss:sub(12, 19))
+function _M.timestamp(time, localtime)
+  local time = time or now()
+
+  if localtime then
+    -- %z is `+####` but we need `+##:##`
+    local offset = os_date("%z", time)
+    return os_date("%FT%T", time)
+      .. sub(offset, 1, 3)
+      .. ":"
+      .. sub(offset, 4, 5)
+  else
+    return os_date("!%FT%T+00:00", time)
+  end
 end
 
 --- error() but with a format string
