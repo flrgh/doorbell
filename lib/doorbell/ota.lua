@@ -93,10 +93,14 @@ local function update()
     end
   end
 
+  local extra = " "
+
   if state.etag then
+    extra = fmt(" using etag (%s)", state.etag)
     headers["If-None-Match"] = state.etag
 
   elseif state.last_modified then
+    extra = fmt(" using last-modified (%s)", state.last_modified)
     headers["If-Modified-Since"] = state.last_modified
   end
 
@@ -108,7 +112,7 @@ local function update()
   })
 
   if not res then
-    log.errf("failed to send request to %s for OTA updates: %s", config.url, err)
+    log.errf("failed to send request to %s%s for OTA updates: %s", config.url, extra, err)
     return
   end
 
