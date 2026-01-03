@@ -15,6 +15,7 @@ local get_mime_type = http.get_mime_type
 local get_request_headers = request.get_headers
 local get_query_arg = request.get_query_arg
 
+local TTL = 60 * 60 * 24
 
 local SHARED_MIDDLEWARE = {
   [mw.phase.REWRITE] = {
@@ -39,25 +40,41 @@ routes["/webhooks/ip"] = {
 
     local addr = ctx.forwarded_addr
 
-    local rule, err, status = rules.upsert({
-      addr = addr,
-      action = const.actions.allow,
-      source = const.sources.webhook,
-      ttl = 60 * 24,
-      comment = "via webhook",
-      meta = {
-        ["webhook.user.name"] = user.name,
-      },
-    })
+    local rule = rules.get_by_meta("webhook.user.name", user.name)
+
+    local action, err, status
 
     if rule then
-      log.info("created new allow rule for user: ", user.name,
-               ", with addr: ", addr, ", id: ", rule.id)
+      action = "update"
+      rule, err, status = rules.patch(rule.id, {
+        addr = addr,
+        ttl = TTL,
+      })
+    else
+      action = "create"
+      rule, err, status = rules.insert({
+        addr = addr,
+        action = const.actions.allow,
+        source = const.sources.webhook,
+        ttl = 60 * 60 * 24,
+        comment = "via webhook",
+        meta = {
+          ["webhook.user.name"] = user.name,
+        },
+      })
+    end
+
+    if rule then
+      log.info(action, "d allow rule",
+               " for user: ", user.name,
+               ", with addr: ", addr,
+               ", id: ", rule.id)
 
       return send(200, "hey dude!")
 
     else
-      log.warn("failed creating new allow rule for user: ", user.name,
+      log.warn("failed to ", action, " allow rule",
+               " for user: ", user.name,
                " with addr: ", addr, ": ", err)
 
       return send(status or 500, "sorry, can't help ya!")
