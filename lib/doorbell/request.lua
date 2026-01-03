@@ -96,10 +96,7 @@ function _M.log(ctx)
   update_time()
   local log_time = now()
 
-  local duration = tonumber(var.request_time)
-  if not duration then
-    duration = log_time - start
-  end
+  local duration = log_time - start
 
   local res_size = tonumber(var.bytes_sent)
   local res_body_size
