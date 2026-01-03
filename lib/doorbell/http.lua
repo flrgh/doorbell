@@ -35,6 +35,7 @@ local random_string = util.random_string
 local type   = type
 local assert = assert
 local tonumber = tonumber
+local pairs = pairs
 
 local CSRF = shm.with_namespace("csrf")
 

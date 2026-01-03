@@ -132,7 +132,18 @@ end
 ---@param ctx doorbell.ctx
 function _M.release(ctx)
   local r = ctx.forwarded_request
+  ctx.forwarded_request = nil
   if r then
+    r.addr = nil
+    r.asn = nil
+    r.country = nil
+    r.host = nil
+    r.method = nil
+    r.org = nil
+    r.path = nil
+    r.scheme = nil
+    r.ua = nil
+    r.uri = nil
     release(pool, r, true)
   end
 end
