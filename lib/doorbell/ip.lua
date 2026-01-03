@@ -2,6 +2,7 @@ local _M = {}
 
 local log = require("doorbell.log").with_namespace("ip")
 local util = require "doorbell.util"
+local file = require("doorbell.util.file")
 
 ---@class doorbell.cache
 local cache
@@ -55,14 +56,77 @@ local trusted_ips
 ---@type table<string, string>
 local country_names = require "doorbell.ip.countries"
 
+local LOCATION_DB_MTIME = -1
 local LOCATION_DB_FILE
 local LOCATION_DB
+local ASN_DB_MTIME = -1
 local ASN_DB_FILE
 local ASN_DB
 local HAVE_COUNTRY_DB = false
 local HAVE_CITY_DB = false
 local HAVE_ASN_DB = false
 
+
+local function open_geoip_dbs()
+  local reopened = false
+
+  if LOCATION_DB_FILE then
+    local mtime, err = file.get_mtime(LOCATION_DB_FILE)
+    if not mtime then
+      mtime = 0
+      log.alertf("failed stat()-ing GeoIP Location database file (%s): %s", LOCATION_DB_FILE, err)
+    end
+
+    if mtime > LOCATION_DB_MTIME then
+      local mmdb = require("geoip.mmdb")
+      local db, err = mmdb.load_database(LOCATION_DB_FILE)
+      if db then
+        if LOCATION_DB then
+          log.infof("re-opened Geoip Location database file (%s)", LOCATION_DB_FILE)
+          reopened = true
+        end
+
+        LOCATION_DB = db
+        LOCATION_DB_MTIME = mtime
+      else
+        log.alertf("failed loading GeoIP Location database file (%s): %s", LOCATION_DB_FILE, err)
+      end
+    end
+  end
+
+  if ASN_DB_FILE then
+    local mtime, err = file.get_mtime(ASN_DB_FILE)
+    if not mtime then
+      mtime = 0
+      log.alertf("failed stat()-ing GeoIP ASN database file (%s): %s", ASN_DB_FILE, err)
+    end
+
+    if mtime > ASN_DB_MTIME then
+      local mmdb = require("geoip.mmdb")
+      local db, err = mmdb.load_database(ASN_DB_FILE)
+
+      if db then
+        if ASN_DB then
+          log.infof("re-opened Geoip ASN database file (%s)", ASN_DB_FILE)
+          reopened = true
+        end
+
+        ASN_DB = db
+        ASN_DB_MTIME = mtime
+      else
+        log.alertf("failed loading GeoIP ASN database file (%s): %s", ASN_DB_FILE, err)
+      end
+    end
+  end
+
+  if reopened then
+    if cache_geo then
+      cache_geo:flush_all()
+    end
+
+    collectgarbage("collect")
+  end
+end
 
 ---@param opts doorbell.config
 local function init_geoip(opts)
@@ -85,24 +149,7 @@ local function init_geoip(opts)
     ASN_DB_FILE = opts.geoip_asn_db
   end
 
-  if LOCATION_DB_FILE then
-    local mmdb = require("geoip.mmdb")
-    local db, err = mmdb.load_database(LOCATION_DB_FILE)
-    if not db then
-      log.alertf("failed loading GeoIP Location database file (%s): %s", LOCATION_DB_FILE, err)
-    end
-    LOCATION_DB = db
-  end
-
-  if ASN_DB_FILE then
-    local mmdb = require("geoip.mmdb")
-    local db, err = mmdb.load_database(ASN_DB_FILE)
-    if not db then
-      log.alertf("failed loading GeoIP ASN database file (%s): %s", ASN_DB_FILE, err)
-    end
-
-    ASN_DB = db
-  end
+  open_geoip_dbs()
 end
 
 
@@ -668,6 +715,21 @@ function _M.init(opts)
   cache       = require("doorbell.cache")
   cache_basic = require("doorbell.cache").new("ip-basic", 2000)
   cache_geo   = require("doorbell.cache").new("ip-geo", 2000)
+end
+
+
+function _M.init_worker()
+  if LOCATION_DB_FILE or ASN_DB_FILE then
+    require("doorbell.util.timer").every(
+      60,
+      "reopen-geoip-databases",
+      open_geoip_dbs,
+      {
+        run_on_premature = false,
+        stop_on_error = false
+      }
+    )
+  end
 end
 
 

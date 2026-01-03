@@ -28,6 +28,9 @@ RUN apk add --no-cache \
         bash \
         ca-certificates \
         libmaxminddb \
+        sudo \
+        tar \
+        tzdata \
     && ln -v -s /usr/lib/libGeoIP.so.1 /usr/lib/libGeoIP.so \
     && ln -v -s /usr/lib/libmaxminddb.so.0 /usr/lib/libmaxminddb.so \
     && ln -v -s /usr/local/openresty/bin/resty /usr/local/bin/resty
@@ -52,6 +55,7 @@ ARG NGINX_USER=doorbell
 ARG NGINX_USER_ID=9876
 
 ENV DOORBELL_USER=${NGINX_USER}
+ENV DOORBELL_USER_ID=${NGINX_USER_ID}
 
 RUN adduser \
         -s /sbin/nologin \
@@ -67,6 +71,8 @@ RUN adduser \
     && chown -R "${NGINX_USER_ID}:${NGINX_USER_ID}" \
         "${DOORBELL_RUNTIME_PATH}/logs" \
         "${DOORBELL_LOG_PATH}"
+
+COPY --chmod=755 ./scripts/* /usr/local/libexec/doorbell/
 
 # this has to be hard-coded
 COPY ./entrypoint.sh /usr/local/libexec/doorbell/entrypoint.sh

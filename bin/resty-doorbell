@@ -18,4 +18,5 @@ exec resty \
     -I "$LIB_DIR" \
     --no-stream \
     "${ARGS[@]}" \
+    -e 'setmetatable(_G, nil)' \
     "$@"

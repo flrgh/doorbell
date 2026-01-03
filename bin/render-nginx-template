@@ -1,4 +1,4 @@
-#!/usr/bin/env resty
+#!/usr/bin/env resty-doorbell
 
 require("doorbell.env").init()
 local conf = require "doorbell.nginx.conf"

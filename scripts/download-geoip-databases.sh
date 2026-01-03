@@ -1,66 +1,72 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -euo pipefail
 
-readonly GEOIP=./geoip
+readonly GEOIP=${DOORBELL_GEOIP_DIR:-./geoip}
 readonly DOWNLOAD=${GEOIP}/download
-readonly GEOIP_CITY=${DOWNLOAD}/GeoLite2-City.tar.gz
-readonly GEOIP_COUNTRY=${DOWNLOAD}/GeoLite2-Country.tar.gz
-readonly GEOIP_ASN=${DOWNLOAD}/GeoLite2-ASN.tar.gz
 readonly BASE_URL=https://download.maxmind.com/app/geoip_download
+readonly SUFFIX=tar.gz
 
-readonly NO_DOWNLOAD=${NO_DOWNLOAD:-0}
-readonly NO_UNPACK=${NO_UNPACK:-0}
+readonly SKIP_EXISTING=${SKIP_EXISTING:-0}
+
+readonly DBS=(
+    GeoLite2-City
+    GeoLite2-Country
+    GeoLite2-ASN
+)
 
 mkdir -p "$DOWNLOAD"
 
-if (( NO_DOWNLOAD == 0 )); then
-    echo "Downloading GeoIP City DB"
-    curl \
-        --fail \
-        --silent \
-        --location \
-        --time-cond "$GEOIP_CITY" \
-        --output "$GEOIP_CITY" \
-        --url "${BASE_URL}?edition_id=GeoLite2-City&license_key=${MAXMIND_LICENSE_KEY}&suffix=tar.gz"
+unpack() {
+    local -r db=${1:?}
+    local -r archive=${2:?}
 
-    echo "Downloading GeoIP Country DB"
-    curl \
-        --fail \
-        --silent \
-        --location \
-        --time-cond "$GEOIP_COUNTRY" \
-        --output "$GEOIP_COUNTRY" \
-        --url "${BASE_URL}?edition_id=GeoLite2-Country&license_key=${MAXMIND_LICENSE_KEY}&suffix=tar.gz"
+    if [[ -s $db && ! $db -ot $archive ]]; then
+        return 1
+    fi
 
-    echo "Downloading GeoIP ASN DB"
-    curl \
-        --fail \
-        --silent \
-        --location \
-        --time-cond "$GEOIP_ASN" \
-        --output "$GEOIP_ASN" \
-        --url "${BASE_URL}?edition_id=GeoLite2-ASN&license_key=${MAXMIND_LICENSE_KEY}&suffix=tar.gz"
-
-fi
-
-if (( NO_UNPACK == 0 )); then
-    echo "Unpacking GeoIP City DB"
-    tar xf "$GEOIP_CITY" \
+    tar xf "$archive" \
       -C "$GEOIP" \
       --strip-components 1 \
       --wildcards '*.mmdb'
 
-    echo "Unpacking GeoIP Country DB"
-    tar xf "$GEOIP_COUNTRY" \
-      -C "$GEOIP" \
-      --strip-components 1 \
-      --wildcards '*.mmdb'
+    if [[ ! -s $db ]]; then
+        echo "archive ($archive) did not contain $db"
+        exit 1
+    fi
 
-    echo "Unpacking GeoIP ASN DB"
-    tar xf "$GEOIP_ASN" \
-      -C "$GEOIP" \
-      --strip-components 1 \
-      --wildcards '*.mmdb'
+    touch -r "$archive" "$db"
 
-fi
+    return 0
+}
+
+for NAME in "${DBS[@]}"; do
+    DB=${GEOIP}/${NAME}.mmdb
+    ARCHIVE=${DOWNLOAD}/${NAME}.${SUFFIX}
+
+    if (( SKIP_EXISTING == 1 )) && [[ -e $DB ]]; then
+        echo "not downloading $NAME ($DB exists)"
+        continue
+    fi
+
+    NEW=${DOWNLOAD}/.new.${NAME}.${SUFFIX}
+
+    curl \
+        --fail \
+        --silent \
+        --location \
+        --remote-time \
+        --time-cond "$ARCHIVE" \
+        --output "$NEW" \
+        --url "$BASE_URL" \
+        --url-query "edition_id=${NAME}" \
+        --url-query "license_key=${MAXMIND_LICENSE_KEY}" \
+        --url-query "suffix=${SUFFIX}"
+
+    if [[ -s $NEW ]] && unpack "$DB" "$NEW"; then
+        mv "$NEW" "$ARCHIVE"
+        continue
+    fi
+
+    unpack "$DB" "$ARCHIVE" || true
+done

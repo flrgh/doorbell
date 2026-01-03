@@ -3,6 +3,7 @@ local _M = {}
 
 local rand_bytes = require("resty.random").bytes
 local to_hex = require("resty.string").to_hex
+local lfs = require("lfs")
 
 local cjson = require("cjson.safe").new()
 cjson.encode_keep_buffer(true)
@@ -16,6 +17,7 @@ local decode = cjson.decode
 local rename = os.rename
 local remove = os.remove
 local md5 = ngx.md5_bin
+local stat = lfs.attributes
 
 ---@return string
 local function rand_suffix()
@@ -152,6 +154,24 @@ function _M.read_json(fname)
   end
 
   return decode(contents)
+end
+
+
+---@param fname string
+---@return lfs.attribute.result? stat
+---@return string? error
+function _M.stat(fname)
+  local st, err = stat(fname)
+  return st, err
+end
+
+
+---@param fname string
+---@return integer? mtime
+---@return string? error
+function _M.get_mtime(fname)
+  local mtime, err = stat(fname, "modification")
+  return mtime, err
 end
 
 
