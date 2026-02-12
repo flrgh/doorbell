@@ -219,7 +219,9 @@ end
 ---@return string? err
 function _M.validate_regex(re)
   -- strip the '~' prefix
-  re = re:sub(2)
+  if byte(re, 1) == TILDE then
+    re = re:sub(2)
+  end
   local _, _, err = re_find(".", re, "oj")
   if err then
     return nil, err
@@ -252,21 +254,21 @@ end
 function _M.table_values(t, unique)
   local values = {}
 
-  local seen
+  local n = 0
 
   if unique then
-    seen = {}
-  end
-
-  local n = 0
-  for _, value in pairs(t) do
-    if not unique or not seen[value] then
-      n = n + 1
-      values[n] = value
-
-      if unique then
+    local seen = {}
+    for _, value in pairs(t) do
+      if not seen[value] then
+        n = n + 1
+        values[n] = value
         seen[value] = true
       end
+    end
+  else
+    for _, value in pairs(t) do
+      n = n + 1
+      values[n] = value
     end
   end
 
@@ -391,14 +393,13 @@ _M.deep_copy = deep_copy
 function _M.truthy(value)
   if type(value) == "string" then
     value = value:lower()
+    return value == "yes"
+        or value == "on"
+        or value == "1"
+        or value == "true"
   end
 
-  return value == "yes"
-      or value == "on"
-      or value == "1"
-      or value == "true"
-      or value == true
-      or value == 1
+  return value == true or value == 1
 end
 
 
@@ -406,14 +407,13 @@ end
 function _M.falsy(value)
   if type(value) == "string" then
     value = value:lower()
+    return value == "no"
+        or value == "off"
+        or value == "0"
+        or value == "false"
   end
 
-  return value == "no"
-      or value == "off"
-      or value == "0"
-      or value == "false"
-      or value == false
-      or value == 0
+  return value == false or value == 0
 end
 
 
