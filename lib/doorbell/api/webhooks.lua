@@ -3,17 +3,12 @@ local routes = {}
 local http    = require "doorbell.http"
 local mw      = require "doorbell.middleware"
 local request = require "doorbell.request"
-local ip      = require "doorbell.ip"
 local auth    = require "doorbell.auth"
 local rules     = require "doorbell.rules.api"
 local log = require("doorbell.log").with_namespace("webhooks")
 local const     = require "doorbell.constants"
 
-local set_response_header = http.response.set_header
 local send = http.send
-local get_mime_type = http.get_mime_type
-local get_request_headers = request.get_headers
-local get_query_arg = request.get_query_arg
 
 local TTL = 60 * 60 * 24
 

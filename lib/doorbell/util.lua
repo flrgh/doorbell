@@ -139,7 +139,7 @@ end
 ---@param localtime? boolean
 ---@return string
 function _M.timestamp(time, localtime)
-  local time = time or now()
+  time = time or now()
 
   if localtime then
     -- %z is `+####` but we need `+##:##`

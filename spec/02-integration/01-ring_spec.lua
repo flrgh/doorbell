@@ -206,7 +206,7 @@ describe("/ring", function()
     client:add_x_forwarded_headers("1.2.3.4", "GET", "http://api.test/")
     client.headers["user-agent"] = ua
 
-    local api = nginx:client(api)
+    local api = nginx:client()
 
     -- add a blanket deny rule
     assert(api:post("/rules", {
