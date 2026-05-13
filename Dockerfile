@@ -1,9 +1,15 @@
+# syntax=docker/dockerfile:1
+
 ARG OPENRESTY_VERSION=1.27.1.2
 
 # TODO: adapt slim image
 FROM openresty/openresty:${OPENRESTY_VERSION}-alpine-fat AS builder
 
-RUN apk add --no-cache --virtual .build-deps \
+RUN --mount=type=cache,target=/var/cache/apk \
+    apk add \
+        --update-cache \
+        --cache-dir /var/cache/apk \
+        --virtual .build-deps \
         git
 
 COPY ./doorbell-dev-1.rockspec /tmp/
@@ -24,7 +30,10 @@ FROM openresty/openresty:${OPENRESTY_VERSION}-alpine
 
 COPY --from=builder /usr/local/openresty /usr/local/openresty
 
-RUN apk add --no-cache \
+RUN --mount=type=cache,target=/var/cache/apk \
+    apk add \
+        --update-cache \
+        --cache-dir /var/cache/apk \
         bash \
         ca-certificates \
         libmaxminddb \
@@ -95,5 +104,5 @@ LABEL \
     org.opencontainers.image.title="doorbell" \
     org.opencontainers.image.url="https://github.com/flrgh/doorbell" \
     org.opencontainers.image.vendor="flrgh" \
-    org.opencontainers.image.version="${IMAGE_VERSION}" \
+    org.opencontainers.image.version="${IMAGE_VERSION}"
 
