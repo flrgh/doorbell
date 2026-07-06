@@ -464,7 +464,10 @@ function _M.patch(id_or_hash, updates)
     return nil, err, 400
   end
 
-  rules.update(rule, updates)
+  ok, err = rules.update(rule, updates)
+  if not ok then
+    return nil, err, 400
+  end
 
   ok, err = rules.validate_entity(rule)
   if not ok then

@@ -102,6 +102,7 @@ build = {
     ["doorbell.util"] = "lib/doorbell/util.lua",
     ["doorbell.util.file"] = "lib/doorbell/util/file.lua",
     ["doorbell.util.timer"] = "lib/doorbell/util/timer.lua",
+    ["doorbell.util.uri"] = "lib/doorbell/util/uri.lua",
 
     ["doorbell.verify"] = "lib/doorbell/verify.lua",
     ["doorbell.verify.twilio"] = "lib/doorbell/verify/twilio.lua",
@@ -123,6 +124,7 @@ supported_platforms = { "linux" }
 dependencies = {
   "inspect == 3.1.3",
   "lua_system_constants == 0.1.4",
+  "lua-resty-ada == 1.1.0-1",
   "lua-resty-ljsonschema == 1.2.0-2",
   "lua-resty-http == 0.17.2",
   "lua-resty-ipmatcher == 0.6.1",

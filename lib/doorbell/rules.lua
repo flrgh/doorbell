@@ -3,6 +3,7 @@ local _M = {}
 local const = require "doorbell.constants"
 local util  = require "doorbell.util"
 local schema = require "doorbell.schema"
+local uri_lib = require "doorbell.util.uri"
 
 local new_tab   = require "table.new"
 
@@ -17,6 +18,9 @@ local deep_copy    = util.deep_copy
 local type         = type
 local assert       = assert
 local null         = ngx.null
+
+local normalize_host = uri_lib.normalize_host
+local normalize_path = uri_lib.normalize_path
 
 
 local CONDITIONS = {
@@ -415,9 +419,47 @@ local function merge(current, updates)
 end
 
 
+---@param s string
+---@return boolean
+local function is_regex(s)
+  return byte(s, 1) == TILDE
+end
+
+
+---@param opts doorbell.rule.new.opts|doorbell.rule.update.opts
+---@return boolean? ok
+---@return string?  err
+local function normalize_opts(opts)
+  if opts.host ~= nil and opts.host ~= null then
+    local h, err = normalize_host(opts.host)
+    if not h then
+      return nil, "invalid host: " .. tostring(err)
+    end
+    opts.host = h
+  end
+
+  if opts.path ~= nil and opts.path ~= null and not is_regex(opts.path) then
+    local p, err = normalize_path(opts.path)
+    if not p then
+      return nil, "invalid path: " .. tostring(err)
+    end
+    opts.path = p
+  end
+
+  return true
+end
+
+
 ---@param current doorbell.rule
 ---@param updates doorbell.rule.update.opts
+---@return boolean? ok
+---@return string?  err
 function _M.update(current, updates)
+  local ok, err = normalize_opts(updates)
+  if not ok then
+    return nil, err
+  end
+
   if is_rule(current) then
     if updates.ttl ~= nil then
       update_time()
@@ -428,6 +470,7 @@ function _M.update(current, updates)
 
   merge(current, updates)
   current:update_generated_fields()
+  return true
 end
 
 
@@ -472,6 +515,12 @@ function _M.new(opts)
   local valid, err = schema.rule.create.validate(opts)
 
   if not valid then
+    return nil, err
+  end
+
+  local ok
+  ok, err = normalize_opts(opts)
+  if not ok then
     return nil, err
   end
 
@@ -531,11 +580,7 @@ end
 
 _M.validate = _M.validate_entity
 
----@param s string
----@return boolean
-function _M.is_regex(s)
-  return byte(s, 1) == TILDE
-end
+_M.is_regex = is_regex
 
 ---@param val string
 ---@return string
