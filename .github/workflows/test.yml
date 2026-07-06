@@ -61,10 +61,13 @@ jobs:
       options: >-
         --init
 
+    env:
+      USER: root
+
     steps:
-      # gcompat lets the glibc node that GitHub injects run on musl, so the
-      # JavaScript actions (checkout) work; the rest mirrors the Dockerfile.
       - name: Install OS deps
+        # alpine has no bash until we add it w/ apk
+        shell: sh
         run: |
           apk add --no-cache \
             ada-libs \
@@ -76,8 +79,6 @@ jobs:
             tar
           ln -fs /usr/lib/libada.so.2       /usr/lib/libada.so
           ln -fs /usr/lib/libmaxminddb.so.0 /usr/lib/libmaxminddb.so
-        # alpine has no bash until we add it w/ apk
-        shell: sh
 
       - uses: actions/checkout@v4
 
