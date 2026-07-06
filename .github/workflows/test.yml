@@ -66,8 +66,6 @@ jobs:
 
     steps:
       - name: Install OS deps
-        # alpine has no bash until we add it w/ apk
-        shell: sh
         run: |
           apk add --no-cache \
             ada-libs \
@@ -85,7 +83,10 @@ jobs:
       - name: Cache LuaRocks Dependencies
         uses: actions/cache@v4
         with:
-          path: .luarocks/
+          path: |
+            /usr/local/openresty/luajit/lib/luarocks
+            /usr/local/openresty/luajit/lib/lua/5.1
+            /usr/local/openresty/luajit/share/lua/5.1
           key: v1::alpine-luarocks-openresty-${{ hashFiles('*.rockspec') }}
 
       - name: Install Main Luarocks Dependencies
