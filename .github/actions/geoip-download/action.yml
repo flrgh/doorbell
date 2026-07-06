@@ -4,7 +4,7 @@ description: Downloads GeoIP City & Country Databases for Integration Tests
 
 inputs:
   maxmind_license_key:
-    type: string
+    description: "MaxMind license key"
     required: true
 
 runs:
