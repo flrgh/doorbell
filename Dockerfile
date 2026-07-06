@@ -25,6 +25,7 @@ FROM openresty/openresty:${OPENRESTY_VERSION}-alpine
 COPY --from=builder /usr/local/openresty /usr/local/openresty
 
 RUN apk add --no-cache \
+        ada-libs \
         bash \
         ca-certificates \
         libmaxminddb \
@@ -33,6 +34,7 @@ RUN apk add --no-cache \
         tzdata \
     && ln -v -s /usr/lib/libGeoIP.so.1 /usr/lib/libGeoIP.so \
     && ln -v -s /usr/lib/libmaxminddb.so.0 /usr/lib/libmaxminddb.so \
+    && ln -v -s /usr/lib/libada.so.2 /usr/lib/libada.so \
     && ln -v -s /usr/local/openresty/bin/resty /usr/local/bin/resty
 
 ARG INSTALL_PREFIX=/usr/local

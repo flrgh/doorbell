@@ -11,12 +11,12 @@ on:
     paths:
       - '*.rockspec'
       - '.github/**'
-      - 'bin/**'
-      - 'lib/**'
+      - 'bin/*'
+      - 'lib/**/*'
       - Dockerfile
-      - 'assets/**'
+      - 'assets/**/*'
       - 'entrypoint.sh'
-      - 'scripts/**'
+      - 'scripts/**/*'
 
 defaults:
   run:

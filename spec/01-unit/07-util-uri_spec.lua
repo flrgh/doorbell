@@ -1,0 +1,195 @@
+local uri = require "doorbell.util.uri"
+
+describe("doorbell.util.uri", function()
+  describe("normalize_forwarded()", function()
+    it("rejects non-http(s) schemes", function()
+      local h, pa, err = uri.normalize_forwarded("javascript", "example.com", "/")
+      assert.is_nil(h)
+      assert.is_nil(pa)
+      assert.same("invalid scheme", err)
+    end)
+
+    it("rejects URIs that do not begin with /", function()
+      local h, pa, err = uri.normalize_forwarded("http", "example.com", "admin")
+      assert.is_nil(h)
+      assert.is_nil(pa)
+      assert.same("invalid uri", err)
+    end)
+
+    it("returns the canonical form unchanged", function()
+      local h, pa = uri.normalize_forwarded("http", "example.com", "/admin")
+      assert.equal("example.com", h)
+      assert.equal("/admin",      pa)
+    end)
+
+    it("lower-cases the host", function()
+      local h, pa = uri.normalize_forwarded("http", "EXAMPLE.COM", "/admin")
+      assert.equal("example.com", h)
+      assert.equal("/admin",      pa)
+    end)
+
+    it("strips the :80 port on http", function()
+      local h = uri.normalize_forwarded("http", "example.com:80", "/")
+      assert.equal("example.com", h)
+    end)
+
+    it("strips the :443 port on https", function()
+      local h = uri.normalize_forwarded("https", "example.com:443", "/")
+      assert.equal("example.com", h)
+    end)
+
+    it("reports a non-default port as part of the host", function()
+      local h = uri.normalize_forwarded("http", "example.com:8080", "/")
+      assert.equal("example.com", h)
+    end)
+
+    it("resolves /./ segments", function()
+      local _, pa = uri.normalize_forwarded("http", "x", "/./admin")
+      assert.equal("/admin", pa)
+    end)
+
+    it("resolves /../ segments", function()
+      local _, pa = uri.normalize_forwarded("http", "x", "/foo/../admin")
+      assert.equal("/admin", pa)
+    end)
+
+    it("decodes percent-encoded unreserved characters", function()
+      local _, pa = uri.normalize_forwarded("http", "x", "/%61dmin")
+      assert.equal("/admin", pa)
+    end)
+
+    it("decodes %2F to /", function()
+      local _, pa = uri.normalize_forwarded("http", "x", "/admin%2f")
+      assert.equal("/admin", pa)
+    end)
+
+    it("collapses //", function()
+      local _, pa = uri.normalize_forwarded("http", "x", "//admin")
+      assert.equal("/admin", pa)
+
+      local _, pa2 = uri.normalize_forwarded("http", "x", "/a//b//c")
+      assert.equal("/a/b/c", pa2)
+    end)
+
+    it("preserves path case (not folded)", function()
+      local _, pa = uri.normalize_forwarded("http", "x", "/ADMIN")
+      assert.equal("/ADMIN", pa)
+    end)
+
+    it("preserves semicolon path parameters", function()
+      local _, pa = uri.normalize_forwarded("http", "x", "/admin;x=1")
+      assert.equal("/admin;x=1", pa)
+    end)
+
+    it("strips the query string", function()
+      local _, pa = uri.normalize_forwarded("http", "x", "/admin?foo=bar")
+      assert.equal("/admin", pa)
+    end)
+
+    it("strips the fragment", function()
+      local _, pa = uri.normalize_forwarded("http", "x", "/admin#frag")
+      assert.equal("/admin", pa)
+    end)
+
+    it("strips the trailing slash", function()
+      local _, pa = uri.normalize_forwarded("http", "x", "/admin/")
+      assert.equal("/admin", pa)
+    end)
+
+    it("keeps the root as /", function()
+      local _, pa = uri.normalize_forwarded("http", "x", "/")
+      assert.equal("/", pa)
+    end)
+  end)
+
+  describe("normalize_host()", function()
+    it("lower-cases ASCII", function()
+      assert.equal("example.com", uri.normalize_host("EXAMPLE.COM"))
+    end)
+
+    it("punycodes IDN", function()
+      -- Full-width U+FF0E in the domain triggers IDN conversion.
+      local h = uri.normalize_host("www.xn--7eleven-506c.com")
+      assert.equal("www.xn--7eleven-506c.com", h)
+    end)
+
+    it("strips the FQDN trailing dot", function()
+      assert.equal("example.com", uri.normalize_host("example.com."))
+      assert.equal("example.com", uri.normalize_host("Example.Com."))
+    end)
+  end)
+
+  describe("normalize_path()", function()
+    it("leaves canonical paths unchanged", function()
+      assert.equal("/",       uri.normalize_path("/"))
+      assert.equal("/admin",  uri.normalize_path("/admin"))
+      assert.equal("/a/b/c",  uri.normalize_path("/a/b/c"))
+    end)
+
+    it("strips the trailing slash except on root", function()
+      assert.equal("/",        uri.normalize_path("/"))
+      assert.equal("/admin",   uri.normalize_path("/admin/"))
+      assert.equal("/a/b",     uri.normalize_path("/a/b/"))
+    end)
+
+    it("collapses consecutive slashes", function()
+      assert.equal("/admin",   uri.normalize_path("//admin"))
+      assert.equal("/admin",   uri.normalize_path("///admin"))
+      assert.equal("/a/b",     uri.normalize_path("/a//b"))
+      assert.equal("/",        uri.normalize_path("////"))
+    end)
+
+    it("decodes %2F to / (uppercase or lowercase)", function()
+      assert.equal("/a/b",     uri.normalize_path("/a%2Fb"))
+      assert.equal("/a/b",     uri.normalize_path("/a%2fb"))
+      assert.equal("/admin",   uri.normalize_path("/admin%2F"))
+    end)
+
+    it("decodes %2F and then collapses the resulting //", function()
+      assert.equal("/a/b",     uri.normalize_path("/a%2F%2Fb"))
+      assert.equal("/admin",   uri.normalize_path("/admin%2F/"))
+    end)
+
+    it("decodes percent-encoded unreserved characters", function()
+      assert.equal("/admin",   uri.normalize_path("/%61dmin"))
+      assert.equal("/foo",     uri.normalize_path("/f%6F%6F"))
+    end)
+
+    it("uppercases reserved percent triplets", function()
+      assert.equal("/a%3Ab",   uri.normalize_path("/a%3ab"))
+      assert.equal("/a%3Ab",   uri.normalize_path("/a%3Ab"))
+    end)
+
+    it("decodes percent-encoded 'other' characters (e.g. space)", function()
+      assert.equal("/a b",     uri.normalize_path("/a%20b"))
+    end)
+
+    it("preserves path case", function()
+      assert.equal("/ADMIN",   uri.normalize_path("/ADMIN"))
+    end)
+
+    it("passes a canonical path through", function()
+      assert.equal("/admin", uri.normalize_path("/admin"))
+      assert.equal("/",      uri.normalize_path("/"))
+    end)
+
+    it("collapses // in a rule path", function()
+      assert.equal("/admin", uri.normalize_path("//admin"))
+      assert.equal("/a/b",   uri.normalize_path("/a//b/"))
+    end)
+
+    it("resolves dot segments in a rule path", function()
+      assert.equal("/admin", uri.normalize_path("/foo/../admin"))
+    end)
+
+    it("strips a trailing slash from a rule path", function()
+      assert.equal("/admin", uri.normalize_path("/admin/"))
+    end)
+
+    it("rejects paths that do not begin with /", function()
+      local pa, err = uri.normalize_path("admin")
+      assert.is_nil(pa)
+      assert.is_string(err)
+    end)
+  end)
+end)

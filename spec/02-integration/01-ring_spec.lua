@@ -526,5 +526,165 @@ describe("/ring", function()
     end)
   end)
 
+  describe("path normalization", function()
+    before_each(function()
+      update_config({
+        allow = { { ua = "allow-me" } },
+        deny  = { { path = "/admin" } },
+      })
+      client.headers["user-agent"] = "allow-me"
+    end)
 
+    -- sanity
+    it("denies /admin path", function()
+      client:add_x_forwarded_headers("1.2.3.4", "GET", "http://test/admin")
+      client:send()
+      assert.is_nil(client.err)
+      assert.equals(403, client.response.status)
+    end)
+
+    -- sanity
+    it("allows non-admin paths", function()
+      client:add_x_forwarded_headers("1.2.3.4", "GET", "http://test/not-admin")
+      client:send()
+      assert.is_nil(client.err)
+      assert.equals(200, client.response.status)
+    end)
+
+    local CASES = {
+      { label = "trailing slash",             uri = "/admin/"         },
+      { label = "leading double slash",       uri = "//admin"         },
+      { label = "trailing double slash",      uri = "/admin//"        },
+      { label = "current-dir segment",        uri = "/./admin"        },
+      { label = "parent-dir traversal",       uri = "/foo/../admin"   },
+      { label = "percent-encoded letter",     uri = "/%61dmin"        },
+      { label = "percent-encoded slash",      uri = "/admin%2f"       },
+    }
+
+    for _, case in ipairs(CASES) do
+      it("denies " .. case.label .. " (" .. case.uri .. ")", function()
+        client.headers.x_forwarded_for    = "1.2.3.4"
+        client.headers.x_forwarded_method = "GET"
+        client.headers.x_forwarded_proto  = "http"
+        client.headers.x_forwarded_host   = "test"
+        client.headers.x_forwarded_uri    = case.uri
+
+        client:send()
+        assert.is_nil(client.err)
+        assert.equals(403, client.response.status)
+      end)
+    end
+  end)
+
+  describe("host normalization", function()
+    before_each(function()
+      update_config({
+        allow = { { ua = "allow-me" } },
+        deny  = { { host = "admin.example.com" } },
+      })
+      client.headers["user-agent"] = "allow-me"
+    end)
+
+    -- sanity
+    it("denies matching host", function()
+      client:add_x_forwarded_headers("1.2.3.4", "GET", "http://admin.example.com/")
+      client:send()
+      assert.is_nil(client.err)
+      assert.equals(403, client.response.status)
+    end)
+
+    -- sanity
+    it("allows non-matching host", function()
+      client:add_x_forwarded_headers("1.2.3.4", "GET", "http://not-admin.example.com/")
+      client:send()
+      assert.is_nil(client.err)
+      assert.equals(200, client.response.status)
+    end)
+
+    local CASES = {
+      { label = "mixed case",      host = "Admin.Example.Com" },
+      { label = "upper case",      host = "ADMIN.EXAMPLE.COM" },
+      { label = "trailing dot",    host = "admin.example.com." },
+      { label = "with :80 port",   host = "admin.example.com:80" },
+      { label = "with :443 port",  host = "admin.example.com:443" },
+    }
+
+    for _, case in ipairs(CASES) do
+      it("denies " .. case.label .. " (" .. case.host .. ")", function()
+        client.headers.x_forwarded_for    = "1.2.3.4"
+        client.headers.x_forwarded_method = "GET"
+        client.headers.x_forwarded_proto  = "http"
+        client.headers.x_forwarded_host   = case.host
+        client.headers.x_forwarded_uri    = "/"
+
+        client:send()
+        assert.is_nil(client.err)
+        assert.equals(403, client.response.status)
+      end)
+    end
+  end)
+
+  describe("duplicate X-Forwarded-* headers", function()
+    before_each(function()
+      update_config({
+        allow = { { ua = "allow-me" } },
+        deny  = { { method = "GET", path = "/admin" } },
+      })
+      client.headers["user-agent"] = "allow-me"
+    end)
+
+    it("rejects duplicate X-Forwarded-Method with 400", function()
+      client.headers.x_forwarded_for    = "1.2.3.4"
+      client.headers.x_forwarded_method = { "GET", "GET" }
+      client.headers.x_forwarded_proto  = "http"
+      client.headers.x_forwarded_host   = "test"
+      client.headers.x_forwarded_uri    = "/admin"
+
+      client:send()
+      assert.is_nil(client.err)
+      assert.equals(400, client.response.status)
+    end)
+
+    it("rejects duplicate X-Forwarded-Host with 400", function()
+      client.headers.x_forwarded_for    = "1.2.3.4"
+      client.headers.x_forwarded_method = "GET"
+      client.headers.x_forwarded_proto  = "http"
+      client.headers.x_forwarded_host   = { "test", "test" }
+      client.headers.x_forwarded_uri    = "/admin"
+
+      client:send()
+      assert.is_nil(client.err)
+      assert.equals(400, client.response.status)
+    end)
+
+    it("rejects duplicate X-Forwarded-Uri with 400", function()
+      client.headers.x_forwarded_for    = "1.2.3.4"
+      client.headers.x_forwarded_method = "GET"
+      client.headers.x_forwarded_proto  = "http"
+      client.headers.x_forwarded_host   = "test"
+      client.headers.x_forwarded_uri    = { "/admin", "/admin" }
+
+      client:send()
+      assert.is_nil(client.err)
+      assert.equals(400, client.response.status)
+    end)
+
+    it("coerces duplicate User-Agent headers to a string", function()
+      update_config({
+        allow = {},
+        deny  = { { ua = "bad-bot,bad-bot", path = "/admin" } },
+      })
+
+      client.headers.x_forwarded_for    = "1.2.3.4"
+      client.headers.x_forwarded_method = "GET"
+      client.headers.x_forwarded_proto  = "http"
+      client.headers.x_forwarded_host   = "test"
+      client.headers.x_forwarded_uri    = "/admin"
+      client.headers["user-agent"]      = { "bad-bot", "bad-bot" }
+
+      client:send()
+      assert.is_nil(client.err)
+      assert.equals(403, client.response.status)
+    end)
+  end)
 end)

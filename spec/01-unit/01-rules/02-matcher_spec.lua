@@ -101,7 +101,7 @@ describe("matching", function()
     add {
       { comment = "a", path = "~/test/.+", host = "test", created = 20 },
       { comment = "b", path = "/test/foo", host = "test", created = 10 },
-      { comment = "c", path = "no", host = "no", ua = "no" },
+      { comment = "c", path = "/no", host = "no", ua = "no" },
     }
 
     assert.equals("a", match(req).comment)

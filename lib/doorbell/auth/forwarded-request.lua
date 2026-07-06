@@ -2,20 +2,48 @@
 local _M = {}
 
 local request = require "doorbell.request"
-local http   = require "doorbell.http"
+local uri_lib = require "doorbell.util.uri"
 
 local tb = require "tablepool"
 
 local get_req_headers = request.get_headers
-local get_path        = http.extract_path
 local tostring = tostring
+local type     = type
+local concat   = table.concat
+local lower    = string.lower
 local sha = require "resty.sha256"
+
+local normalize_forwarded = uri_lib.normalize_forwarded
 
 local pool    = "doorbell.auth.forwarded_request"
 local narr    = 0
 local nrec    = 10
 local fetch   = tb.fetch
 local release = tb.release
+
+
+---@param  headers  doorbell.http.headers
+---@param  name     string
+---@return string?  value
+---@return string?  err
+local function required_header(headers, name)
+  local v = headers[name]
+
+  if not v then
+    return nil, "missing " .. name
+  end
+
+  local typ = type(v)
+
+  if typ == "string" and v ~= "" then
+    return v
+
+  elseif typ == "table" then
+    return nil, "duplicate " .. name
+  end
+
+  return nil, "empty/invalid " .. name
+end
 
 
 ---@param  ctx                         doorbell.ctx
@@ -36,37 +64,51 @@ function _M.new(ctx, headers)
   if not addr then
     return nil, "missing x-forwarded-for"
   end
-  r.addr = ctx.forwarded_addr
+  r.addr = addr
 
-  local scheme = headers["x-forwarded-proto"]
+  local scheme, err = required_header(headers, "x-forwarded-proto")
   if not scheme then
-    return nil, "missing x-forwarded-proto"
+    return nil, err
   end
-  r.scheme = scheme
+  scheme = lower(scheme)
 
-  local host = headers["x-forwarded-host"]
+  local host
+  host, err = required_header(headers, "x-forwarded-host")
   if not host then
-    return nil, "missing x-forwarded-host"
+    return nil, err
   end
-  r.host = host
 
-  local uri = headers["x-forwarded-uri"]
+  local uri
+  uri, err = required_header(headers, "x-forwarded-uri")
   if not uri then
-    return nil, "missing x-forwarded-uri"
+    return nil, err
   end
-  r.uri = uri
-  r.path = get_path(uri)
 
-  local method = headers["x-forwarded-method"]
+  local method
+  method, err = required_header(headers, "x-forwarded-method")
   if not method then
-    return nil, "missing x-forwarded-method"
+    return nil, err
   end
+
+  local hostname, path
+  hostname, path, err = normalize_forwarded(scheme, host, uri)
+  if not hostname then
+    return nil, err
+  end
+
+  r.scheme = scheme
+  r.host   = hostname
+  r.uri    = uri
+  r.path   = path
   r.method = method
 
-  r.ua = headers["user-agent"]
+  local ua = headers["user-agent"]
+  if type(ua) == "table" then
+    ua = concat(ua, ",")
+  end
+  r.ua = ua
 
   r.country = ctx.geoip_country_code
-
   r.asn = ctx.geoip_net_asn
   r.org = ctx.geoip_net_org
 
