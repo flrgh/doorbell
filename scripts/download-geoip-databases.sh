@@ -53,7 +53,7 @@ for NAME in "${DBS[@]}"; do
 
     curl \
         --fail \
-        --silent \
+        --no-progress-meter \
         --location \
         --remote-time \
         --time-cond "$ARCHIVE" \
@@ -61,7 +61,11 @@ for NAME in "${DBS[@]}"; do
         --url "$BASE_URL" \
         --url-query "edition_id=${NAME}" \
         --url-query "license_key=${MAXMIND_LICENSE_KEY}" \
-        --url-query "suffix=${SUFFIX}"
+        --url-query "suffix=${SUFFIX}" \
+    || {
+        echo "failed to download ${NAME}.${SUFFIX} from MaxMind" >&2
+        exit 1
+    }
 
     if [[ -s $NEW ]] && unpack "$DB" "$NEW"; then
         mv "$NEW" "$ARCHIVE"
